@@ -16,6 +16,15 @@ import * as THREE from "three";
 import { MonsterMark } from "@/components/monster-mark";
 
 type Action = "eat" | "attack" | null;
+type EdibleKind = "tree" | "bush";
+
+type Edible = {
+  id: string;
+  kind: EdibleKind;
+  x: number;
+  z: number;
+  energy: number;
+};
 
 type ControlState = {
   keys: Set<string>;
@@ -26,6 +35,11 @@ type ControlState = {
   cameraPitch: number;
   action: Action;
   actionStarted: number;
+  energy: number;
+  isDead: boolean;
+  moving: boolean;
+  sprinting: boolean;
+  playerPosition: { x: number; z: number };
 };
 
 const WORLD_AREA_MULTIPLIER = 10;
@@ -33,6 +47,10 @@ const WORLD_SCALE = Math.sqrt(WORLD_AREA_MULTIPLIER);
 const WORLD_RADIUS = 40 * WORLD_SCALE;
 const PLAYABLE_RADIUS = 38.2 * WORLD_SCALE;
 const BRIDGE_POSITIONS = [-96, -58, -20, 20, 58, 96] as const;
+const WALK_ENERGY_PER_SECOND = 1.2;
+const SPRINT_ENERGY_PER_SECOND = 3.8;
+const ATTACK_ENERGY_COST = 7;
+const EAT_DISTANCE = 4.2;
 
 function normalizeAngle(angle: number) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
@@ -224,6 +242,24 @@ const EXTRA_ROCKS: Array<[number, number, number, number]> = scatterPositions(
   ((index * 1.71) % Math.PI) - Math.PI / 2,
 ]);
 const EXTRA_PLANTS = scatterPositions(86, 4213);
+const ALL_TREES = [...TREES, ...EXTRA_TREES];
+const ALL_BUSHES = [...BUSHES, ...EXTRA_BUSHES];
+const EDIBLES: Edible[] = [
+  ...ALL_TREES.map(([x, z], index) => ({
+    id: `tree-${index}`,
+    kind: "tree" as const,
+    x,
+    z,
+    energy: 42,
+  })),
+  ...ALL_BUSHES.map(([x, z], index) => ({
+    id: `bush-${index}`,
+    kind: "bush" as const,
+    x,
+    z,
+    energy: 28,
+  })),
+];
 
 function Terrain() {
   const geometry = useMemo(() => {
@@ -477,8 +513,15 @@ function Plant({ x, z }: { x: number; z: number }) {
 
 function CuteMonster({
   controls,
+  onPlayerFrame,
 }: {
   controls: React.RefObject<ControlState>;
+  onPlayerFrame: (
+    x: number,
+    z: number,
+    moving: boolean,
+    sprinting: boolean,
+  ) => void;
 }) {
   const root = useRef<THREE.Group>(null);
   const visual = useRef<THREE.Group>(null);
@@ -502,9 +545,12 @@ function CuteMonster({
       (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
       (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) +
       state.move.y;
+    const previousX = root.current.position.x;
+    const previousZ = root.current.position.z;
+    const sprinting = keys.has("ShiftLeft") || keys.has("ShiftRight");
 
     velocity.set(0, 0, 0);
-    if (Math.abs(horizontal) + Math.abs(forward) > 0.06) {
+    if (!state.isDead && Math.abs(horizontal) + Math.abs(forward) > 0.06) {
       const length = Math.hypot(horizontal, forward);
       const xInput = horizontal / Math.max(1, length);
       const zInput = forward / Math.max(1, length);
@@ -513,7 +559,7 @@ function CuteMonster({
       velocity
         .set(xInput * cos - zInput * sin, 0, -xInput * sin - zInput * cos)
         .normalize();
-      const speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 8.2 : 5.4;
+      const speed = sprinting ? 8.2 : 5.4;
       const nextX = root.current.position.x + velocity.x * speed * delta;
       const nextZ = root.current.position.z + velocity.z * speed * delta;
       if (!isBlockedByWater(nextX, root.current.position.z))
@@ -527,7 +573,18 @@ function CuteMonster({
       root.current.position.z,
     );
     root.current.rotation.y = state.characterYaw;
-    const moving = velocity.lengthSq() > 0.1;
+    const moving =
+      !state.isDead &&
+      Math.hypot(
+        root.current.position.x - previousX,
+        root.current.position.z - previousZ,
+      ) > 0.00001;
+    onPlayerFrame(
+      root.current.position.x,
+      root.current.position.z,
+      moving,
+      moving && sprinting,
+    );
     const stride = moving ? Math.sin(clock.elapsedTime * 11) * 0.46 : 0;
     legs.forEach((leg, index) => {
       if (leg.current)
@@ -545,13 +602,13 @@ function CuteMonster({
     let scaleX = 1;
     let scaleY = 1;
     let scaleZ = 1;
-    if (state.action === "attack" && actionAge < 680) {
+    if (!state.isDead && state.action === "attack" && actionAge < 680) {
       const pulse = Math.sin((actionAge / 680) * Math.PI);
       actionPitch = -pulse * 0.34;
       actionForward = -pulse * 0.52;
       scaleX = 1 + pulse * 0.055;
       scaleY = 1 - pulse * 0.045;
-    } else if (state.action === "eat" && actionAge < 920) {
+    } else if (!state.isDead && state.action === "eat" && actionAge < 920) {
       const pulse = Math.sin((actionAge / 920) * Math.PI);
       actionPitch = pulse * 0.42;
       actionDrop = -pulse * 0.12;
@@ -568,6 +625,12 @@ function CuteMonster({
       13,
       delta,
     );
+    visual.current.rotation.z = THREE.MathUtils.damp(
+      visual.current.rotation.z,
+      state.isDead ? -Math.PI * 0.47 : 0,
+      5.5,
+      delta,
+    );
     visual.current.position.z = THREE.MathUtils.damp(
       visual.current.position.z,
       actionForward,
@@ -576,7 +639,7 @@ function CuteMonster({
     );
     visual.current.position.y = THREE.MathUtils.damp(
       visual.current.position.y,
-      walkBob + actionDrop,
+      walkBob + actionDrop + (state.isDead ? -0.2 : 0),
       14,
       delta,
     );
@@ -710,7 +773,22 @@ function CuteMonster({
   );
 }
 
-function World({ controls }: { controls: React.RefObject<ControlState> }) {
+function World({
+  controls,
+  eatenIds,
+  monsterKey,
+  onPlayerFrame,
+}: {
+  controls: React.RefObject<ControlState>;
+  eatenIds: ReadonlySet<string>;
+  monsterKey: number;
+  onPlayerFrame: (
+    x: number,
+    z: number,
+    moving: boolean,
+    sprinting: boolean,
+  ) => void;
+}) {
   return (
     <>
       <color attach="background" args={["#9CDCE5"]} />
@@ -736,18 +814,16 @@ function World({ controls }: { controls: React.RefObject<ControlState> }) {
       <Sea />
       <Terrain />
       <River />
-      {TREES.map(([x, z, scale]) => (
-        <Tree key={`${x}-${z}`} x={x} z={z} scale={scale} />
-      ))}
-      {EXTRA_TREES.map(([x, z, scale]) => (
-        <Tree key={`extra-${x}-${z}`} x={x} z={z} scale={scale} />
-      ))}
-      {BUSHES.map(([x, z, scale]) => (
-        <Bush key={`${x}-${z}`} x={x} z={z} scale={scale} />
-      ))}
-      {EXTRA_BUSHES.map(([x, z, scale]) => (
-        <Bush key={`extra-${x}-${z}`} x={x} z={z} scale={scale} />
-      ))}
+      {ALL_TREES.map(([x, z, scale], index) =>
+        eatenIds.has(`tree-${index}`) ? null : (
+          <Tree key={`tree-${index}`} x={x} z={z} scale={scale} />
+        ),
+      )}
+      {ALL_BUSHES.map(([x, z, scale], index) =>
+        eatenIds.has(`bush-${index}`) ? null : (
+          <Bush key={`bush-${index}`} x={x} z={z} scale={scale} />
+        ),
+      )}
       {ROCKS.map(([x, z, scale, rotation]) => (
         <Rock key={`${x}-${z}`} x={x} z={z} scale={scale} rotation={rotation} />
       ))}
@@ -789,7 +865,11 @@ function World({ controls }: { controls: React.RefObject<ControlState> }) {
         speed={0.24}
         color="#FFF1A8"
       />
-      <CuteMonster controls={controls} />
+      <CuteMonster
+        key={monsterKey}
+        controls={controls}
+        onPlayerFrame={onPlayerFrame}
+      />
     </>
   );
 }
@@ -863,18 +943,139 @@ export function GameExperience() {
     cameraPitch: 0.38,
     action: null,
     actionStarted: 0,
+    energy: 100,
+    isDead: false,
+    moving: false,
+    sprinting: false,
+    playerPosition: { x: -8, z: 8 },
   });
+  const displayedEnergy = useRef(100);
+  const eatenIdsRef = useRef<Set<string>>(new Set());
   const [pointerLocked, setPointerLocked] = useState(false);
   const [status, setStatus] = useState("Welcome to Mossmunch Island");
+  const [energy, setEnergy] = useState(100);
+  const [isDead, setIsDead] = useState(false);
+  const [eatenIds, setEatenIds] = useState<Set<string>>(() => new Set());
+  const [monsterKey, setMonsterKey] = useState(0);
 
-  const triggerAction = useCallback((action: Exclude<Action, null>) => {
-    controls.current.action = action;
-    controls.current.actionStarted = performance.now();
-    setStatus(
-      action === "eat" ? "Mmm. That looks leafy!" : "Tiny but mighty! Rawr!",
-    );
-    window.setTimeout(() => setStatus("Explore the island"), 1400);
+  const reportPlayerFrame = useCallback(
+    (x: number, z: number, moving: boolean, sprinting: boolean) => {
+      controls.current.playerPosition.x = x;
+      controls.current.playerPosition.z = z;
+      controls.current.moving = moving;
+      controls.current.sprinting = sprinting;
+    },
+    [],
+  );
+
+  const setEnergyLevel = useCallback((nextEnergy: number) => {
+    const normalizedEnergy = THREE.MathUtils.clamp(nextEnergy, 0, 100);
+    controls.current.energy = normalizedEnergy;
+    const nextDisplay = Math.ceil(normalizedEnergy);
+    if (displayedEnergy.current !== nextDisplay) {
+      displayedEnergy.current = nextDisplay;
+      setEnergy(nextDisplay);
+    }
+    return normalizedEnergy;
   }, []);
+
+  const killMonster = useCallback(() => {
+    if (controls.current.isDead) return;
+    controls.current.isDead = true;
+    controls.current.moving = false;
+    controls.current.sprinting = false;
+    controls.current.action = null;
+    controls.current.keys.clear();
+    controls.current.move = { x: 0, y: 0 };
+    setEnergyLevel(0);
+    setIsDead(true);
+    setStatus("Moss Muncher ran out of energy.");
+    if (document.pointerLockElement) document.exitPointerLock();
+  }, [setEnergyLevel]);
+
+  const triggerAction = useCallback(
+    (action: Exclude<Action, null>) => {
+      if (controls.current.isDead) return;
+
+      if (action === "attack") {
+        controls.current.action = action;
+        controls.current.actionStarted = performance.now();
+        const remainingEnergy = setEnergyLevel(
+          controls.current.energy - ATTACK_ENERGY_COST,
+        );
+        if (remainingEnergy <= 0) {
+          killMonster();
+          return;
+        }
+        setStatus(`Tiny but mighty! Rawr! −${ATTACK_ENERGY_COST} energy`);
+      } else {
+        if (controls.current.energy >= 99.5) {
+          setStatus("Energy is already full.");
+          return;
+        }
+
+        let nearest: Edible | null = null;
+        let nearestDistance = EAT_DISTANCE;
+        for (const edible of EDIBLES) {
+          if (eatenIdsRef.current.has(edible.id)) continue;
+          const distance = Math.hypot(
+            edible.x - controls.current.playerPosition.x,
+            edible.z - controls.current.playerPosition.z,
+          );
+          if (distance <= nearestDistance) {
+            nearest = edible;
+            nearestDistance = distance;
+          }
+        }
+
+        if (!nearest) {
+          setStatus("Get closer to a bush or tree to eat.");
+          return;
+        }
+
+        controls.current.action = action;
+        controls.current.actionStarted = performance.now();
+        eatenIdsRef.current.add(nearest.id);
+        setEatenIds(new Set(eatenIdsRef.current));
+        const restoredEnergy = Math.min(
+          nearest.energy,
+          100 - controls.current.energy,
+        );
+        setEnergyLevel(controls.current.energy + restoredEnergy);
+        setStatus(
+          nearest.kind === "bush"
+            ? `Crunchy bush! +${Math.ceil(restoredEnergy)} energy`
+            : `Tasty tree! +${Math.ceil(restoredEnergy)} energy`,
+        );
+      }
+
+      window.setTimeout(() => {
+        if (!controls.current.isDead) setStatus("Explore the island");
+      }, 1400);
+    },
+    [killMonster, setEnergyLevel],
+  );
+
+  const resetGame = useCallback(() => {
+    controls.current.keys.clear();
+    controls.current.move = { x: 0, y: 0 };
+    controls.current.look = { x: 0, y: 0 };
+    controls.current.cameraYaw = 0.35;
+    controls.current.characterYaw = 0.35;
+    controls.current.cameraPitch = 0.38;
+    controls.current.action = null;
+    controls.current.actionStarted = 0;
+    controls.current.isDead = false;
+    controls.current.moving = false;
+    controls.current.sprinting = false;
+    controls.current.playerPosition = { x: -8, z: 8 };
+    eatenIdsRef.current = new Set();
+    setEatenIds(new Set());
+    setEnergyLevel(100);
+    setIsDead(false);
+    setMonsterKey((current) => current + 1);
+    setStatus("Moss Muncher is ready to explore again!");
+  }, [setEnergyLevel]);
 
   useEffect(() => {
     let animationFrame = 0;
@@ -891,9 +1092,11 @@ export function GameExperience() {
           turnDelta -
           controls.current.look.x * 1.9 * delta,
       );
-      controls.current.characterYaw = normalizeAngle(
-        controls.current.characterYaw + turnDelta,
-      );
+      if (!controls.current.isDead) {
+        controls.current.characterYaw = normalizeAngle(
+          controls.current.characterYaw + turnDelta,
+        );
+      }
 
       const horizontal =
         (controls.current.keys.has("KeyD") ? 1 : 0) -
@@ -909,7 +1112,10 @@ export function GameExperience() {
           ? 1
           : 0) +
         controls.current.move.y;
-      if (Math.abs(horizontal) + Math.abs(forward) > 0.06) {
+      if (
+        !controls.current.isDead &&
+        Math.abs(horizontal) + Math.abs(forward) > 0.06
+      ) {
         const targetYaw =
           Math.abs(horizontal) > 0.06
             ? controls.current.cameraYaw - Math.sign(horizontal) * Math.PI * 0.5
@@ -926,6 +1132,16 @@ export function GameExperience() {
         0.12,
         0.72,
       );
+
+      if (!controls.current.isDead && controls.current.moving) {
+        const energyRate = controls.current.sprinting
+          ? SPRINT_ENERGY_PER_SECOND
+          : WALK_ENERGY_PER_SECOND;
+        const remainingEnergy = setEnergyLevel(
+          controls.current.energy - energyRate * delta,
+        );
+        if (remainingEnergy <= 0) killMonster();
+      }
       animationFrame = window.requestAnimationFrame(updateLook);
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -938,6 +1154,8 @@ export function GameExperience() {
         event.preventDefault();
       if (!event.repeat && event.code === "Space") triggerAction("attack");
       if (!event.repeat && event.code === "KeyE") triggerAction("eat");
+      if (!event.repeat && event.code === "KeyR" && controls.current.isDead)
+        resetGame();
     };
     const onKeyUp = (event: KeyboardEvent) =>
       controls.current.keys.delete(event.code);
@@ -971,7 +1189,7 @@ export function GameExperience() {
       document.removeEventListener("pointerlockchange", onPointerLock);
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [triggerAction]);
+  }, [killMonster, resetGame, setEnergyLevel, triggerAction]);
 
   return (
     <main className="game-shell">
@@ -990,7 +1208,12 @@ export function GameExperience() {
           }
         }}
       >
-        <World controls={controls} />
+        <World
+          controls={controls}
+          eatenIds={eatenIds}
+          monsterKey={monsterKey}
+          onPlayerFrame={reportPlayerFrame}
+        />
       </Canvas>
 
       <div className="game-hud" aria-live="polite">
@@ -1011,12 +1234,27 @@ export function GameExperience() {
             <Dna size={16} />
             <span>3 eyes · herbivore · speed 6.2</span>
           </div>
-          <div className="energy-bar">
-            <i />
-            <span>ENERGY</span>
+          <div
+            className={`energy-bar${energy <= 25 ? " energy-low" : ""}${isDead ? " energy-empty" : ""}`}
+          >
+            <i style={{ width: `${energy}%` }} />
+            <span>ENERGY {energy}</span>
           </div>
         </div>
         <div className="status-bubble">{status}</div>
+
+        {isDead && (
+          <div className="death-card" role="dialog" aria-modal="true">
+            <span>OUT OF ENERGY</span>
+            <strong>Moss Muncher has collapsed!</strong>
+            <p>
+              Walk to forage, sprint carefully, and save energy for attacks.
+            </p>
+            <button type="button" onClick={resetGame}>
+              Try again <kbd>R</kbd>
+            </button>
+          </div>
+        )}
 
         {!pointerLocked && (
           <div className="mouse-hint">
@@ -1083,6 +1321,7 @@ export function GameExperience() {
           <button
             type="button"
             className="action-button eat-button"
+            disabled={isDead}
             onPointerDown={(event) => {
               event.stopPropagation();
               triggerAction("eat");
@@ -1095,6 +1334,7 @@ export function GameExperience() {
           <button
             type="button"
             className="action-button attack-button"
+            disabled={isDead}
             onPointerDown={(event) => {
               event.stopPropagation();
               triggerAction("attack");

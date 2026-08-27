@@ -39,6 +39,8 @@ Open [http://localhost:3100](http://localhost:3100). The API health check lives 
 
 The player cannot enter the sea or river. Cross the river using one of the log bridges.
 
+Walking gradually uses energy, sprinting drains it faster, and every attack costs 7 energy. Eat a nearby bush or tree to recover energy. Reaching zero energy kills the monster; press `R` or use the restart button to try again.
+
 ## Project layout
 
 ```text
