@@ -849,7 +849,7 @@ function FamilyMonster({
     useRef<THREE.Group>(null),
     useRef<THREE.Group>(null),
   ];
-  const wings = [useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null)];
+  const wings = [useRef<THREE.Group>(null), useRef<THREE.Group>(null)];
   const smoothMotion = useRef<MonsterMotionState>({
     stride: 0,
     intensity: 0,
@@ -992,7 +992,7 @@ function CuteMonster({
     useRef<THREE.Group>(null),
     useRef<THREE.Group>(null),
   ];
-  const wings = [useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null)];
+  const wings = [useRef<THREE.Group>(null), useRef<THREE.Group>(null)];
   const smoothMotion = useRef<MonsterMotionState>({
     stride: 0,
     intensity: 0,

@@ -132,7 +132,7 @@ export const DEFAULT_MONSTER_DNA: MonsterDna = {
   diet: "herbivore",
   breathing: "lungs",
   social: "solitary",
-  mesh: "classic",
+  mesh: "smooth",
 };
 
 export function encodeMonsterDna(dna: MonsterDna) {

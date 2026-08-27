@@ -30,7 +30,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "omnivore",
       breathing: "lungs",
       social: "pair",
-      mesh: "classic",
+      mesh: "smooth",
     },
   },
   {
@@ -54,7 +54,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "carnivore",
       breathing: "gills",
       social: "solitary",
-      mesh: "classic",
+      mesh: "smooth",
     },
   },
   {
@@ -78,7 +78,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "omnivore",
       breathing: "lungs",
       social: "pack",
-      mesh: "classic",
+      mesh: "smooth",
     },
   },
   {
@@ -102,7 +102,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "herbivore",
       breathing: "lungs",
       social: "solitary",
-      mesh: "classic",
+      mesh: "smooth",
     },
   },
   {
@@ -126,7 +126,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "carnivore",
       breathing: "lungs",
       social: "pack",
-      mesh: "classic",
+      mesh: "smooth",
     },
   },
   {
@@ -150,7 +150,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "carnivore",
       breathing: "lungs",
       social: "solitary",
-      mesh: "classic",
+      mesh: "smooth",
     },
   },
   {
@@ -174,7 +174,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "herbivore",
       breathing: "lungs",
       social: "army",
-      mesh: "classic",
+      mesh: "smooth",
     },
   },
   {
@@ -198,7 +198,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "omnivore",
       breathing: "gills",
       social: "solitary",
-      mesh: "classic",
+      mesh: "smooth",
     },
   },
   {
@@ -222,7 +222,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "omnivore",
       breathing: "both",
       social: "pack",
-      mesh: "classic",
+      mesh: "smooth",
     },
   },
   {
@@ -246,7 +246,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "omnivore",
       breathing: "lungs",
       social: "pair",
-      mesh: "classic",
+      mesh: "smooth",
     },
   },
 ];
