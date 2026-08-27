@@ -2,6 +2,8 @@
 
 A small 3D monster-world game that a father and son can build together. The first prototype is a single-player island playground with a controllable monster, a third-person camera, and keyboard, mouse, touch, eat, and attack controls.
 
+The island now has 10× the original playable land area, with extended rivers, six bridges, outer hills, and distributed trees, bushes, rocks, and plants.
+
 ## Stack
 
 - **Web:** statically exported Next.js, React Three Fiber / Three.js, TypeScript, Tailwind CSS

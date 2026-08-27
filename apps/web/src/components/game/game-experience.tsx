@@ -28,9 +28,11 @@ type ControlState = {
   actionStarted: number;
 };
 
-const WORLD_RADIUS = 40;
-const PLAYABLE_RADIUS = 38.2;
-const BRIDGE_POSITIONS = [-12, 12] as const;
+const WORLD_AREA_MULTIPLIER = 10;
+const WORLD_SCALE = Math.sqrt(WORLD_AREA_MULTIPLIER);
+const WORLD_RADIUS = 40 * WORLD_SCALE;
+const PLAYABLE_RADIUS = 38.2 * WORLD_SCALE;
+const BRIDGE_POSITIONS = [-96, -58, -20, 20, 58, 96] as const;
 
 function normalizeAngle(angle: number) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
@@ -132,11 +134,17 @@ function riverX(z: number) {
 
 function terrainHeight(x: number, z: number) {
   const radius = Math.hypot(x, z);
-  const edge = THREE.MathUtils.smoothstep(WORLD_RADIUS - radius, 0, 7);
+  const edge = THREE.MathUtils.smoothstep(WORLD_RADIUS - radius, 0, 10);
   const hillA = Math.exp(-((x + 19) ** 2 + (z - 12) ** 2) / 130) * 3.1;
   const hillB = Math.exp(-((x - 20) ** 2 + (z + 15) ** 2) / 155) * 2.75;
   const hillC = Math.exp(-((x - 23) ** 2 + (z - 23) ** 2) / 145) * 2.2;
   const hillD = Math.exp(-((x + 15) ** 2 + (z + 24) ** 2) / 175) * 1.8;
+  const hillE = Math.exp(-((x + 72) ** 2 + (z - 48) ** 2) / 510) * 2.65;
+  const hillF = Math.exp(-((x - 77) ** 2 + (z + 54) ** 2) / 620) * 3.2;
+  const hillG = Math.exp(-((x - 68) ** 2 + (z - 72) ** 2) / 560) * 2.4;
+  const hillH = Math.exp(-((x + 79) ** 2 + (z + 66) ** 2) / 680) * 2.9;
+  const hillI = Math.exp(-((x + 8) ** 2 + (z - 88) ** 2) / 470) * 2.15;
+  const hillJ = Math.exp(-((x - 14) ** 2 + (z + 91) ** 2) / 530) * 2.35;
   const ripple = (Math.sin(x * 0.25) + Math.cos(z * 0.23)) * 0.07;
   const riverFlatten = THREE.MathUtils.smoothstep(
     Math.abs(x - riverX(z)),
@@ -145,7 +153,20 @@ function terrainHeight(x: number, z: number) {
   );
   return Math.max(
     -0.12,
-    (0.12 + (hillA + hillB + hillC + hillD + ripple) * riverFlatten) * edge,
+    (0.12 +
+      (hillA +
+        hillB +
+        hillC +
+        hillD +
+        hillE +
+        hillF +
+        hillG +
+        hillH +
+        hillI +
+        hillJ +
+        ripple) *
+        riverFlatten) *
+      edge,
   );
 }
 
@@ -157,10 +178,57 @@ function isBlockedByWater(x: number, z: number) {
   return Math.abs(x - riverX(z)) < 1.48 && !bridge;
 }
 
+function createRandom(seed: number) {
+  let value = seed >>> 0;
+  return () => {
+    value = (value * 1664525 + 1013904223) >>> 0;
+    return value / 4294967296;
+  };
+}
+
+function scatterPositions(count: number, seed: number) {
+  const random = createRandom(seed);
+  const positions: Array<[number, number]> = [];
+  const innerRadius = 36;
+  const outerRadius = PLAYABLE_RADIUS - 5;
+
+  while (positions.length < count) {
+    const angle = random() * Math.PI * 2;
+    const radius = Math.sqrt(
+      innerRadius ** 2 + random() * (outerRadius ** 2 - innerRadius ** 2),
+    );
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius;
+    if (Math.abs(x - riverX(z)) < 4.2) continue;
+    positions.push([x, z]);
+  }
+
+  return positions;
+}
+
+const EXTRA_TREES: Array<[number, number, number]> = scatterPositions(
+  78,
+  1847,
+).map(([x, z], index) => [x, z, 0.72 + (index % 7) * 0.075]);
+const EXTRA_BUSHES: Array<[number, number, number]> = scatterPositions(
+  68,
+  7319,
+).map(([x, z], index) => [x, z, 0.62 + (index % 6) * 0.06]);
+const EXTRA_ROCKS: Array<[number, number, number, number]> = scatterPositions(
+  52,
+  9923,
+).map(([x, z], index) => [
+  x,
+  z,
+  0.62 + (index % 8) * 0.08,
+  ((index * 1.71) % Math.PI) - Math.PI / 2,
+]);
+const EXTRA_PLANTS = scatterPositions(86, 4213);
+
 function Terrain() {
   const geometry = useMemo(() => {
-    const size = 82;
-    const segments = 88;
+    const size = WORLD_RADIUS * 2 + 4;
+    const segments = 184;
     const vertices: number[] = [];
     const indices: number[] = [];
 
@@ -201,7 +269,9 @@ function Terrain() {
         <meshStandardMaterial color="#72B95A" roughness={0.92} />
       </mesh>
       <mesh position={[0, -0.5, 0]} receiveShadow>
-        <cylinderGeometry args={[WORLD_RADIUS, 38.6, 1.08, 128]} />
+        <cylinderGeometry
+          args={[WORLD_RADIUS, WORLD_RADIUS - 1.4, 1.08, 192]}
+        />
         <meshStandardMaterial color="#E4C16E" roughness={1} />
       </mesh>
     </>
@@ -223,7 +293,7 @@ function Sea() {
       rotation={[-Math.PI / 2, 0, 0]}
       receiveShadow
     >
-      <circleGeometry args={[165, 128]} />
+      <circleGeometry args={[420, 192]} />
       <meshStandardMaterial
         color="#4AAFC5"
         roughness={0.32}
@@ -238,9 +308,11 @@ function Sea() {
 function River() {
   const segments = useMemo(
     () =>
-      Array.from({ length: 46 }, (_, index) => {
-        const z = -38.5 + index * (77 / 45);
-        const nextZ = Math.min(38.5, z + 77 / 45);
+      Array.from({ length: 128 }, (_, index) => {
+        const riverExtent = PLAYABLE_RADIUS + 0.5;
+        const segmentLength = (riverExtent * 2) / 127;
+        const z = -riverExtent + index * segmentLength;
+        const nextZ = Math.min(riverExtent, z + segmentLength);
         const x = riverX(z);
         const nextX = riverX(nextZ);
         return {
@@ -261,7 +333,7 @@ function River() {
           rotation={[0, segment.angle, 0]}
           receiveShadow
         >
-          <boxGeometry args={[2.85, 0.09, 2.05]} />
+          <boxGeometry args={[2.85, 0.09, 2.35]} />
           <meshStandardMaterial
             color="#55B8CE"
             roughness={0.2}
@@ -642,7 +714,7 @@ function World({ controls }: { controls: React.RefObject<ControlState> }) {
   return (
     <>
       <color attach="background" args={["#9CDCE5"]} />
-      <fog attach="fog" args={["#9CDCE5", 58, 140]} />
+      <fog attach="fog" args={["#9CDCE5", 95, 285]} />
       <Sky
         distance={450000}
         sunPosition={[30, 24, -18]}
@@ -656,10 +728,10 @@ function World({ controls }: { controls: React.RefObject<ControlState> }) {
         color="#FFF4D5"
         castShadow
         shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-50}
-        shadow-camera-right={50}
-        shadow-camera-top={50}
-        shadow-camera-bottom={-50}
+        shadow-camera-left={-140}
+        shadow-camera-right={140}
+        shadow-camera-top={140}
+        shadow-camera-bottom={-140}
       />
       <Sea />
       <Terrain />
@@ -667,14 +739,32 @@ function World({ controls }: { controls: React.RefObject<ControlState> }) {
       {TREES.map(([x, z, scale]) => (
         <Tree key={`${x}-${z}`} x={x} z={z} scale={scale} />
       ))}
+      {EXTRA_TREES.map(([x, z, scale]) => (
+        <Tree key={`extra-${x}-${z}`} x={x} z={z} scale={scale} />
+      ))}
       {BUSHES.map(([x, z, scale]) => (
         <Bush key={`${x}-${z}`} x={x} z={z} scale={scale} />
+      ))}
+      {EXTRA_BUSHES.map(([x, z, scale]) => (
+        <Bush key={`extra-${x}-${z}`} x={x} z={z} scale={scale} />
       ))}
       {ROCKS.map(([x, z, scale, rotation]) => (
         <Rock key={`${x}-${z}`} x={x} z={z} scale={scale} rotation={rotation} />
       ))}
+      {EXTRA_ROCKS.map(([x, z, scale, rotation]) => (
+        <Rock
+          key={`extra-${x}-${z}`}
+          x={x}
+          z={z}
+          scale={scale}
+          rotation={rotation}
+        />
+      ))}
       {PLANTS.map(([x, z]) => (
         <Plant key={`${x}-${z}`} x={x} z={z} />
+      ))}
+      {EXTRA_PLANTS.map(([x, z]) => (
+        <Plant key={`extra-${x}-${z}`} x={x} z={z} />
       ))}
       <Float
         speed={1.2}
@@ -888,7 +978,7 @@ export function GameExperience() {
       <Canvas
         shadows
         dpr={[1, 1.6]}
-        camera={{ fov: 48, near: 0.1, far: 240, position: [8, 8, 12] }}
+        camera={{ fov: 48, near: 0.1, far: 420, position: [8, 8, 12] }}
         gl={{ antialias: true, powerPreference: "high-performance" }}
         onPointerDown={(event) => {
           if (
