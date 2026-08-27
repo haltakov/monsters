@@ -826,6 +826,51 @@ function Adaptation({
   );
 }
 
+function DietMark({
+  diet,
+  profile,
+}: {
+  diet: MonsterDna["diet"];
+  profile: BodyProfile;
+}) {
+  const [cx, cy, cz] = profile.center;
+  const [sx, , sz] = profile.scale;
+  const showLeaf = diet === "herbivore" || diet === "omnivore";
+  const showFang = diet === "carnivore" || diet === "omnivore";
+
+  return (
+    <group
+      position={[cx - sx * 0.58, cy + 0.04, cz - sz * 0.72]}
+      rotation={[0, -0.42, 0]}
+      scale={diet === "omnivore" ? 0.86 : 1}
+    >
+      <mesh scale={[0.32, 0.32, 0.055]}>
+        <sphereGeometry args={[1, 20, 14]} />
+        <meshStandardMaterial color="#173F35" roughness={0.82} />
+      </mesh>
+      {showLeaf && (
+        <mesh
+          position={[showFang ? -0.09 : 0, 0, -0.07]}
+          rotation={[0, 0, -0.62]}
+          scale={[0.11, 0.2, 0.035]}
+        >
+          <sphereGeometry args={[1, 14, 10]} />
+          <meshStandardMaterial color="#A9E0B1" roughness={0.72} />
+        </mesh>
+      )}
+      {showFang && (
+        <mesh
+          position={[showLeaf ? 0.11 : 0, -0.01, -0.08]}
+          rotation={[0, 0, Math.PI]}
+        >
+          <coneGeometry args={[0.075, 0.28, 12]} />
+          <meshStandardMaterial color="#FFF3D4" roughness={0.65} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
 export function MonsterVisual({
   dna,
   legRefs,
@@ -867,6 +912,7 @@ export function MonsterVisual({
         accent={accent.hex}
         castShadow={castShadow}
       />
+      <DietMark diet={dna.diet} profile={profile} />
       {legPositions(dna.legs, profile).map((position, index) => (
         <group key={index} ref={legRefs?.[index]} position={position}>
           <Leg

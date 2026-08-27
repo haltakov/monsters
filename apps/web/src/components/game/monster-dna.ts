@@ -47,6 +47,7 @@ export const ADAPTATIONS = [
   "shell",
   "plates",
 ] as const;
+export const DIETS = ["herbivore", "carnivore", "omnivore"] as const;
 
 export const MONSTER_COLORS = [
   { id: "moss", label: "Moss", hex: "#8FCB69", dark: "#679D4D" },
@@ -86,6 +87,7 @@ export type Pattern = (typeof PATTERNS)[number];
 export type HornShape = (typeof HORN_SHAPES)[number];
 export type TailShape = (typeof TAIL_SHAPES)[number];
 export type Adaptation = (typeof ADAPTATIONS)[number];
+export type Diet = (typeof DIETS)[number];
 export type MonsterColor = (typeof MONSTER_COLORS)[number]["id"];
 export type AccentColor = (typeof ACCENT_COLORS)[number]["id"];
 
@@ -102,6 +104,7 @@ export type MonsterDna = {
   horns: HornShape;
   tail: TailShape;
   adaptation: Adaptation;
+  diet: Diet;
 };
 
 export const DEFAULT_MONSTER_DNA: MonsterDna = {
@@ -117,11 +120,12 @@ export const DEFAULT_MONSTER_DNA: MonsterDna = {
   horns: "spikes",
   tail: "tuft",
   adaptation: "none",
+  diet: "herbivore",
 };
 
 export function encodeMonsterDna(dna: MonsterDna) {
   return [
-    "M2",
+    "M3",
     `body=${dna.body}`,
     `legs=${dna.legs}`,
     `leg=${dna.legShape}`,
@@ -134,6 +138,7 @@ export function encodeMonsterDna(dna: MonsterDna) {
     `horns=${dna.horns}`,
     `tail=${dna.tail}`,
     `adapt=${dna.adaptation}`,
+    `diet=${dna.diet}`,
   ].join(";");
 }
 
@@ -149,7 +154,7 @@ function readOption<T extends string | number>(
   return match;
 }
 
-function readGenes(source: string, version: "M1" | "M2") {
+function readGenes(source: string, version: "M1" | "M2" | "M3") {
   const parts = source.trim().split(";");
   const expectedKeys = [
     "body",
@@ -162,7 +167,8 @@ function readGenes(source: string, version: "M1" | "M2") {
     "accent",
     "pattern",
     "horns",
-    ...(version === "M2" ? ["tail", "adapt"] : []),
+    ...(version !== "M1" ? ["tail", "adapt"] : []),
+    ...(version === "M3" ? ["diet"] : []),
   ];
 
   if (parts.length !== expectedKeys.length + 1) {
@@ -182,8 +188,8 @@ function readGenes(source: string, version: "M1" | "M2") {
 
 export function decodeMonsterDna(source: string): MonsterDna {
   const version = source.trim().split(";", 1)[0];
-  if (version !== "M1" && version !== "M2") {
-    throw new Error("DNA must begin with M2 (old M1 codes also work)");
+  if (version !== "M1" && version !== "M2" && version !== "M3") {
+    throw new Error("DNA must begin with M3 (old M1 and M2 codes also work)");
   }
   const values = readGenes(source, version);
 
@@ -207,13 +213,17 @@ export function decodeMonsterDna(source: string): MonsterDna {
     pattern: readOption("pattern", values.get("pattern")!, PATTERNS),
     horns: readOption("horns", values.get("horns")!, HORN_SHAPES),
     tail:
-      version === "M2"
+      version !== "M1"
         ? readOption("tail", values.get("tail")!, TAIL_SHAPES)
         : "tuft",
     adaptation:
-      version === "M2"
+      version !== "M1"
         ? readOption("adapt", values.get("adapt")!, ADAPTATIONS)
         : "none",
+    diet:
+      version === "M3"
+        ? readOption("diet", values.get("diet")!, DIETS)
+        : "herbivore",
   };
 }
 
@@ -236,4 +246,12 @@ export function canMonsterSwim(dna: MonsterDna) {
     dna.tail === "fin" ||
     dna.legShape === "flippers"
   );
+}
+
+export function canMonsterEatPlants(dna: MonsterDna) {
+  return dna.diet === "herbivore" || dna.diet === "omnivore";
+}
+
+export function canMonsterHunt(dna: MonsterDna) {
+  return dna.diet === "carnivore" || dna.diet === "omnivore";
 }

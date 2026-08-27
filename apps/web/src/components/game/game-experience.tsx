@@ -10,6 +10,7 @@ import {
   Dna,
   Leaf,
   MousePointer2,
+  Plus,
   Swords,
 } from "lucide-react";
 import {
@@ -23,6 +24,8 @@ import {
 import * as THREE from "three";
 import { MonsterMark } from "@/components/monster-mark";
 import {
+  canMonsterEatPlants,
+  canMonsterHunt,
   canMonsterSwim,
   DEFAULT_MONSTER_DNA,
   type MonsterDna,
@@ -48,6 +51,18 @@ type Action = "eat" | "attack" | null;
 type EdibleKind = "tree" | "bush";
 type SceneQuality = "mobile" | "desktop";
 
+type MonsterProfile = {
+  id: string;
+  name: string;
+  dna: MonsterDna;
+};
+
+type CreatorDraft = {
+  mode: "edit" | "new";
+  dna: MonsterDna;
+  name: string;
+};
+
 function subscribeToDeviceProfile() {
   return () => undefined;
 }
@@ -69,6 +84,12 @@ type Edible = {
   x: number;
   z: number;
   energy: number;
+};
+
+type Prey = {
+  id: string;
+  x: number;
+  z: number;
 };
 
 type ControlState = {
@@ -97,6 +118,20 @@ const WALK_ENERGY_PER_SECOND = 1.2;
 const SPRINT_ENERGY_PER_SECOND = 3.8;
 const ATTACK_ENERGY_COST = 7;
 const EAT_DISTANCE = 4.2;
+const HUNT_DISTANCE = 4.8;
+const MAX_FAMILY_SIZE = 6;
+const PREY: Prey[] = [
+  { id: "critter-0", x: -4.5, z: 8 },
+  { id: "critter-1", x: -15, z: -5 },
+  { id: "critter-2", x: 12, z: 9 },
+  { id: "critter-3", x: 20, z: -18 },
+  { id: "critter-4", x: -27, z: 20 },
+  { id: "critter-5", x: 32, z: 27 },
+  { id: "critter-6", x: -43, z: -34 },
+  { id: "critter-7", x: 51, z: 38 },
+  { id: "critter-8", x: -62, z: 49 },
+  { id: "critter-9", x: 72, z: -52 },
+];
 
 function normalizeAngle(angle: number) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
@@ -664,6 +699,72 @@ function Plant({
   );
 }
 
+function SnackCritter({
+  prey,
+  quality,
+}: {
+  prey: Prey;
+  quality: SceneQuality;
+}) {
+  const y = terrainHeight(prey.x, prey.z);
+  return (
+    <group position={[prey.x, y + 0.38, prey.z]} rotation={[0, -0.4, 0]}>
+      <mesh scale={[0.62, 0.48, 0.72]} castShadow={quality === "desktop"}>
+        <sphereGeometry args={[0.58, 14, 10]} />
+        <meshStandardMaterial color="#D8B07A" roughness={0.88} />
+      </mesh>
+      {[-0.28, 0.28].map((x) => (
+        <group key={x}>
+          <mesh
+            position={[x, 0.34, -0.22]}
+            rotation={[0.1, 0, x < 0 ? -0.35 : 0.35]}
+          >
+            <coneGeometry args={[0.13, 0.34, 10]} />
+            <meshStandardMaterial color="#A97855" roughness={0.9} />
+          </mesh>
+          <mesh position={[x * 0.62, 0.12, -0.45]}>
+            <sphereGeometry args={[0.075, 10, 8]} />
+            <meshStandardMaterial color="#173F35" />
+          </mesh>
+        </group>
+      ))}
+      <mesh position={[0, -0.02, 0.52]} scale={[1, 0.72, 1]}>
+        <sphereGeometry args={[0.18, 12, 9]} />
+        <meshStandardMaterial color="#FFF3D4" roughness={0.85} />
+      </mesh>
+    </group>
+  );
+}
+
+const FAMILY_POSITIONS: Array<[number, number, number]> = [
+  [-13, 5, 0.58],
+  [-14, 11, 0.64],
+  [-6, 14, 0.56],
+  [-3, 4, 0.61],
+  [-18, 8, 0.54],
+];
+
+function FamilyMonster({
+  profile,
+  index,
+  quality,
+}: {
+  profile: MonsterProfile;
+  index: number;
+  quality: SceneQuality;
+}) {
+  const [x, z, scale] = FAMILY_POSITIONS[index % FAMILY_POSITIONS.length];
+  return (
+    <group
+      position={[x, terrainHeight(x, z), z]}
+      rotation={[0, 1.4 + index * 0.7, 0]}
+      scale={scale}
+    >
+      <MonsterVisual dna={profile.dna} castShadow={quality === "desktop"} />
+    </group>
+  );
+}
+
 function CuteMonster({
   controls,
   onPlayerFrame,
@@ -862,6 +963,8 @@ function CuteMonster({
 function World({
   controls,
   eatenIds,
+  huntedIds,
+  family,
   monsterKey,
   onPlayerFrame,
   dna,
@@ -869,6 +972,8 @@ function World({
 }: {
   controls: React.RefObject<ControlState>;
   eatenIds: ReadonlySet<string>;
+  huntedIds: ReadonlySet<string>;
+  family: MonsterProfile[];
   monsterKey: number;
   dna: MonsterDna;
   quality: SceneQuality;
@@ -958,6 +1063,19 @@ function World({
           <Plant key={`extra-${x}-${z}`} x={x} z={z} quality={quality} />
         ),
       )}
+      {PREY.map((prey) =>
+        huntedIds.has(prey.id) ? null : (
+          <SnackCritter key={prey.id} prey={prey} quality={quality} />
+        ),
+      )}
+      {family.map((profile, index) => (
+        <FamilyMonster
+          key={profile.id}
+          profile={profile}
+          index={index}
+          quality={quality}
+        />
+      ))}
       <Float
         speed={1.2}
         rotationIntensity={0.04}
@@ -1069,14 +1187,24 @@ export function GameExperience() {
   });
   const displayedEnergy = useRef(100);
   const eatenIdsRef = useRef<Set<string>>(new Set());
+  const huntedIdsRef = useRef<Set<string>>(new Set());
+  const nextMonsterId = useRef(2);
   const [pointerLocked, setPointerLocked] = useState(false);
   const [status, setStatus] = useState("Welcome to Mossmunch Island");
   const [energy, setEnergy] = useState(100);
   const [isDead, setIsDead] = useState(false);
   const [eatenIds, setEatenIds] = useState<Set<string>>(() => new Set());
+  const [huntedIds, setHuntedIds] = useState<Set<string>>(() => new Set());
   const [monsterKey, setMonsterKey] = useState(0);
-  const [monsterDna, setMonsterDna] = useState<MonsterDna>(DEFAULT_MONSTER_DNA);
-  const [creatorOpen, setCreatorOpen] = useState(false);
+  const [monsterFamily, setMonsterFamily] = useState<MonsterProfile[]>([
+    { id: "monster-1", name: "Moss Muncher", dna: DEFAULT_MONSTER_DNA },
+  ]);
+  const [activeMonsterId, setActiveMonsterId] = useState("monster-1");
+  const [creatorDraft, setCreatorDraft] = useState<CreatorDraft | null>(null);
+  const activeMonster =
+    monsterFamily.find((profile) => profile.id === activeMonsterId) ??
+    monsterFamily[0];
+  const monsterDna = activeMonster.dna;
   const sceneQuality = useSyncExternalStore(
     subscribeToDeviceProfile,
     getDeviceProfile,
@@ -1114,9 +1242,9 @@ export function GameExperience() {
     controls.current.move = { x: 0, y: 0 };
     setEnergyLevel(0);
     setIsDead(true);
-    setStatus("Moss Muncher ran out of energy.");
+    setStatus(`${activeMonster.name} ran out of energy.`);
     if (document.pointerLockElement) document.exitPointerLock();
-  }, [setEnergyLevel]);
+  }, [activeMonster.name, setEnergyLevel]);
 
   const triggerAction = useCallback(
     (action: Exclude<Action, null>) => {
@@ -1132,8 +1260,46 @@ export function GameExperience() {
           killMonster();
           return;
         }
-        setStatus(`Tiny but mighty! Rawr! −${ATTACK_ENERGY_COST} energy`);
+
+        let nearestPrey: Prey | null = null;
+        let nearestDistance = HUNT_DISTANCE;
+        if (canMonsterHunt(monsterDna)) {
+          for (const prey of PREY) {
+            if (huntedIdsRef.current.has(prey.id)) continue;
+            const distance = Math.hypot(
+              prey.x - controls.current.playerPosition.x,
+              prey.z - controls.current.playerPosition.z,
+            );
+            if (distance <= nearestDistance) {
+              nearestPrey = prey;
+              nearestDistance = distance;
+            }
+          }
+        }
+
+        if (nearestPrey) {
+          huntedIdsRef.current.add(nearestPrey.id);
+          setHuntedIds(new Set(huntedIdsRef.current));
+          const huntEnergy = monsterDna.diet === "carnivore" ? 45 : 28;
+          const restoredEnergy = Math.min(huntEnergy, 100 - remainingEnergy);
+          setEnergyLevel(remainingEnergy + restoredEnergy);
+          setStatus(
+            `${monsterDna.diet === "carnivore" ? "Carnivore feast" : "Omnivore snack"}! +${Math.ceil(restoredEnergy)} energy`,
+          );
+        } else if (canMonsterHunt(monsterDna)) {
+          setStatus(
+            `No prey in range. The attack still cost ${ATTACK_ENERGY_COST} energy.`,
+          );
+        } else {
+          setStatus(
+            `Herbivores attack only to defend themselves. −${ATTACK_ENERGY_COST} energy`,
+          );
+        }
       } else {
+        if (!canMonsterEatPlants(monsterDna)) {
+          setStatus("Carnivores cannot digest plants. Hunt a small critter.");
+          return;
+        }
         if (controls.current.energy >= 99.5) {
           setStatus("Energy is already full.");
           return;
@@ -1163,8 +1329,10 @@ export function GameExperience() {
         controls.current.actionStarted = performance.now();
         eatenIdsRef.current.add(nearest.id);
         setEatenIds(new Set(eatenIdsRef.current));
+        const plantEnergy =
+          nearest.energy * (monsterDna.diet === "omnivore" ? 0.7 : 1);
         const restoredEnergy = Math.min(
-          nearest.energy,
+          plantEnergy,
           100 - controls.current.energy,
         );
         setEnergyLevel(controls.current.energy + restoredEnergy);
@@ -1179,7 +1347,7 @@ export function GameExperience() {
         if (!controls.current.isDead) setStatus("Explore the island");
       }, 1400);
     },
-    [killMonster, sceneQuality, setEnergyLevel],
+    [killMonster, monsterDna, sceneQuality, setEnergyLevel],
   );
 
   const resetGame = useCallback(() => {
@@ -1197,12 +1365,14 @@ export function GameExperience() {
     controls.current.paused = false;
     controls.current.playerPosition = { x: -8, z: 8 };
     eatenIdsRef.current = new Set();
+    huntedIdsRef.current = new Set();
     setEatenIds(new Set());
+    setHuntedIds(new Set());
     setEnergyLevel(100);
     setIsDead(false);
     setMonsterKey((current) => current + 1);
-    setStatus("Moss Muncher is ready to explore again!");
-  }, [setEnergyLevel]);
+    setStatus(`${activeMonster.name} is ready to explore again!`);
+  }, [activeMonster.name, setEnergyLevel]);
 
   const openCreator = useCallback(() => {
     controls.current.paused = true;
@@ -1210,22 +1380,80 @@ export function GameExperience() {
     controls.current.move = { x: 0, y: 0 };
     controls.current.look = { x: 0, y: 0 };
     if (document.pointerLockElement) document.exitPointerLock();
-    setCreatorOpen(true);
-  }, []);
+    setCreatorDraft({
+      mode: "edit",
+      dna: activeMonster.dna,
+      name: activeMonster.name,
+    });
+  }, [activeMonster]);
+
+  const openNewMonster = useCallback(() => {
+    if (monsterFamily.length >= MAX_FAMILY_SIZE) {
+      setStatus(`The family can hold up to ${MAX_FAMILY_SIZE} monsters.`);
+      return;
+    }
+    controls.current.paused = true;
+    controls.current.keys.clear();
+    controls.current.move = { x: 0, y: 0 };
+    controls.current.look = { x: 0, y: 0 };
+    if (document.pointerLockElement) document.exitPointerLock();
+    setCreatorDraft({
+      mode: "new",
+      dna: DEFAULT_MONSTER_DNA,
+      name: `Monster ${monsterFamily.length + 1}`,
+    });
+  }, [monsterFamily.length]);
 
   const closeCreator = useCallback(() => {
     controls.current.paused = false;
     controls.current.keys.clear();
-    setCreatorOpen(false);
+    setCreatorDraft(null);
   }, []);
 
-  const applyMonsterDna = useCallback((nextDna: MonsterDna) => {
-    controls.current.paused = false;
-    controls.current.keys.clear();
-    setMonsterDna(nextDna);
-    setCreatorOpen(false);
-    setStatus("New DNA expressed. Go test those genes!");
-  }, []);
+  const applyMonsterDna = useCallback(
+    (nextDna: MonsterDna, name: string) => {
+      controls.current.paused = false;
+      controls.current.keys.clear();
+
+      if (creatorDraft?.mode === "new") {
+        const id = `monster-${nextMonsterId.current}`;
+        nextMonsterId.current += 1;
+        setMonsterFamily((current) => [...current, { id, name, dna: nextDna }]);
+        setActiveMonsterId(id);
+        setMonsterKey((current) => current + 1);
+        setStatus(`${name} joined the monster family!`);
+      } else {
+        setMonsterFamily((current) =>
+          current.map((profile) =>
+            profile.id === activeMonsterId
+              ? { ...profile, name, dna: nextDna }
+              : profile,
+          ),
+        );
+        setStatus(`${name}'s new DNA is ready to test!`);
+      }
+      setCreatorDraft(null);
+    },
+    [activeMonsterId, creatorDraft?.mode],
+  );
+
+  const switchMonster = useCallback(
+    (id: string) => {
+      const nextMonster = monsterFamily.find((profile) => profile.id === id);
+      if (!nextMonster || nextMonster.id === activeMonsterId) return;
+      controls.current.keys.clear();
+      controls.current.move = { x: 0, y: 0 };
+      controls.current.action = null;
+      controls.current.isDead = false;
+      controls.current.playerPosition = { x: -8, z: 8 };
+      setActiveMonsterId(id);
+      setMonsterKey((current) => current + 1);
+      setEnergyLevel(100);
+      setIsDead(false);
+      setStatus(`Now playing as ${nextMonster.name}.`);
+    },
+    [activeMonsterId, monsterFamily, setEnergyLevel],
+  );
 
   useEffect(() => {
     let animationFrame = 0;
@@ -1371,6 +1599,10 @@ export function GameExperience() {
           <World
             controls={controls}
             eatenIds={eatenIds}
+            huntedIds={huntedIds}
+            family={monsterFamily.filter(
+              (profile) => profile.id !== activeMonsterId,
+            )}
             monsterKey={monsterKey}
             onPlayerFrame={reportPlayerFrame}
             dna={monsterDna}
@@ -1391,8 +1623,8 @@ export function GameExperience() {
           <div className="monster-card">
             <MonsterMark className="hud-monster" />
             <div>
-              <span>MOSS MUNCHER</span>
-              <strong>Level 1 explorer</strong>
+              <span>{activeMonster.name.toUpperCase()}</span>
+              <strong>{monsterDna.diet} · level 1 explorer</strong>
             </div>
           </div>
         </div>
@@ -1402,9 +1634,30 @@ export function GameExperience() {
               <Dna size={16} />
               <span>
                 {monsterDna.eyes} {monsterDna.eyes === 1 ? "eye" : "eyes"} ·{" "}
-                {monsterDna.legs} legs · {monsterDna.pattern}
+                {monsterDna.legs} legs · {monsterDna.diet}
               </span>
             </div>
+            <label className="family-picker">
+              <span>Monster</span>
+              <select
+                value={activeMonsterId}
+                onChange={(event) => switchMonster(event.target.value)}
+              >
+                {monsterFamily.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="new-monster-button"
+              onClick={openNewMonster}
+              disabled={monsterFamily.length >= MAX_FAMILY_SIZE}
+            >
+              <Plus size={14} /> New
+            </button>
             <button
               type="button"
               className="dna-lab-button"
@@ -1425,7 +1678,7 @@ export function GameExperience() {
         {isDead && (
           <div className="death-card" role="dialog" aria-modal="true">
             <span>OUT OF ENERGY</span>
-            <strong>Moss Muncher has collapsed!</strong>
+            <strong>{activeMonster.name} has collapsed!</strong>
             <p>
               Walk to forage, sprint carefully, and save energy for attacks.
             </p>
@@ -1520,7 +1773,7 @@ export function GameExperience() {
             }}
           >
             <Swords size={25} />
-            <span>Attack</span>
+            <span>{canMonsterHunt(monsterDna) ? "Hunt" : "Attack"}</span>
             <small>Space</small>
           </button>
         </div>
@@ -1534,9 +1787,11 @@ export function GameExperience() {
           </span>
         </div>
       </div>
-      {creatorOpen && (
+      {creatorDraft && (
         <MonsterCreator
-          dna={monsterDna}
+          key={`${creatorDraft.mode}-${activeMonsterId}`}
+          dna={creatorDraft.dna}
+          name={creatorDraft.name}
           onApply={applyMonsterDna}
           onClose={closeCreator}
         />

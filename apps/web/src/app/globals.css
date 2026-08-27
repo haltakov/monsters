@@ -527,7 +527,35 @@ button {
   font-family: var(--font-mono), monospace;
   font-size: 9px;
 }
-.dna-lab-button {
+.family-picker {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1.5px solid var(--ink);
+  border-radius: 11px;
+  background: rgb(255 249 232 / 90%);
+  pointer-events: auto;
+}
+.family-picker span {
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.family-picker select {
+  width: 104px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-display), sans-serif;
+  font-size: 10px;
+  font-weight: 680;
+}
+.dna-lab-button,
+.new-monster-button {
   height: 34px;
   padding: 0 12px;
   border: 1.5px solid var(--ink);
@@ -544,9 +572,22 @@ button {
     transform 0.14s ease,
     box-shadow 0.14s ease;
 }
-.dna-lab-button:hover {
+.new-monster-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #9ed8e5;
+}
+.dna-lab-button:hover,
+.new-monster-button:hover {
   transform: translateY(-1px);
   box-shadow: 2px 3px 0 rgb(23 63 53 / 24%);
+}
+.new-monster-button:disabled {
+  filter: grayscale(0.7);
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
 }
 .energy-bar {
   position: relative;
@@ -991,6 +1032,35 @@ kbd {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
+.monster-name-field {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}
+.monster-name-field span {
+  color: #54746b;
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.monster-name-field input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1.5px solid var(--ink);
+  border-radius: 10px;
+  outline: 0;
+  background: #fffdf4;
+  color: var(--ink);
+  font-family: var(--font-display), sans-serif;
+  font-size: 16px;
+  font-weight: 680;
+}
+.monster-name-field input:focus {
+  box-shadow: 0 0 0 3px rgb(85 184 206 / 34%);
+}
 .gene-field {
   min-width: 0;
   padding: 9px 10px 10px;
@@ -1295,6 +1365,8 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
 }
 .creator-close:focus-visible,
 .dna-lab-button:focus-visible,
+.new-monster-button:focus-visible,
+.family-picker select:focus-visible,
 .surprise-button:focus-visible,
 .gene-options button:focus-visible,
 .color-options button:focus-visible,

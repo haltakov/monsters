@@ -8,8 +8,8 @@ import {
   ACCENT_COLORS,
   ADAPTATIONS,
   BODY_SHAPES,
-  canMonsterSwim,
   decodeMonsterDna,
+  DIETS,
   encodeMonsterDna,
   EYE_COUNTS,
   HORN_SHAPES,
@@ -26,7 +26,8 @@ import { MonsterVisual } from "@/components/game/monster-model";
 
 type MonsterCreatorProps = {
   dna: MonsterDna;
-  onApply: (dna: MonsterDna) => void;
+  name: string;
+  onApply: (dna: MonsterDna, name: string) => void;
   onClose: () => void;
 };
 
@@ -69,6 +70,9 @@ const LABELS: Record<string, string> = {
   wings: "Wings",
   shell: "Shell",
   plates: "Back plates",
+  herbivore: "Herbivore",
+  carnivore: "Carnivore",
+  omnivore: "Omnivore",
 };
 
 function GeneChoices<T extends string | number>({
@@ -144,8 +148,14 @@ function randomOption<T>(options: readonly T[]) {
   return options[Math.floor(Math.random() * options.length)];
 }
 
-export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
+export function MonsterCreator({
+  dna,
+  name,
+  onApply,
+  onClose,
+}: MonsterCreatorProps) {
   const [draft, setDraft] = useState<MonsterDna>(dna);
+  const [draftName, setDraftName] = useState(name);
   const [dnaText, setDnaText] = useState(() => encodeMonsterDna(dna));
   const [dnaError, setDnaError] = useState<string | null>(null);
 
@@ -193,6 +203,7 @@ export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
       horns: randomOption(HORN_SHAPES),
       tail: randomOption(TAIL_SHAPES),
       adaptation: randomOption(ADAPTATIONS),
+      diet: randomOption(DIETS),
     });
   };
 
@@ -271,7 +282,7 @@ export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
               </span>
               <span>{draft.legs} legs</span>
               <span>{LABELS[draft.body]}</span>
-              <span>{canMonsterSwim(draft) ? "swimmer" : draft.size}</span>
+              <span>{draft.diet}</span>
             </div>
           </div>
 
@@ -291,12 +302,27 @@ export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
             </div>
 
             <div className="gene-grid">
+              <label className="monster-name-field">
+                <span>Monster name</span>
+                <input
+                  value={draftName}
+                  maxLength={24}
+                  placeholder="Give this monster a name"
+                  onChange={(event) => setDraftName(event.target.value)}
+                />
+              </label>
               <GeneChoices
                 label="Body shape"
                 value={draft.body}
                 options={BODY_SHAPES}
                 onChange={(value) => changeGene("body", value)}
                 featured
+              />
+              <GeneChoices
+                label="Diet"
+                value={draft.diet}
+                options={DIETS}
+                onChange={(value) => changeGene("diet", value)}
               />
               <GeneChoices
                 label="Size"
@@ -383,16 +409,14 @@ export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
               />
               <small>
                 {dnaError ??
-                  "M2 stores all 12 genes. Old M1 codes still work and are upgraded automatically."}
+                  "M3 stores all 13 genes. Old M1 and M2 codes still work and are upgraded automatically."}
               </small>
             </label>
           </div>
         </div>
 
         <footer className="creator-footer">
-          <span>
-            12 genes · deterministic anatomy · swimmers may enter water
-          </span>
+          <span>13 genes · deterministic anatomy · diet changes survival</span>
           <div>
             <button type="button" className="creator-cancel" onClick={onClose}>
               Keep current monster
@@ -400,8 +424,8 @@ export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
             <button
               type="button"
               className="creator-apply"
-              disabled={Boolean(dnaError)}
-              onClick={() => onApply(draft)}
+              disabled={Boolean(dnaError) || !draftName.trim()}
+              onClick={() => onApply(draft, draftName.trim())}
             >
               <Check size={17} /> Play as this monster
             </button>
