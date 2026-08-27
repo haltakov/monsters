@@ -1009,8 +1009,7 @@ kbd {
 }
 .gene-options {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
   gap: 5px;
 }
 .gene-options button {
@@ -1024,6 +1023,158 @@ kbd {
   font-size: 9px;
   font-weight: 650;
   cursor: pointer;
+}
+.silhouette-gene {
+  grid-column: 1 / -1;
+  padding: 10px 11px 12px;
+  background: #dce6bc;
+}
+.silhouette-gene .gene-options {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+.silhouette-gene .gene-options button {
+  min-height: 68px;
+  padding: 7px 3px 6px;
+  display: grid;
+  place-items: center;
+  gap: 5px;
+  background: #f6efd9;
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.silhouette-gene .gene-options button.selected {
+  background: #9ed8e5;
+}
+.gene-silhouette {
+  position: relative;
+  width: 37px;
+  height: 27px;
+  display: block;
+  border: 2px solid var(--ink);
+  border-radius: 48%;
+  background: var(--coral);
+}
+.gene-silhouette::before,
+.gene-silhouette::after {
+  content: "";
+  position: absolute;
+  display: block;
+  background: inherit;
+  border: 2px solid var(--ink);
+}
+button[data-gene-option="round"] .gene-silhouette {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+button[data-gene-option="bean"] .gene-silhouette {
+  width: 27px;
+  height: 34px;
+  border-radius: 58% 42% 48% 52%;
+  transform: rotate(9deg);
+}
+button[data-gene-option="long"] .gene-silhouette {
+  width: 45px;
+  height: 22px;
+}
+button[data-gene-option="pig"] .gene-silhouette::before {
+  width: 17px;
+  height: 16px;
+  right: -8px;
+  bottom: 2px;
+  border-radius: 50%;
+}
+button[data-gene-option="pig"] .gene-silhouette::after {
+  width: 5px;
+  height: 5px;
+  right: -11px;
+  bottom: 7px;
+  border-radius: 50%;
+}
+button[data-gene-option="biped"] .gene-silhouette {
+  width: 23px;
+  height: 29px;
+  border-radius: 42% 42% 34% 34%;
+}
+button[data-gene-option="biped"] .gene-silhouette::before {
+  width: 15px;
+  height: 15px;
+  left: 2px;
+  top: -13px;
+  border-radius: 50%;
+}
+button[data-gene-option="biped"] .gene-silhouette::after {
+  width: 33px;
+  height: 6px;
+  left: -7px;
+  top: 10px;
+  border-radius: 8px;
+}
+button[data-gene-option="saurian"] .gene-silhouette {
+  width: 42px;
+  height: 23px;
+  transform: skewX(-10deg);
+}
+button[data-gene-option="saurian"] .gene-silhouette::before {
+  width: 14px;
+  height: 13px;
+  left: -7px;
+  top: -7px;
+  border-radius: 45%;
+}
+button[data-gene-option="saurian"] .gene-silhouette::after {
+  width: 18px;
+  height: 8px;
+  right: -15px;
+  top: 7px;
+  border-width: 2px 0 0;
+  transform: rotate(18deg);
+}
+button[data-gene-option="rhino"] .gene-silhouette {
+  width: 42px;
+  height: 25px;
+  border-radius: 45% 35% 35% 45%;
+}
+button[data-gene-option="rhino"] .gene-silhouette::before {
+  width: 14px;
+  height: 13px;
+  right: -8px;
+  bottom: 1px;
+  border-radius: 40%;
+}
+button[data-gene-option="rhino"] .gene-silhouette::after {
+  width: 0;
+  height: 0;
+  right: -13px;
+  top: 2px;
+  border: 0 solid transparent;
+  border-right-width: 11px;
+  border-bottom: 5px solid var(--ink);
+  background: transparent;
+  transform: rotate(-25deg);
+}
+button[data-gene-option="aquatic"] .gene-silhouette {
+  width: 39px;
+  height: 23px;
+}
+button[data-gene-option="aquatic"] .gene-silhouette::before {
+  width: 15px;
+  height: 15px;
+  right: -11px;
+  top: 2px;
+  border-radius: 2px 85% 2px 85%;
+  transform: rotate(45deg);
+}
+button[data-gene-option="aquatic"] .gene-silhouette::after {
+  width: 5px;
+  height: 5px;
+  left: 5px;
+  top: 5px;
+  border-radius: 50%;
+  background: #fff9e8;
 }
 .gene-options button.selected {
   border-color: var(--ink);
@@ -1356,6 +1507,9 @@ kbd {
   }
   .gene-grid {
     grid-template-columns: 1fr;
+  }
+  .silhouette-gene .gene-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .creator-footer > div {
     width: 100%;

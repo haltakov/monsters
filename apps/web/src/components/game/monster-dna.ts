@@ -1,11 +1,52 @@
-export const BODY_SHAPES = ["round", "bean", "long"] as const;
-export const LEG_COUNTS = [2, 4, 6] as const;
-export const LEG_SHAPES = ["stubby", "hoof", "springy"] as const;
-export const EYE_COUNTS = [1, 2, 3, 4, 5] as const;
-export const MOUTH_SHAPES = ["smile", "fangs", "beak"] as const;
+export const BODY_SHAPES = [
+  "round",
+  "bean",
+  "long",
+  "pig",
+  "biped",
+  "saurian",
+  "rhino",
+  "aquatic",
+] as const;
+export const LEG_COUNTS = [0, 2, 4, 6, 8] as const;
+export const LEG_SHAPES = [
+  "stubby",
+  "hoof",
+  "springy",
+  "clawed",
+  "flippers",
+] as const;
+export const EYE_COUNTS = [1, 2, 3, 4, 5, 6, 8] as const;
+export const MOUTH_SHAPES = [
+  "smile",
+  "fangs",
+  "beak",
+  "snout",
+  "tusks",
+] as const;
 export const MONSTER_SIZES = ["small", "medium", "large"] as const;
-export const PATTERNS = ["plain", "spots", "stripes"] as const;
-export const HORN_SHAPES = ["none", "buds", "spikes"] as const;
+export const PATTERNS = [
+  "plain",
+  "spots",
+  "stripes",
+  "patches",
+  "scales",
+] as const;
+export const HORN_SHAPES = [
+  "none",
+  "buds",
+  "spikes",
+  "rhino",
+  "antlers",
+] as const;
+export const TAIL_SHAPES = ["none", "tuft", "curly", "club", "fin"] as const;
+export const ADAPTATIONS = [
+  "none",
+  "fins",
+  "wings",
+  "shell",
+  "plates",
+] as const;
 
 export const MONSTER_COLORS = [
   { id: "moss", label: "Moss", hex: "#8FCB69", dark: "#679D4D" },
@@ -14,6 +55,12 @@ export const MONSTER_COLORS = [
   { id: "mango", label: "Mango", hex: "#F2B85B", dark: "#C47B38" },
   { id: "coral", label: "Coral", hex: "#F18C73", dark: "#BA5E5B" },
   { id: "moon", label: "Moon", hex: "#D9D7CB", dark: "#8C928A" },
+  { id: "midnight", label: "Midnight", hex: "#53618F", dark: "#333B66" },
+  { id: "glacier", label: "Glacier", hex: "#A9DCE8", dark: "#5F9EB2" },
+  { id: "ember", label: "Ember", hex: "#D9684B", dark: "#98422F" },
+  { id: "bubblegum", label: "Bubblegum", hex: "#EF9BC0", dark: "#B8618B" },
+  { id: "cocoa", label: "Cocoa", hex: "#A97855", dark: "#684936" },
+  { id: "lime", label: "Lime", hex: "#B6D94A", dark: "#758F2D" },
 ] as const;
 
 export const ACCENT_COLORS = [
@@ -23,6 +70,10 @@ export const ACCENT_COLORS = [
   { id: "sky", label: "Sky", hex: "#9ED8E5" },
   { id: "pink", label: "Pink", hex: "#F3A6B7" },
   { id: "cream", label: "Cream", hex: "#FFF3D4" },
+  { id: "violet", label: "Violet", hex: "#AFA0E8" },
+  { id: "cherry", label: "Cherry", hex: "#E76363" },
+  { id: "aqua", label: "Aqua", hex: "#66D8CF" },
+  { id: "white", label: "White", hex: "#FFFDF5" },
 ] as const;
 
 export type BodyShape = (typeof BODY_SHAPES)[number];
@@ -33,6 +84,8 @@ export type MouthShape = (typeof MOUTH_SHAPES)[number];
 export type MonsterSize = (typeof MONSTER_SIZES)[number];
 export type Pattern = (typeof PATTERNS)[number];
 export type HornShape = (typeof HORN_SHAPES)[number];
+export type TailShape = (typeof TAIL_SHAPES)[number];
+export type Adaptation = (typeof ADAPTATIONS)[number];
 export type MonsterColor = (typeof MONSTER_COLORS)[number]["id"];
 export type AccentColor = (typeof ACCENT_COLORS)[number]["id"];
 
@@ -47,6 +100,8 @@ export type MonsterDna = {
   accent: AccentColor;
   pattern: Pattern;
   horns: HornShape;
+  tail: TailShape;
+  adaptation: Adaptation;
 };
 
 export const DEFAULT_MONSTER_DNA: MonsterDna = {
@@ -60,11 +115,13 @@ export const DEFAULT_MONSTER_DNA: MonsterDna = {
   accent: "peach",
   pattern: "plain",
   horns: "spikes",
+  tail: "tuft",
+  adaptation: "none",
 };
 
 export function encodeMonsterDna(dna: MonsterDna) {
   return [
-    "M1",
+    "M2",
     `body=${dna.body}`,
     `legs=${dna.legs}`,
     `leg=${dna.legShape}`,
@@ -75,6 +132,8 @@ export function encodeMonsterDna(dna: MonsterDna) {
     `accent=${dna.accent}`,
     `pattern=${dna.pattern}`,
     `horns=${dna.horns}`,
+    `tail=${dna.tail}`,
+    `adapt=${dna.adaptation}`,
   ].join(";");
 }
 
@@ -90,7 +149,7 @@ function readOption<T extends string | number>(
   return match;
 }
 
-export function decodeMonsterDna(source: string): MonsterDna {
+function readGenes(source: string, version: "M1" | "M2") {
   const parts = source.trim().split(";");
   const expectedKeys = [
     "body",
@@ -103,9 +162,9 @@ export function decodeMonsterDna(source: string): MonsterDna {
     "accent",
     "pattern",
     "horns",
+    ...(version === "M2" ? ["tail", "adapt"] : []),
   ];
 
-  if (parts[0] !== "M1") throw new Error("DNA must begin with M1");
   if (parts.length !== expectedKeys.length + 1) {
     throw new Error("DNA must contain every gene exactly once");
   }
@@ -118,6 +177,15 @@ export function decodeMonsterDna(source: string): MonsterDna {
     }
     values.set(key, value);
   });
+  return values;
+}
+
+export function decodeMonsterDna(source: string): MonsterDna {
+  const version = source.trim().split(";", 1)[0];
+  if (version !== "M1" && version !== "M2") {
+    throw new Error("DNA must begin with M2 (old M1 codes also work)");
+  }
+  const values = readGenes(source, version);
 
   return {
     body: readOption("body", values.get("body")!, BODY_SHAPES),
@@ -138,6 +206,14 @@ export function decodeMonsterDna(source: string): MonsterDna {
     ),
     pattern: readOption("pattern", values.get("pattern")!, PATTERNS),
     horns: readOption("horns", values.get("horns")!, HORN_SHAPES),
+    tail:
+      version === "M2"
+        ? readOption("tail", values.get("tail")!, TAIL_SHAPES)
+        : "tuft",
+    adaptation:
+      version === "M2"
+        ? readOption("adapt", values.get("adapt")!, ADAPTATIONS)
+        : "none",
   };
 }
 
@@ -151,4 +227,13 @@ export function getAccentColor(id: AccentColor) {
 
 export function getMonsterSizeScale(size: MonsterSize) {
   return size === "small" ? 0.78 : size === "large" ? 1.24 : 1;
+}
+
+export function canMonsterSwim(dna: MonsterDna) {
+  return (
+    dna.body === "aquatic" ||
+    dna.adaptation === "fins" ||
+    dna.tail === "fin" ||
+    dna.legShape === "flippers"
+  );
 }

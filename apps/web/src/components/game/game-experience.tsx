@@ -23,6 +23,7 @@ import {
 import * as THREE from "three";
 import { MonsterMark } from "@/components/monster-mark";
 import {
+  canMonsterSwim,
   DEFAULT_MONSTER_DNA,
   type MonsterDna,
 } from "@/components/game/monster-dna";
@@ -233,12 +234,17 @@ function terrainHeight(x: number, z: number) {
   );
 }
 
-function isBlockedByWater(x: number, z: number) {
+function isWaterAt(x: number, z: number) {
   if (Math.hypot(x, z) > PLAYABLE_RADIUS) return true;
   const bridge = BRIDGE_POSITIONS.some(
     (bridgeZ) => Math.abs(z - bridgeZ) < 1.45,
   );
   return Math.abs(x - riverX(z)) < 1.48 && !bridge;
+}
+
+function isBlockedByWater(x: number, z: number, canSwim: boolean) {
+  if (canSwim) return Math.hypot(x, z) > WORLD_RADIUS + 22;
+  return isWaterAt(x, z);
 }
 
 function createRandom(seed: number) {
@@ -681,10 +687,13 @@ function CuteMonster({
     useRef<THREE.Group>(null),
     useRef<THREE.Group>(null),
     useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
   ];
   const velocity = useMemo(() => new THREE.Vector3(), []);
   const cameraTarget = useMemo(() => new THREE.Vector3(), []);
   const desiredCamera = useMemo(() => new THREE.Vector3(), []);
+  const canSwim = canMonsterSwim(dna);
 
   useFrame(({ camera, clock }, delta) => {
     if (!root.current || !visual.current) return;
@@ -717,15 +726,22 @@ function CuteMonster({
       const speed = sprinting ? 8.2 : 5.4;
       const nextX = root.current.position.x + velocity.x * speed * delta;
       const nextZ = root.current.position.z + velocity.z * speed * delta;
-      if (!isBlockedByWater(nextX, root.current.position.z))
+      if (!isBlockedByWater(nextX, root.current.position.z, canSwim))
         root.current.position.x = nextX;
-      if (!isBlockedByWater(root.current.position.x, nextZ))
+      if (!isBlockedByWater(root.current.position.x, nextZ, canSwim))
         root.current.position.z = nextZ;
     }
 
-    root.current.position.y = terrainHeight(
-      root.current.position.x,
-      root.current.position.z,
+    const swimming =
+      canSwim && isWaterAt(root.current.position.x, root.current.position.z);
+    const targetHeight = swimming
+      ? -1.5 + Math.sin(clock.elapsedTime * 2.4) * 0.08
+      : terrainHeight(root.current.position.x, root.current.position.z);
+    root.current.position.y = THREE.MathUtils.damp(
+      root.current.position.y,
+      targetHeight,
+      7,
+      delta,
     );
     root.current.rotation.y = state.characterYaw;
     const moving =
@@ -752,7 +768,7 @@ function CuteMonster({
     });
 
     const actionAge = performance.now() - state.actionStarted;
-    let actionPitch = 0;
+    let actionPitch = swimming ? Math.sin(clock.elapsedTime * 2.4) * 0.055 : 0;
     let actionForward = 0;
     let actionDrop = 0;
     let scaleX = 1;
@@ -1511,7 +1527,11 @@ export function GameExperience() {
 
         <div className="water-rule">
           <Crosshair size={14} />
-          <span>Water is off limits. Look for a bridge.</span>
+          <span>
+            {canMonsterSwim(monsterDna)
+              ? "Aquatic DNA: rivers and sea are open."
+              : "Water is off limits. Look for a bridge."}
+          </span>
         </div>
       </div>
       {creatorOpen && (

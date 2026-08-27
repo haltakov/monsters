@@ -6,7 +6,9 @@ import { Check, Dna, Rotate3D, Shuffle, X } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   ACCENT_COLORS,
+  ADAPTATIONS,
   BODY_SHAPES,
+  canMonsterSwim,
   decodeMonsterDna,
   encodeMonsterDna,
   EYE_COUNTS,
@@ -17,6 +19,7 @@ import {
   MONSTER_SIZES,
   MOUTH_SHAPES,
   PATTERNS,
+  TAIL_SHAPES,
   type MonsterDna,
 } from "@/components/game/monster-dna";
 import { MonsterVisual } from "@/components/game/monster-model";
@@ -31,21 +34,41 @@ const LABELS: Record<string, string> = {
   round: "Round",
   bean: "Bean",
   long: "Long",
+  pig: "Pig",
+  biped: "Humanoid",
+  saurian: "Dinosaur",
+  rhino: "Rhino",
+  aquatic: "Aquatic",
   stubby: "Stubby",
   hoof: "Hooves",
   springy: "Springy",
+  clawed: "Clawed",
+  flippers: "Flippers",
   smile: "Smile",
   fangs: "Fangs",
   beak: "Beak",
+  snout: "Snout",
+  tusks: "Tusks",
   small: "Small",
   medium: "Medium",
   large: "Large",
   plain: "Plain",
   spots: "Spots",
   stripes: "Stripes",
+  patches: "Patches",
+  scales: "Scales",
   none: "None",
   buds: "Buds",
   spikes: "Spikes",
+  antlers: "Antlers",
+  tuft: "Tuft",
+  curly: "Curly",
+  club: "Club",
+  fin: "Tail fin",
+  fins: "Fins",
+  wings: "Wings",
+  shell: "Shell",
+  plates: "Back plates",
 };
 
 function GeneChoices<T extends string | number>({
@@ -53,14 +76,16 @@ function GeneChoices<T extends string | number>({
   value,
   options,
   onChange,
+  featured = false,
 }: {
   label: string;
   value: T;
   options: readonly T[];
   onChange: (value: T) => void;
+  featured?: boolean;
 }) {
   return (
-    <fieldset className="gene-field">
+    <fieldset className={`gene-field${featured ? " silhouette-gene" : ""}`}>
       <legend>{label}</legend>
       <div className="gene-options">
         {options.map((option) => (
@@ -68,9 +93,11 @@ function GeneChoices<T extends string | number>({
             key={option}
             type="button"
             className={value === option ? "selected" : ""}
+            data-gene-option={String(option)}
             aria-pressed={value === option}
             onClick={() => onChange(option)}
           >
+            {featured && <i className="gene-silhouette" aria-hidden="true" />}
             {LABELS[String(option)] ?? option}
           </button>
         ))}
@@ -164,6 +191,8 @@ export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
       accent: randomOption(ACCENT_COLORS).id,
       pattern: randomOption(PATTERNS),
       horns: randomOption(HORN_SHAPES),
+      tail: randomOption(TAIL_SHAPES),
+      adaptation: randomOption(ADAPTATIONS),
     });
   };
 
@@ -241,8 +270,8 @@ export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
                 {draft.eyes} {draft.eyes === 1 ? "eye" : "eyes"}
               </span>
               <span>{draft.legs} legs</span>
-              <span>{draft.pattern}</span>
-              <span>{draft.size}</span>
+              <span>{LABELS[draft.body]}</span>
+              <span>{canMonsterSwim(draft) ? "swimmer" : draft.size}</span>
             </div>
           </div>
 
@@ -267,6 +296,7 @@ export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
                 value={draft.body}
                 options={BODY_SHAPES}
                 onChange={(value) => changeGene("body", value)}
+                featured
               />
               <GeneChoices
                 label="Size"
@@ -310,6 +340,18 @@ export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
                 options={HORN_SHAPES}
                 onChange={(value) => changeGene("horns", value)}
               />
+              <GeneChoices
+                label="Tail"
+                value={draft.tail}
+                options={TAIL_SHAPES}
+                onChange={(value) => changeGene("tail", value)}
+              />
+              <GeneChoices
+                label="Special adaptation"
+                value={draft.adaptation}
+                options={ADAPTATIONS}
+                onChange={(value) => changeGene("adaptation", value)}
+              />
               <ColorChoices
                 label="Body color"
                 value={draft.color}
@@ -341,7 +383,7 @@ export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
               />
               <small>
                 {dnaError ??
-                  "M1 is the DNA version. Gene order is fixed so every code is unique."}
+                  "M2 stores all 12 genes. Old M1 codes still work and are upgraded automatically."}
               </small>
             </label>
           </div>
@@ -349,7 +391,7 @@ export function MonsterCreator({ dna, onApply, onClose }: MonsterCreatorProps) {
 
         <footer className="creator-footer">
           <span>
-            10 genes · deterministic geometry · no random visual state
+            12 genes · deterministic anatomy · swimmers may enter water
           </span>
           <div>
             <button type="button" className="creator-cancel" onClick={onClose}>
