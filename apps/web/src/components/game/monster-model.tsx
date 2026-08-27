@@ -953,14 +953,15 @@ function addSmoothBall(
   );
 }
 
-function subtractSmoothEllipsoid(
+function carveSmoothArch(
   field: MarchingCubes,
-  center: [number, number, number],
-  radius: [number, number, number],
-  depth = 220,
+  center: [number, number],
+  radius: [number, number],
+  ceilingY: number,
+  archAxis: "radial" | "x" | "z" = "radial",
 ) {
-  const [centerX, centerY, centerZ] = center;
-  const [radiusX, radiusY, radiusZ] = radius;
+  const [centerX, centerZ] = center;
+  const [radiusX, radiusZ] = radius;
   const size = field.size;
   const worldToGridX = (value: number) =>
     (0.5 + value / (SMOOTH_FIELD_SCALE * 2)) * size;
@@ -972,33 +973,36 @@ function subtractSmoothEllipsoid(
     THREE.MathUtils.clamp(value, 1, size - 2);
   const minX = Math.floor(clampGrid(worldToGridX(centerX - radiusX)));
   const maxX = Math.ceil(clampGrid(worldToGridX(centerX + radiusX)));
-  const minY = Math.floor(clampGrid(worldToGridY(centerY - radiusY)));
-  const maxY = Math.ceil(clampGrid(worldToGridY(centerY + radiusY)));
   const minZ = Math.floor(clampGrid(worldToGridX(centerZ - radiusZ)));
   const maxZ = Math.ceil(clampGrid(worldToGridX(centerZ + radiusZ)));
 
   for (let z = minZ; z <= maxZ; z += 1) {
     const worldZ = (z / size - 0.5) * SMOOTH_FIELD_SCALE * 2;
     const normalizedZ = (worldZ - centerZ) / radiusZ;
-    for (let y = minY; y <= maxY; y += 1) {
-      const worldY =
-        (y / size - 0.5) * SMOOTH_FIELD_SCALE * 2 +
-        SMOOTH_FIELD_ORIGIN_Y;
-      const normalizedY = (worldY - centerY) / radiusY;
-      for (let x = minX; x <= maxX; x += 1) {
-        const worldX = (x / size - 0.5) * SMOOTH_FIELD_SCALE * 2;
-        const normalizedX = (worldX - centerX) / radiusX;
-        const distanceSquared =
-          normalizedX * normalizedX +
-          normalizedY * normalizedY +
-          normalizedZ * normalizedZ;
-        if (distanceSquared >= 1) continue;
-        const distance = Math.sqrt(distanceSquared);
-        const inverseDistance = 1 - distance;
-        const falloff =
-          inverseDistance * inverseDistance * (3 - 2 * inverseDistance);
+    for (let x = minX; x <= maxX; x += 1) {
+      const worldX = (x / size - 0.5) * SMOOTH_FIELD_SCALE * 2;
+      const normalizedX = (worldX - centerX) / radiusX;
+      if (Math.abs(normalizedX) >= 1 || Math.abs(normalizedZ) >= 1) continue;
+      const footprint =
+        archAxis === "x"
+          ? normalizedX * normalizedX
+          : archAxis === "z"
+            ? normalizedZ * normalizedZ
+            : normalizedX * normalizedX + normalizedZ * normalizedZ;
+      if (footprint >= 1) continue;
+
+      // A rounded ceiling with a channel that stays open all the way through
+      // the bottom of the scalar grid. Clamping below the isovalue guarantees
+      // a real topological opening regardless of overlapping metaball strength.
+      const dome = Math.sqrt(1 - footprint);
+      const columnCeilingY = 0.04 + (ceilingY - 0.04) * dome;
+      const maxY = Math.floor(clampGrid(worldToGridY(columnCeilingY)));
+      for (let y = 1; y <= maxY; y += 1) {
         const fieldIndex = z * field.size2 + y * size + x;
-        field.field[fieldIndex] -= depth * falloff;
+        field.field[fieldIndex] = Math.min(
+          field.field[fieldIndex],
+          field.isolation - 24,
+        );
       }
     }
   }
@@ -1086,12 +1090,20 @@ function buildSmoothGeometry(
   bodyColor: string,
   accentColor: string,
 ) {
-  const cacheKey = `relaxed-grid-gap-v2:${JSON.stringify(dna)}`;
+  const cacheKey = `hard-arch-gait-v3:${JSON.stringify(dna)}`;
   const cached = smoothGeometryCache.get(cacheKey);
   if (cached) return cached;
 
   const temporaryMaterial = new THREE.MeshStandardMaterial();
-  const field = new MarchingCubes(56, temporaryMaterial, false, false, 140_000);
+  const fieldResolution =
+    dna.legs === 8 ? 88 : dna.legs === 6 ? 76 : dna.legs >= 2 ? 64 : 56;
+  const field = new MarchingCubes(
+    fieldResolution,
+    temporaryMaterial,
+    false,
+    false,
+    180_000,
+  );
   const [cx, cy, cz] = profile.center;
   const [sx, sy, sz] = profile.scale;
 
@@ -1190,17 +1202,24 @@ function buildSmoothGeometry(
   field.blur(0.55);
 
   if (legRows.length > 0) {
-    const rowSpacing =
-      legRows.length > 1 ? legRows[1] - legRows[0] : profile.legSpan;
+    const fieldCellSize = (SMOOTH_FIELD_SCALE * 2) / field.size;
+    const hipY = cy - sy * 0.52;
+    const archCeilingY = hipY + Math.min(0.32, sy * 0.3);
 
-    // Transverse arches separate the left and right leg in every row.
-    legRows.forEach((z) => {
-      subtractSmoothEllipsoid(
-        field,
-        [0, 0.34, z],
-        [profile.legX * 0.72, 0.67, Math.max(0.17, rowSpacing * 0.3)],
-      );
-    });
+    // One front-to-back tunnel separates the left and right columns without
+    // leaving deeper body rows projected into the gap.
+    const firstLegRow = legRows[0];
+    const lastLegRow = legRows[legRows.length - 1];
+    carveSmoothArch(
+      field,
+      [0, (firstLegRow + lastLegRow) / 2],
+      [
+        Math.max(profile.legX * 0.72, fieldCellSize * 3),
+        (lastLegRow - firstLegRow) / 2 + Math.max(0.36, fieldCellSize * 3),
+      ],
+      archCeilingY,
+      "x",
+    );
 
     // Longitudinal arches separate front/rear legs on each side. Without
     // these, the side view still reads as one solid wall even if every row
@@ -1209,19 +1228,23 @@ function buildSmoothGeometry(
       const firstRow = legRows[row];
       const secondRow = legRows[row + 1];
       const gapZ = (firstRow + secondRow) / 2;
-      const gapRadiusZ = THREE.MathUtils.clamp(
+      const gapRadiusZ = Math.max(
         (secondRow - firstRow) * 0.32,
-        0.11,
-        0.24,
+        fieldCellSize * 2.5,
       );
-      [-1, 1].forEach((side) => {
-        subtractSmoothEllipsoid(
-          field,
-          [profile.legX * side, 0.34, gapZ],
-          [Math.max(0.22, profile.legX * 0.45), 0.73, gapRadiusZ],
-          340,
-        );
-      });
+      // Cut one continuous tunnel across the whole body width. Two localized
+      // side cuts leave a central belly web that projects into the opening
+      // from a side camera and still reads as connected legs.
+      carveSmoothArch(
+        field,
+        [0, gapZ],
+        [
+          Math.max(profile.scale[0] * 1.25, profile.legX + 0.58),
+          gapRadiusZ,
+        ],
+        archCeilingY,
+        "z",
+      );
     }
   }
   field.update();
@@ -1294,15 +1317,21 @@ function buildSmoothGeometry(
       });
     }
     if (nearestLeg >= 0 && nearestDistance < 0.56) {
+      const hipY = legHips[nearestLeg].y;
       const influence = THREE.MathUtils.clamp(
-        (cy - sy * 0.08 - localY) / Math.max(0.45, sy),
-        0.18,
-        0.92,
+        1 - THREE.MathUtils.smoothstep(localY, 0.1, hipY + 0.06),
+        0,
+        0.94,
       );
-      skinIndices[index * 4] = nearestLeg + 1;
-      skinIndices[index * 4 + 1] = 0;
-      skinWeights[index * 4] = influence;
-      skinWeights[index * 4 + 1] = 1 - influence;
+      if (influence > 0.01) {
+        skinIndices[index * 4] = nearestLeg + 1;
+        skinIndices[index * 4 + 1] = 0;
+        skinWeights[index * 4] = influence;
+        skinWeights[index * 4 + 1] = 1 - influence;
+      } else {
+        skinIndices[index * 4] = 0;
+        skinWeights[index * 4] = 1;
+      }
     } else {
       skinIndices[index * 4] = 0;
       skinWeights[index * 4] = 1;
@@ -1378,9 +1407,10 @@ function createSmoothRig(
   return { mesh, legBones, tailBone, material };
 }
 
-function legGaitDirection(index: number, count: number) {
-  if (count === 4) return [1, -1, -1, 1][index] ?? 1;
-  if (count >= 6) return [1, -1, -1, 1, 1, -1, -1, 1][index] ?? 1;
+function legGaitDirection(index: number) {
+  // legPositions is row-major: even indices are one side, odd indices the
+  // other. Keeping every leg on a side in phase prevents adjacent rows from
+  // crossing and visually closing their guaranteed openings.
   return index % 2 === 0 ? 1 : -1;
 }
 
@@ -1420,7 +1450,7 @@ function SmoothMonsterCore({
     const stride = motion?.stride ?? fallbackStride;
     const intensity = motion?.intensity ?? 0.78;
     legBonesRef.current.forEach((bone, index) => {
-      const direction = legGaitDirection(index, legBonesRef.current.length);
+      const direction = legGaitDirection(index);
       const foldedPose = gait === "fly" ? 0.48 : gait === "swim" ? 0.2 : 0;
       const gaitScale = gait === "fly" ? 0.28 : gait === "swim" ? 0.62 : 1;
       bone.rotation.x = THREE.MathUtils.damp(
