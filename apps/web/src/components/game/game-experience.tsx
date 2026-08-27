@@ -1438,6 +1438,8 @@ function World({
         color="#FFF4D5"
         castShadow={quality === "desktop"}
         shadow-mapSize={quality === "desktop" ? [2048, 2048] : [512, 512]}
+        shadow-bias={-0.00012}
+        shadow-normalBias={0.04}
         shadow-camera-left={-140}
         shadow-camera-right={140}
         shadow-camera-top={140}

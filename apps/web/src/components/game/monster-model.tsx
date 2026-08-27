@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { MarchingCubes } from "three/addons/objects/MarchingCubes.js";
+import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import {
   getAccentColor,
   getMonsterColor,
@@ -947,6 +948,65 @@ function addSmoothBall(
   );
 }
 
+function relaxSmoothGeometry(geometry: THREE.BufferGeometry, iterations = 4) {
+  const index = geometry.getIndex();
+  const position = geometry.getAttribute("position");
+  if (!index || !position || position.count === 0) return;
+
+  const neighbors = Array.from(
+    { length: position.count },
+    () => new Set<number>(),
+  );
+  const connect = (first: number, second: number) => {
+    neighbors[first].add(second);
+    neighbors[second].add(first);
+  };
+
+  for (let offset = 0; offset < index.count; offset += 3) {
+    const a = index.getX(offset);
+    const b = index.getX(offset + 1);
+    const c = index.getX(offset + 2);
+    connect(a, b);
+    connect(b, c);
+    connect(c, a);
+  }
+
+  const coordinates = position.array as Float32Array;
+  const relaxed = new Float32Array(coordinates.length);
+  const pass = (amount: number) => {
+    relaxed.set(coordinates);
+    neighbors.forEach((adjacent, vertex) => {
+      if (adjacent.size === 0) return;
+      let averageX = 0;
+      let averageY = 0;
+      let averageZ = 0;
+      adjacent.forEach((neighbor) => {
+        averageX += coordinates[neighbor * 3];
+        averageY += coordinates[neighbor * 3 + 1];
+        averageZ += coordinates[neighbor * 3 + 2];
+      });
+      const inverseCount = 1 / adjacent.size;
+      const offset = vertex * 3;
+      relaxed[offset] +=
+        (averageX * inverseCount - coordinates[offset]) * amount;
+      relaxed[offset + 1] +=
+        (averageY * inverseCount - coordinates[offset + 1]) * amount;
+      relaxed[offset + 2] +=
+        (averageZ * inverseCount - coordinates[offset + 2]) * amount;
+    });
+    coordinates.set(relaxed);
+  };
+
+  // Taubin's positive/negative pair removes voxel ripples without shrinking
+  // paws, snouts, or tails into the body.
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    pass(0.43);
+    pass(-0.45);
+  }
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+}
+
 function smoothPatternMix(dna: MonsterDna, x: number, y: number, z: number) {
   if (dna.pattern === "plain") return 0;
   if (dna.pattern === "stripes") {
@@ -970,7 +1030,7 @@ function buildSmoothGeometry(
   bodyColor: string,
   accentColor: string,
 ) {
-  const cacheKey = JSON.stringify(dna);
+  const cacheKey = `relaxed-gap-v1:${JSON.stringify(dna)}`;
   const cached = smoothGeometryCache.get(cacheKey);
   if (cached) return cached;
 
@@ -982,7 +1042,7 @@ function buildSmoothGeometry(
   addSmoothBall(field, cx, cy, cz, 1.18, 7.5);
   addSmoothBall(field, cx - sx * 0.4, cy, cz, 0.7, 8.5);
   addSmoothBall(field, cx + sx * 0.4, cy, cz, 0.7, 8.5);
-  addSmoothBall(field, cx, cy - sy * 0.38, cz, 0.72, 8.5);
+  addSmoothBall(field, cx, cy - sy * 0.24, cz, 0.58, 8.8);
   addSmoothBall(field, cx, cy + sy * 0.38, cz, 0.72, 8.5);
   addSmoothBall(field, cx, cy, cz - sz * 0.42, 0.82, 8.2);
   addSmoothBall(field, cx, cy, cz + sz * 0.42, 0.82, 8.2);
@@ -1034,6 +1094,16 @@ function buildSmoothGeometry(
     return { x, y: hipY, z, index };
   });
 
+  // Metaballs naturally blend the left and right legs into a solid skirt.
+  // Negative balls make an actual arch between every pair, open all the way
+  // to the ground, while leaving the upper belly intact.
+  const legRows = [...new Set(legHips.map((hip) => hip.z))];
+  legRows.forEach((z) => {
+    addSmoothBall(field, 0, 0.08, z, -0.38, 9.8);
+    addSmoothBall(field, 0, 0.36, z, -0.34, 9.8);
+    addSmoothBall(field, 0, 0.62, z, -0.24, 10.2);
+  });
+
   const [tailY, tailZ] = profile.tail;
   if (dna.tail !== "none") {
     const curve = dna.tail === "curly" ? 0.42 : 0;
@@ -1053,12 +1123,30 @@ function buildSmoothGeometry(
     }
   }
 
+  // Relax the scalar field before polygonization as well as the final mesh.
+  // This removes the concentric metaball/voxel contouring visible under soft
+  // lighting; the second, lighter pass preserves small features.
+  field.blur(0.9);
+  field.blur(0.55);
   field.update();
   const sourcePosition = field.geometry.getAttribute("position");
-  const sourceNormal = field.geometry.getAttribute("normal");
-  const vertexCount = field.geometry.drawRange.count;
-  const positions = new Float32Array(vertexCount * 3);
-  const normals = new Float32Array(vertexCount * 3);
+  const sourceVertexCount = field.geometry.drawRange.count;
+  const positions = new Float32Array(sourceVertexCount * 3);
+
+  for (let index = 0; index < sourceVertexCount; index += 1) {
+    positions[index * 3] = sourcePosition.getX(index);
+    positions[index * 3 + 1] = sourcePosition.getY(index);
+    positions[index * 3 + 2] = sourcePosition.getZ(index);
+  }
+
+  const rawGeometry = new THREE.BufferGeometry();
+  rawGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  const geometry = mergeVertices(rawGeometry, 0.0001);
+  rawGeometry.dispose();
+  relaxSmoothGeometry(geometry);
+
+  const relaxedPosition = geometry.getAttribute("position");
+  const vertexCount = relaxedPosition.count;
   const colors = new Float32Array(vertexCount * 3);
   const skinIndices = new Uint16Array(vertexCount * 4);
   const skinWeights = new Float32Array(vertexCount * 4);
@@ -1067,15 +1155,9 @@ function buildSmoothGeometry(
   const mixed = new THREE.Color();
 
   for (let index = 0; index < vertexCount; index += 1) {
-    const px = sourcePosition.getX(index);
-    const py = sourcePosition.getY(index);
-    const pz = sourcePosition.getZ(index);
-    positions[index * 3] = px;
-    positions[index * 3 + 1] = py;
-    positions[index * 3 + 2] = pz;
-    normals[index * 3] = sourceNormal.getX(index);
-    normals[index * 3 + 1] = sourceNormal.getY(index);
-    normals[index * 3 + 2] = sourceNormal.getZ(index);
+    const px = relaxedPosition.getX(index);
+    const py = relaxedPosition.getY(index);
+    const pz = relaxedPosition.getZ(index);
 
     const localX = px * SMOOTH_FIELD_SCALE;
     const localY = py * SMOOTH_FIELD_SCALE + SMOOTH_FIELD_ORIGIN_Y;
@@ -1131,9 +1213,6 @@ function buildSmoothGeometry(
     }
   }
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute(
     "skinIndex",

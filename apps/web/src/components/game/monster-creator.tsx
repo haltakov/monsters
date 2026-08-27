@@ -292,6 +292,8 @@ export function MonsterCreator({
                   intensity={2.4}
                   position={[-4, 7, -4]}
                   shadow-mapSize={[1024, 1024]}
+                  shadow-bias={-0.00015}
+                  shadow-normalBias={0.045}
                 />
                 <group position={[0, -0.28, 0]} rotation={[0, 0.28, 0]}>
                   <MonsterVisual dna={draft} />
