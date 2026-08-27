@@ -4,11 +4,13 @@ import {
   ADAPTATIONS,
   BODY_SHAPES,
   DIETS,
+  EAR_SHAPES,
   EYE_COUNTS,
   HORN_SHAPES,
   LEG_COUNTS,
   LEG_SHAPES,
   MONSTER_COLORS,
+  MONSTER_BUILDS,
   MONSTER_SIZES,
   MOUTH_SHAPES,
   PATTERNS,
@@ -100,10 +102,12 @@ const GENETIC_KEYS = [
   "eyes",
   "mouth",
   "size",
+  "build",
   "color",
   "accent",
   "pattern",
   "horns",
+  "ears",
   "tail",
   "adaptation",
   "diet",
@@ -120,10 +124,12 @@ const GENE_OPTIONS: Record<GeneticKey, readonly (string | number)[]> = {
   eyes: EYE_COUNTS,
   mouth: MOUTH_SHAPES,
   size: MONSTER_SIZES,
+  build: MONSTER_BUILDS,
   color: MONSTER_COLORS.map((color) => color.id),
   accent: ACCENT_COLORS.map((color) => color.id),
   pattern: PATTERNS,
   horns: HORN_SHAPES,
+  ears: EAR_SHAPES,
   tail: TAIL_SHAPES,
   adaptation: ADAPTATIONS,
   diet: DIETS,
@@ -138,10 +144,12 @@ const SIMILARITY_WEIGHTS: Record<GeneticKey, number> = {
   eyes: 0.45,
   mouth: 0.8,
   size: 1.15,
+  build: 0.9,
   color: 0.35,
   accent: 0.25,
   pattern: 0.35,
   horns: 0.55,
+  ears: 0.35,
   tail: 0.6,
   adaptation: 1.1,
   diet: 1.45,
@@ -235,7 +243,16 @@ export function dnaSimilarity(first: MonsterDna, second: MonsterDna) {
 }
 
 export function getCreaturePower(dna: MonsterDna) {
-  const size = dna.size === "large" ? 1.35 : dna.size === "small" ? 0.72 : 1;
+  const size =
+    dna.size === "huge"
+      ? 1.58
+      : dna.size === "large"
+        ? 1.35
+        : dna.size === "small"
+          ? 0.72
+          : dna.size === "tiny"
+            ? 0.52
+            : 1;
   const mouth =
     dna.mouth === "fangs" || dna.mouth === "tusks"
       ? 1.28
@@ -245,16 +262,33 @@ export function getCreaturePower(dna: MonsterDna) {
   const armor =
     dna.adaptation === "shell" || dna.adaptation === "plates" ? 1.12 : 1;
   const horns = dna.horns === "none" || dna.horns === "buds" ? 1 : 1.12;
-  return size * mouth * armor * horns;
+  const build = dna.build === "sturdy" ? 1.12 : dna.build === "lean" ? 0.92 : 1;
+  return size * mouth * armor * horns * build;
 }
 
 export function getCreatureSpeed(dna: MonsterDna) {
-  const size = dna.size === "large" ? 0.88 : dna.size === "small" ? 1.16 : 1;
+  const size =
+    dna.size === "huge"
+      ? 0.78
+      : dna.size === "large"
+        ? 0.88
+        : dna.size === "small"
+          ? 1.16
+          : dna.size === "tiny"
+            ? 1.25
+            : 1;
   const legs = dna.legs === 0 ? 0.9 : dna.legs >= 6 ? 1.06 : 1;
   const shape =
-    dna.legShape === "springy" ? 1.16 : dna.legShape === "stubby" ? 0.92 : 1;
+    dna.legShape === "springy"
+      ? 1.16
+      : dna.legShape === "stilt"
+        ? 1.1
+        : dna.legShape === "stubby"
+          ? 0.92
+          : 1;
   const adaptation = dna.adaptation === "wings" ? 1.12 : 1;
-  return 3.05 * size * legs * shape * adaptation;
+  const build = dna.build === "lean" ? 1.08 : dna.build === "sturdy" ? 0.94 : 1;
+  return 3.05 * size * legs * shape * adaptation * build;
 }
 
 export function createInitialWildPopulation(

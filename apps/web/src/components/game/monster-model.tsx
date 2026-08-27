@@ -5,6 +5,7 @@ import { MarchingCubes } from "three/addons/objects/MarchingCubes.js";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import {
   getAccentColor,
+  getMonsterBuildScale,
   getMonsterColor,
   getMonsterSizeScale,
   type MonsterDna,
@@ -125,6 +126,28 @@ const BODY_PROFILES: Record<MonsterDna["body"], BodyProfile> = {
     tail: [1.2, 1.72],
     horn: [1.75, -0.74, 0.42],
   },
+  slug: {
+    center: [0, 0.8, 0.18],
+    scale: [1.0, 0.52, 1.58],
+    face: [1.08, -1.18],
+    faceScale: 0.9,
+    legX: 0.58,
+    legY: 0.42,
+    legSpan: 0.86,
+    tail: [0.82, 1.58],
+    horn: [1.32, -0.72, 0.52],
+  },
+  avian: {
+    center: [0, 1.28, 0.12],
+    scale: [0.78, 1.02, 1.12],
+    face: [1.88, -0.84],
+    faceScale: 0.82,
+    legX: 0.34,
+    legY: 0.55,
+    legSpan: 0.44,
+    tail: [1.18, 1.08],
+    horn: [2.38, -0.34, 0.38],
+  },
 };
 
 function eyeOffsets(count: MonsterDna["eyes"]) {
@@ -170,6 +193,18 @@ function eyeOffsets(count: MonsterDna["eyes"]) {
       [0.16, 0.42],
       [0.47, 0.34],
     ],
+    10: [
+      [-0.48, -0.1],
+      [-0.24, -0.02],
+      [0, 0],
+      [0.24, -0.02],
+      [0.48, -0.1],
+      [-0.48, 0.34],
+      [-0.24, 0.43],
+      [0, 0.47],
+      [0.24, 0.43],
+      [0.48, 0.34],
+    ],
   };
   return layouts[count];
 }
@@ -177,10 +212,11 @@ function eyeOffsets(count: MonsterDna["eyes"]) {
 function legPositions(count: MonsterDna["legs"], profile: BodyProfile) {
   if (count === 0) return [];
   const rowCount = count / 2;
-  const densityMultiplier = count === 8 ? 1.65 : count === 6 ? 1.25 : 1;
-  const isDenseBiped = profile === BODY_PROFILES.biped && count >= 6;
+  const densityMultiplier =
+    count === 10 ? 2 : count === 8 ? 1.65 : count === 6 ? 1.25 : 1;
+  const isDenseBiped = profile === BODY_PROFILES.biped && count >= 4;
   const denseBipedSpan = isDenseBiped
-    ? profile.scale[2] * (count === 8 ? 1.45 : 1.25)
+    ? profile.scale[2] * (count >= 8 ? 1.45 : count === 6 ? 1.25 : 0.95)
     : 0;
   const legSpan = Math.min(
     Math.max(profile.legSpan * densityMultiplier, denseBipedSpan),
@@ -405,6 +441,46 @@ function Leg({
     );
   }
 
+  if (shape === "paws") {
+    return (
+      <>
+        <mesh position={[0, -0.25, 0]} castShadow={castShadow}>
+          <capsuleGeometry args={[0.17, 0.5, 8, 14]} />
+          <meshStandardMaterial color={bodyColor} roughness={0.8} />
+        </mesh>
+        <mesh position={[0, -0.53, -0.13]} scale={[0.42, 0.2, 0.55]}>
+          <sphereGeometry args={[1, 18, 14]} />
+          <meshStandardMaterial color={accentColor} roughness={0.76} />
+        </mesh>
+        {[-0.14, 0, 0.14].map((x) => (
+          <mesh key={x} position={[x, -0.55, -0.43]} scale={[0.08, 0.06, 0.12]}>
+            <sphereGeometry args={[1, 12, 10]} />
+            <meshStandardMaterial color={bodyColor} roughness={0.8} />
+          </mesh>
+        ))}
+      </>
+    );
+  }
+
+  if (shape === "stilt") {
+    return (
+      <>
+        <mesh
+          position={[0, -0.34, 0]}
+          scale={[0.8, 1.35, 0.8]}
+          castShadow={castShadow}
+        >
+          <capsuleGeometry args={[0.12, 0.62, 8, 14]} />
+          <meshStandardMaterial color={bodyColor} roughness={0.78} />
+        </mesh>
+        <mesh position={[0, -0.77, -0.12]} scale={[0.26, 0.12, 0.42]}>
+          <sphereGeometry args={[1, 16, 12]} />
+          <meshStandardMaterial color={accentColor} roughness={0.8} />
+        </mesh>
+      </>
+    );
+  }
+
   return (
     <>
       <mesh position={[0, -0.25, 0]} castShadow={castShadow}>
@@ -483,6 +559,38 @@ function Mouth({
     );
   }
 
+  if (shape === "mandibles") {
+    return (
+      <group position={[0, -0.43, -0.13]}>
+        {[-1, 1].map((side) => (
+          <mesh
+            key={side}
+            position={[side * 0.13, -0.04, -0.08]}
+            rotation={[0, 0, side * 0.72]}
+          >
+            <torusGeometry args={[0.16, 0.045, 10, 18, Math.PI * 1.05]} />
+            <meshStandardMaterial color={accent} roughness={0.72} />
+          </mesh>
+        ))}
+      </group>
+    );
+  }
+
+  if (shape === "tongue") {
+    return (
+      <group position={[0, -0.44, -0.13]}>
+        <mesh scale={[1, 0.5, 0.18]}>
+          <sphereGeometry args={[0.29, 20, 14]} />
+          <meshStandardMaterial color="#173F35" />
+        </mesh>
+        <mesh position={[0, -0.08, -0.2]} rotation={[Math.PI / 2, 0, 0]}>
+          <capsuleGeometry args={[0.055, 0.32, 8, 12]} />
+          <meshStandardMaterial color="#F58CA8" roughness={0.7} />
+        </mesh>
+      </group>
+    );
+  }
+
   return (
     <mesh position={[0, -0.43, -0.13]} rotation={[Math.PI / 2, 0, 0]}>
       <torusGeometry args={[0.2, 0.038, 12, 28, Math.PI]} />
@@ -508,7 +616,7 @@ function Face({
       scale={profile.faceScale}
     >
       {eyeOffsets(dna.eyes).map(([x, y], index) => {
-        const eyeScale = dna.eyes >= 6 ? 0.78 : 1;
+        const eyeScale = dna.eyes >= 10 ? 0.62 : dna.eyes >= 6 ? 0.78 : 1;
         return (
           <group
             key={`${x}-${y}-${index}`}
@@ -607,6 +715,35 @@ function PatternMarks({
     );
   }
 
+  if (dna.pattern === "rings") {
+    return (
+      <group>
+        {[-0.48, 0, 0.48].map((offset) => (
+          <mesh
+            key={offset}
+            position={[cx, cy, cz + offset * sz]}
+            scale={[sx, sy, 1]}
+          >
+            <torusGeometry args={[0.73, 0.055, 10, 36]} />
+            <meshStandardMaterial color={accent} roughness={0.8} />
+          </mesh>
+        ))}
+      </group>
+    );
+  }
+
+  if (dna.pattern === "belly") {
+    return (
+      <mesh
+        position={[cx, cy - sy * 0.18, front - 0.015]}
+        scale={[sx * 0.55, sy * 0.62, 0.055]}
+      >
+        <sphereGeometry args={[1, 24, 18]} />
+        <meshStandardMaterial color={accent} roughness={0.82} />
+      </mesh>
+    );
+  }
+
   return (
     <group>
       {Array.from({ length: 8 }, (_, index) => (
@@ -632,12 +769,14 @@ function Horns({
   shape,
   profile,
   accent,
+  bodyColor,
   castShadow,
   surfaceInset = 0,
 }: {
   shape: MonsterDna["horns"];
   profile: BodyProfile;
   accent: string;
+  bodyColor?: string;
   castShadow: boolean;
   surfaceInset?: number;
 }) {
@@ -646,13 +785,19 @@ function Horns({
 
   if (shape === "rhino") {
     return (
-      <mesh
-        position={[0, y - 0.05, z - 0.28 + surfaceInset * 0.7]}
-        rotation={[-Math.PI / 2, 0, 0]}
-      >
-        <coneGeometry args={[0.16, 0.68, 18]} />
-        <meshStandardMaterial color={accent} roughness={0.7} />
-      </mesh>
+      <group>
+        <mesh position={[0, y - 0.05, z + 0.04]} scale={[0.24, 0.2, 0.3]}>
+          <sphereGeometry args={[1, 18, 14]} />
+          <meshStandardMaterial color={bodyColor ?? accent} roughness={0.76} />
+        </mesh>
+        <mesh
+          position={[0, y - 0.05, z - 0.28 + surfaceInset * 0.7]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <coneGeometry args={[0.16, 0.68, 18]} />
+          <meshStandardMaterial color={accent} roughness={0.7} />
+        </mesh>
+      </group>
     );
   }
 
@@ -681,6 +826,13 @@ function Horns({
             key={side}
             position={[side * spread, y + 0.15 - surfaceInset, z]}
           >
+            <mesh position={[0, -0.34, 0]} scale={[0.2, 0.24, 0.2]}>
+              <sphereGeometry args={[1, 16, 12]} />
+              <meshStandardMaterial
+                color={bodyColor ?? accent}
+                roughness={0.78}
+              />
+            </mesh>
             <mesh rotation={[0, 0, side * -0.28]}>
               <cylinderGeometry args={[0.055, 0.09, 0.74, 10]} />
               <meshStandardMaterial color={accent} roughness={0.85} />
@@ -701,18 +853,144 @@ function Horns({
     );
   }
 
+  if (shape === "single") {
+    return (
+      <group position={[0, y - surfaceInset, z]}>
+        <mesh position={[0, -0.2, 0]} scale={[0.25, 0.22, 0.25]}>
+          <sphereGeometry args={[1, 18, 14]} />
+          <meshStandardMaterial color={bodyColor ?? accent} roughness={0.76} />
+        </mesh>
+        <mesh position={[0, 0.08, 0]} castShadow={castShadow}>
+          <coneGeometry args={[0.22, 0.78, 20]} />
+          <meshStandardMaterial color={accent} roughness={0.72} />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (shape === "ram") {
+    return (
+      <group>
+        {[-1, 1].map((side) => (
+          <group
+            key={side}
+            position={[side * spread, y - 0.12 - surfaceInset, z]}
+          >
+            <mesh scale={[0.24, 0.28, 0.24]}>
+              <sphereGeometry args={[1, 18, 14]} />
+              <meshStandardMaterial
+                color={bodyColor ?? accent}
+                roughness={0.76}
+              />
+            </mesh>
+            <mesh
+              position={[side * 0.1, 0.08, 0.03]}
+              rotation={[Math.PI / 2, 0, side * Math.PI]}
+              scale={[1, 1, 0.8]}
+            >
+              <torusGeometry args={[0.26, 0.075, 12, 28, Math.PI * 1.55]} />
+              <meshStandardMaterial color={accent} roughness={0.78} />
+            </mesh>
+          </group>
+        ))}
+      </group>
+    );
+  }
+
   return (
     <group>
       {[-spread, spread].map((x) => (
-        <mesh
-          key={x}
-          position={[x, y + 0.08 - surfaceInset, z]}
-          rotation={[0, 0, x < 0 ? -0.34 : 0.34]}
-          castShadow={castShadow}
-        >
-          <coneGeometry args={[0.19, 0.62, 18]} />
-          <meshStandardMaterial color={accent} roughness={0.72} />
-        </mesh>
+        <group key={x} position={[x, y - surfaceInset, z]}>
+          <mesh position={[0, -0.2, 0]} scale={[0.23, 0.22, 0.23]}>
+            <sphereGeometry args={[1, 18, 14]} />
+            <meshStandardMaterial
+              color={bodyColor ?? accent}
+              roughness={0.76}
+            />
+          </mesh>
+          <mesh
+            position={[0, 0.08, 0]}
+            rotation={[0, 0, x < 0 ? -0.34 : 0.34]}
+            castShadow={castShadow}
+          >
+            <coneGeometry args={[0.19, 0.62, 18]} />
+            <meshStandardMaterial color={accent} roughness={0.72} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+function Ears({
+  shape,
+  profile,
+  accent,
+  bodyColor,
+  castShadow,
+}: {
+  shape: MonsterDna["ears"];
+  profile: BodyProfile;
+  accent: string;
+  bodyColor: string;
+  castShadow: boolean;
+}) {
+  if (shape === "none") return null;
+  const anchorY = profile.face[0] + 0.22 * profile.faceScale;
+  const anchorZ = profile.face[1] + 0.3;
+  const anchorX = Math.min(0.82, Math.max(0.46, profile.scale[0] * 0.68));
+
+  return (
+    <group>
+      {[-1, 1].map((side) => (
+        <group key={side} position={[side * anchorX, anchorY, anchorZ]}>
+          <mesh scale={[0.28, 0.24, 0.3]}>
+            <sphereGeometry args={[1, 18, 14]} />
+            <meshStandardMaterial color={bodyColor} roughness={0.78} />
+          </mesh>
+          {shape === "round" && (
+            <mesh
+              position={[side * 0.14, 0.06, 0]}
+              scale={[0.3, 0.34, 0.22]}
+              castShadow={castShadow}
+            >
+              <sphereGeometry args={[1, 20, 16]} />
+              <meshStandardMaterial color={accent} roughness={0.76} />
+            </mesh>
+          )}
+          {shape === "pointed" && (
+            <mesh
+              position={[side * 0.14, 0.24, 0]}
+              rotation={[0, 0, side * -0.42]}
+              castShadow={castShadow}
+            >
+              <coneGeometry args={[0.24, 0.66, 18]} />
+              <meshStandardMaterial color={accent} roughness={0.74} />
+            </mesh>
+          )}
+          {shape === "floppy" && (
+            <mesh
+              position={[side * 0.18, -0.2, 0.02]}
+              rotation={[0.1, 0, side * -0.22]}
+              scale={[1, 1.25, 0.72]}
+              castShadow={castShadow}
+            >
+              <capsuleGeometry args={[0.16, 0.42, 8, 14]} />
+              <meshStandardMaterial color={accent} roughness={0.8} />
+            </mesh>
+          )}
+          {shape === "fan" && (
+            <mesh
+              position={[side * 0.17, 0.06, 0.02]}
+              rotation={[0, side * 0.12, side * -0.18]}
+              scale={[0.2, 0.48, 0.34]}
+              castShadow={castShadow}
+            >
+              <sphereGeometry args={[1, 22, 16]} />
+              <meshStandardMaterial color={accent} roughness={0.76} />
+            </mesh>
+          )}
+        </group>
       ))}
     </group>
   );
@@ -773,6 +1051,42 @@ function Tail({
             side={THREE.DoubleSide}
           />
         </mesh>
+      </group>
+    );
+  }
+
+  if (shape === "whip") {
+    return (
+      <group position={[0, y, z]} rotation={[Math.PI / 2.25, 0, 0]}>
+        <mesh
+          position={[0, 0.48, 0]}
+          scale={[0.72, 1.25, 0.72]}
+          castShadow={castShadow}
+        >
+          <capsuleGeometry args={[0.09, 0.82, 8, 14]} />
+          <meshStandardMaterial color={bodyColor} roughness={0.78} />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (shape === "forked") {
+    return (
+      <group position={[0, y, z]} rotation={[Math.PI / 2.2, 0, 0]}>
+        <mesh position={[0, 0.34, 0]} castShadow={castShadow}>
+          <capsuleGeometry args={[0.1, 0.52, 7, 12]} />
+          <meshStandardMaterial color={bodyColor} roughness={0.8} />
+        </mesh>
+        {[-1, 1].map((side) => (
+          <mesh
+            key={side}
+            position={[side * 0.14, 0.76, 0]}
+            rotation={[0, 0, side * -0.34]}
+          >
+            <coneGeometry args={[0.14, 0.58, 16]} />
+            <meshStandardMaterial color={accent} roughness={0.76} />
+          </mesh>
+        ))}
       </group>
     );
   }
@@ -883,6 +1197,67 @@ function Adaptation({
     );
   }
 
+  if (type === "mane") {
+    return (
+      <group>
+        {Array.from({ length: 9 }, (_, index) => {
+          const angle = (index / 9) * Math.PI * 2;
+          return (
+            <mesh
+              key={index}
+              position={[
+                Math.sin(angle) * Math.min(0.68, sx * 0.7),
+                profile.face[0] - 0.3 + Math.cos(angle) * 0.48,
+                profile.face[1] + 0.36,
+              ]}
+              scale={[0.27, 0.32, 0.25]}
+              castShadow={castShadow}
+            >
+              <sphereGeometry args={[1, 18, 14]} />
+              <meshStandardMaterial color={accent} roughness={0.86} />
+            </mesh>
+          );
+        })}
+      </group>
+    );
+  }
+
+  if (type === "antennae") {
+    return (
+      <group>
+        {[-1, 1].map((side) => (
+          <group
+            key={side}
+            position={[
+              side * Math.min(0.38, sx * 0.42),
+              profile.face[0] + 0.3,
+              profile.face[1] + 0.12,
+            ]}
+          >
+            <mesh position={[0, -0.08, 0]} scale={[0.16, 0.14, 0.16]}>
+              <sphereGeometry args={[1, 16, 12]} />
+              <meshStandardMaterial
+                color={bodyColor ?? accent}
+                roughness={0.78}
+              />
+            </mesh>
+            <mesh
+              position={[side * 0.08, 0.24, -0.05]}
+              rotation={[0.12, 0, side * -0.24]}
+            >
+              <cylinderGeometry args={[0.035, 0.055, 0.55, 10]} />
+              <meshStandardMaterial color={accent} roughness={0.76} />
+            </mesh>
+            <mesh position={[side * 0.15, 0.52, -0.1]}>
+              <sphereGeometry args={[0.11, 16, 12]} />
+              <meshStandardMaterial color={accent} roughness={0.72} />
+            </mesh>
+          </group>
+        ))}
+      </group>
+    );
+  }
+
   if (type === "shell") {
     return (
       <mesh
@@ -983,7 +1358,7 @@ type SmoothRig = {
 };
 
 function getSmoothGeometryCacheKey(dna: MonsterDna) {
-  return `smooth-hybrid-rig-v1:${JSON.stringify(dna)}`;
+  return `smooth-hybrid-rig-v9:${JSON.stringify(dna)}`;
 }
 
 function pruneSmoothGeometryCache() {
@@ -1134,15 +1509,42 @@ function buildSmoothTailPositions(dna: MonsterDna, profile: BodyProfile) {
         THREE.MathUtils.lerp(0.21, 0.12, progress),
       );
     }
+  } else if (dna.tail === "forked") {
+    for (let step = 1; step <= 4; step += 1) {
+      const progress = step / 4;
+      addTailBall(
+        0,
+        tailY + progress * 0.1,
+        baseZ + progress * 0.48,
+        THREE.MathUtils.lerp(0.22, 0.15, progress),
+      );
+    }
+    for (const side of [-1, 1]) {
+      for (let step = 1; step <= 4; step += 1) {
+        const progress = step / 4;
+        addTailBall(
+          side * progress * 0.34,
+          tailY + 0.1 + progress * 0.18,
+          baseZ + 0.48 + progress * 0.38,
+          THREE.MathUtils.lerp(0.15, 0.09, progress),
+        );
+      }
+    }
   } else {
     const lift = dna.tail === "tuft" ? 0.24 : dna.tail === "fin" ? 0.02 : 0.1;
-    for (let step = 1; step <= 5; step += 1) {
-      const progress = step / 5;
+    const tailSteps = dna.tail === "whip" ? 8 : 5;
+    const tailReach = dna.tail === "whip" ? 1.08 : 0.78;
+    for (let step = 1; step <= tailSteps; step += 1) {
+      const progress = step / tailSteps;
       addTailBall(
         0,
         tailY + lift * progress,
-        baseZ + progress * 0.78,
-        THREE.MathUtils.lerp(0.22, dna.tail === "club" ? 0.18 : 0.13, progress),
+        baseZ + progress * tailReach,
+        THREE.MathUtils.lerp(
+          0.22,
+          dna.tail === "club" ? 0.18 : dna.tail === "whip" ? 0.075 : 0.13,
+          progress,
+        ),
       );
     }
     if (dna.tail === "tuft") {
@@ -1344,6 +1746,17 @@ function smoothPatternMix(
         6;
     return THREE.MathUtils.smoothstep(signal, 0.5, 0.72) * 0.66;
   }
+  if (dna.pattern === "rings") {
+    const wave = 0.5 + 0.5 * Math.cos(nz * Math.PI * 7.2);
+    return THREE.MathUtils.smoothstep(wave, 0.56, 0.78) * 0.72;
+  }
+  if (dna.pattern === "belly") {
+    const frontness = THREE.MathUtils.smoothstep(-nz, 0.35, 0.92);
+    const vertical =
+      1 - THREE.MathUtils.smoothstep(Math.abs(ny + 0.15), 0.28, 0.86);
+    const horizontal = 1 - THREE.MathUtils.smoothstep(Math.abs(nx), 0.38, 0.82);
+    return frontness * vertical * horizontal * 0.78;
+  }
   const scales =
     0.5 + 0.5 * Math.sin((nx + nz) * 11.5) * Math.sin((ny - nz * 0.72) * 10.5);
   return 0.1 + THREE.MathUtils.smoothstep(scales, 0.56, 0.8) * 0.38;
@@ -1364,7 +1777,15 @@ function buildSmoothGeometry(
 
   const temporaryMaterial = new THREE.MeshStandardMaterial();
   const fieldResolution =
-    dna.legs === 8 ? 88 : dna.legs === 6 ? 76 : dna.legs >= 2 ? 64 : 56;
+    dna.legs === 10
+      ? 92
+      : dna.legs === 8
+        ? 88
+        : dna.legs === 6
+          ? 76
+          : dna.legs >= 2
+            ? 64
+            : 56;
   const field = new MarchingCubes(
     fieldResolution,
     temporaryMaterial,
@@ -1411,14 +1832,37 @@ function buildSmoothGeometry(
     return { ...arm, index };
   });
 
-  const legFootY = dna.legShape === "springy" ? 0.08 : 0.14;
+  const legFootY =
+    dna.legShape === "springy" || dna.legShape === "paws" ? 0.08 : 0.14;
   const legHips = legPositions(dna.legs, profile).map(([x, , z], index) => {
     const hipY = cy - sy * 0.52;
-    const outward = dna.legShape === "springy" ? (x < 0 ? -0.16 : 0.16) : 0;
+    const outward =
+      dna.legShape === "springy"
+        ? x < 0
+          ? -0.16
+          : 0.16
+        : dna.legShape === "paws"
+          ? x < 0
+            ? -0.13
+            : 0.13
+          : 0;
     const footX = x + outward;
-    const legDensityScale = dna.legs === 8 ? 0.72 : dna.legs === 6 ? 0.84 : 1;
+    const legDensityScale =
+      dna.legs === 10
+        ? 0.62
+        : dna.legs === 8
+          ? 0.72
+          : dna.legs === 6
+            ? 0.84
+            : 1;
     const legStrength =
-      (dna.legShape === "stubby" ? 0.3 : 0.24) * legDensityScale;
+      (dna.legShape === "stubby"
+        ? 0.3
+        : dna.legShape === "paws"
+          ? 0.33
+          : dna.legShape === "stilt"
+            ? 0.18
+            : 0.24) * legDensityScale;
     const kneePush =
       dna.legShape === "springy"
         ? 0.22
@@ -1441,8 +1885,13 @@ function buildSmoothGeometry(
       footX,
       legFootY,
       z - (dna.legShape === "clawed" ? 0.12 : 0),
-      (dna.legShape === "hoof" || dna.legShape === "flippers" ? 0.34 : 0.25) *
-        legDensityScale,
+      (dna.legShape === "hoof" || dna.legShape === "flippers"
+        ? 0.34
+        : dna.legShape === "paws"
+          ? 0.35
+          : dna.legShape === "stilt"
+            ? 0.2
+            : 0.25) * legDensityScale,
       10.8,
     );
     if (dna.legShape === "flippers") {
@@ -1510,9 +1959,10 @@ function buildSmoothGeometry(
       const firstRow = legRows[row];
       const secondRow = legRows[row + 1];
       const gapZ = (firstRow + secondRow) / 2;
-      const gapRadiusZ = Math.max(
-        (secondRow - firstRow) * 0.32,
-        fieldCellSize * 2.5,
+      const rowGap = secondRow - firstRow;
+      const gapRadiusZ = Math.min(
+        Math.max(rowGap * 0.28, fieldCellSize * 1.25),
+        Math.max(fieldCellSize, rowGap * 0.5 - fieldCellSize * 0.45),
       );
       // Cut one continuous tunnel across the whole body width. Two localized
       // side cuts leave a central belly web that projects into the opening
@@ -1556,6 +2006,7 @@ function buildSmoothGeometry(
   const primary = new THREE.Color(bodyColor);
   const accent = new THREE.Color(accentColor);
   const mixed = new THREE.Color();
+  let minimumWorldY = Number.POSITIVE_INFINITY;
 
   for (let index = 0; index < vertexCount; index += 1) {
     const px = relaxedPosition.getX(index);
@@ -1565,6 +2016,7 @@ function buildSmoothGeometry(
     const localX = px * SMOOTH_FIELD_SCALE;
     const localY = py * SMOOTH_FIELD_SCALE + SMOOTH_FIELD_ORIGIN_Y;
     const localZ = pz * SMOOTH_FIELD_SCALE;
+    minimumWorldY = Math.min(minimumWorldY, localY);
     mixed
       .copy(primary)
       .lerp(accent, smoothPatternMix(dna, profile, localX, localY, localZ));
@@ -1575,7 +2027,8 @@ function buildSmoothGeometry(
     const isTailVertex =
       dna.tail !== "none" &&
       localZ > tailZ - 0.14 &&
-      Math.abs(localX) < (dna.tail === "curly" ? 0.82 : 0.52);
+      Math.abs(localX) <
+        (dna.tail === "curly" ? 0.82 : dna.tail === "forked" ? 0.72 : 0.52);
     if (isTailVertex) {
       const tailInfluence = THREE.MathUtils.clamp(
         (localZ - tailZ + 0.16) / 0.86,
@@ -1674,6 +2127,7 @@ function buildSmoothGeometry(
     "skinWeight",
     new THREE.Float32BufferAttribute(skinWeights, 4),
   );
+  geometry.userData.minimumWorldY = minimumWorldY;
   geometry.computeBoundingSphere();
   temporaryMaterial.dispose();
   smoothGeometryCache.set(cacheKey, {
@@ -1683,6 +2137,18 @@ function buildSmoothGeometry(
   });
   pruneSmoothGeometryCache();
   return geometry;
+}
+
+function getSmoothGeometryMetrics(dna: MonsterDna) {
+  const profile = BODY_PROFILES[dna.body];
+  const primary = getMonsterColor(dna.color);
+  const accent = getAccentColor(dna.accent);
+  const geometry = buildSmoothGeometry(dna, profile, primary.hex, accent.hex);
+  const cachedMinimumY = geometry.userData.minimumWorldY;
+  return {
+    vertices: geometry.getAttribute("position").count,
+    minimumY: typeof cachedMinimumY === "number" ? cachedMinimumY : 0,
+  };
 }
 
 function createSmoothRig(
@@ -1874,6 +2340,9 @@ function SmoothMonsterVisual({
   const accent = getAccentColor(dna.accent);
   const profile = BODY_PROFILES[dna.body];
   const sizeScale = getMonsterSizeScale(dna.size);
+  const buildScale = getMonsterBuildScale(dna.build);
+  const geometryMetrics = getSmoothGeometryMetrics(dna);
+  const groundOffset = 0.025 - geometryMetrics.minimumY * buildScale[1];
   const surfaceColorAt = (x: number, y: number, z: number) =>
     new THREE.Color(primary.hex)
       .lerp(
@@ -1891,48 +2360,64 @@ function SmoothMonsterVisual({
     profile.center[1],
     profile.center[2],
   );
+  const hornSocketColor = surfaceColorAt(0, profile.horn[0], profile.horn[1]);
+  const earSocketColor = surfaceColorAt(
+    profile.scale[0] * 0.68,
+    profile.face[0] + 0.2,
+    profile.face[1] + 0.3,
+  );
 
   return (
     <group scale={sizeScale}>
-      <SmoothMonsterCore
-        key={JSON.stringify(dna)}
-        dna={dna}
-        profile={profile}
-        bodyColor={primary.hex}
-        accentColor={accent.hex}
-        castShadow={castShadow}
-        motionRef={motionRef}
-      />
-      <group position={[0, 0, -0.2]}>
-        <Face
+      <group position={[0, groundOffset, 0]} scale={buildScale}>
+        <SmoothMonsterCore
+          key={JSON.stringify(dna)}
           dna={dna}
           profile={profile}
+          bodyColor={primary.hex}
+          accentColor={accent.hex}
+          castShadow={castShadow}
+          motionRef={motionRef}
+        />
+        <group position={[0, 0, -0.2]}>
+          <Face
+            dna={dna}
+            profile={profile}
+            accent={accent.hex}
+            bodyColor={faceSocketColor}
+          />
+        </group>
+        <Horns
+          shape={dna.horns}
+          profile={profile}
           accent={accent.hex}
-          bodyColor={faceSocketColor}
+          bodyColor={hornSocketColor}
+          castShadow={castShadow}
+          surfaceInset={0.3}
+        />
+        <Ears
+          shape={dna.ears}
+          profile={profile}
+          accent={accent.hex}
+          bodyColor={earSocketColor}
+          castShadow={castShadow}
+        />
+        <Adaptation
+          type={dna.adaptation}
+          profile={profile}
+          accent={accent.hex}
+          castShadow={castShadow}
+          wingRefs={wingRefs}
+          surfaceInset={0.12}
+          bodyColor={adaptationSocketColor}
+        />
+        <RespirationDetails
+          breathing={dna.breathing}
+          profile={profile}
+          grooveColor={primary.dark}
+          surfaceInset={0.08}
         />
       </group>
-      <Horns
-        shape={dna.horns}
-        profile={profile}
-        accent={accent.hex}
-        castShadow={castShadow}
-        surfaceInset={0.3}
-      />
-      <Adaptation
-        type={dna.adaptation}
-        profile={profile}
-        accent={accent.hex}
-        castShadow={castShadow}
-        wingRefs={wingRefs}
-        surfaceInset={0.12}
-        bodyColor={adaptationSocketColor}
-      />
-      <RespirationDetails
-        breathing={dna.breathing}
-        profile={profile}
-        grooveColor={primary.dark}
-        surfaceInset={0.08}
-      />
     </group>
   );
 }
@@ -1958,54 +2443,72 @@ export function MonsterVisual({
   const accent = getAccentColor(dna.accent);
   const profile = BODY_PROFILES[dna.body];
   const sizeScale = getMonsterSizeScale(dna.size);
+  const buildScale = getMonsterBuildScale(dna.build);
+  const leglessOffset =
+    dna.legs === 0
+      ? -Math.max(
+          0,
+          (profile.center[1] - profile.scale[1]) * buildScale[1] - 0.07,
+        )
+      : 0;
 
   return (
     <group scale={sizeScale}>
-      <BodyCore
-        dna={dna}
-        profile={profile}
-        bodyColor={primary.hex}
-        darkColor={primary.dark}
-        accent={accent.hex}
-        castShadow={castShadow}
-      />
-      <PatternMarks dna={dna} profile={profile} accent={accent.hex} />
-      <Face dna={dna} profile={profile} accent={accent.hex} />
-      <Horns
-        shape={dna.horns}
-        profile={profile}
-        accent={accent.hex}
-        castShadow={castShadow}
-      />
-      <Tail
-        shape={dna.tail}
-        profile={profile}
-        bodyColor={primary.dark}
-        accent={accent.hex}
-        castShadow={castShadow}
-      />
-      <Adaptation
-        type={dna.adaptation}
-        profile={profile}
-        accent={accent.hex}
-        castShadow={castShadow}
-        wingRefs={wingRefs}
-      />
-      <RespirationDetails
-        breathing={dna.breathing}
-        profile={profile}
-        grooveColor={primary.dark}
-      />
-      {legPositions(dna.legs, profile).map((position, index) => (
-        <group key={index} ref={legRefs?.[index]} position={position}>
-          <Leg
-            shape={dna.legShape}
-            bodyColor={primary.dark}
-            accentColor={accent.hex}
-            castShadow={castShadow}
-          />
-        </group>
-      ))}
+      <group position={[0, leglessOffset, 0]} scale={buildScale}>
+        <BodyCore
+          dna={dna}
+          profile={profile}
+          bodyColor={primary.hex}
+          darkColor={primary.dark}
+          accent={accent.hex}
+          castShadow={castShadow}
+        />
+        <PatternMarks dna={dna} profile={profile} accent={accent.hex} />
+        <Face dna={dna} profile={profile} accent={accent.hex} />
+        <Horns
+          shape={dna.horns}
+          profile={profile}
+          accent={accent.hex}
+          castShadow={castShadow}
+          bodyColor={primary.hex}
+        />
+        <Ears
+          shape={dna.ears}
+          profile={profile}
+          accent={accent.hex}
+          bodyColor={primary.hex}
+          castShadow={castShadow}
+        />
+        <Tail
+          shape={dna.tail}
+          profile={profile}
+          bodyColor={primary.dark}
+          accent={accent.hex}
+          castShadow={castShadow}
+        />
+        <Adaptation
+          type={dna.adaptation}
+          profile={profile}
+          accent={accent.hex}
+          castShadow={castShadow}
+          wingRefs={wingRefs}
+        />
+        <RespirationDetails
+          breathing={dna.breathing}
+          profile={profile}
+          grooveColor={primary.dark}
+        />
+        {legPositions(dna.legs, profile).map((position, index) => (
+          <group key={index} ref={legRefs?.[index]} position={position}>
+            <Leg
+              shape={dna.legShape}
+              bodyColor={primary.dark}
+              accentColor={accent.hex}
+              castShadow={castShadow}
+            />
+          </group>
+        ))}
+      </group>
     </group>
   );
 }

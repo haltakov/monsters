@@ -10,6 +10,7 @@ import {
   BODY_SHAPES,
   decodeMonsterDna,
   DIETS,
+  EAR_SHAPES,
   encodeMonsterDna,
   EYE_COUNTS,
   getMonsterFollowerCount,
@@ -18,6 +19,7 @@ import {
   LEG_SHAPES,
   MESH_STYLES,
   MONSTER_COLORS,
+  MONSTER_BUILDS,
   MONSTER_SIZES,
   MOUTH_SHAPES,
   PATTERNS,
@@ -137,9 +139,7 @@ function ArchetypeGuide({
             type="button"
             className={activeId === archetype.id ? "selected" : ""}
             aria-pressed={activeId === archetype.id}
-            title={t(
-              `archetype.${archetype.id}.summary` as TranslationKey,
-            )}
+            title={t(`archetype.${archetype.id}.summary` as TranslationKey)}
             onClick={() => onChoose(archetype.dna)}
           >
             <i>{archetype.mark}</i>
@@ -207,10 +207,12 @@ export function MonsterCreator({
       eyes: randomOption(EYE_COUNTS),
       mouth: randomOption(MOUTH_SHAPES),
       size: randomOption(MONSTER_SIZES),
+      build: randomOption(MONSTER_BUILDS),
       color: randomOption(MONSTER_COLORS).id,
       accent: randomOption(ACCENT_COLORS).id,
       pattern: randomOption(PATTERNS),
       horns: randomOption(HORN_SHAPES),
+      ears: randomOption(EAR_SHAPES),
       tail: randomOption(TAIL_SHAPES),
       adaptation: randomOption(ADAPTATIONS),
       diet: randomOption(DIETS),
@@ -255,7 +257,10 @@ export function MonsterCreator({
 
         <div className="creator-layout">
           <div className="creator-stage" data-live-label={t("creator.live")}>
-            <div className="mesh-mode-switch" aria-label={t("creator.meshMode")}>
+            <div
+              className="mesh-mode-switch"
+              aria-label={t("creator.meshMode")}
+            >
               <span>
                 <Sparkles size={12} /> {t("creator.meshExperiment")}
               </span>
@@ -404,6 +409,12 @@ export function MonsterCreator({
                 onChange={(value) => changeGene("size", value)}
               />
               <GeneChoices
+                label={t("creator.build")}
+                value={draft.build}
+                options={MONSTER_BUILDS}
+                onChange={(value) => changeGene("build", value)}
+              />
+              <GeneChoices
                 label={t("creator.legCount")}
                 value={draft.legs}
                 options={LEG_COUNTS}
@@ -438,6 +449,12 @@ export function MonsterCreator({
                 value={draft.horns}
                 options={HORN_SHAPES}
                 onChange={(value) => changeGene("horns", value)}
+              />
+              <GeneChoices
+                label={t("creator.ears")}
+                value={draft.ears}
+                options={EAR_SHAPES}
+                onChange={(value) => changeGene("ears", value)}
               />
               <GeneChoices
                 label={t("creator.tail")}
@@ -480,9 +497,7 @@ export function MonsterCreator({
                 aria-invalid={Boolean(dnaError)}
                 onChange={(event) => editDna(event.target.value)}
               />
-              <small>
-                {dnaError ?? t("creator.dnaHelp")}
-              </small>
+              <small>{dnaError ?? t("creator.dnaHelp")}</small>
             </label>
           </div>
         </div>

@@ -7,30 +7,45 @@ export const BODY_SHAPES = [
   "saurian",
   "rhino",
   "aquatic",
+  "slug",
+  "avian",
 ] as const;
-export const LEG_COUNTS = [0, 2, 4, 6, 8] as const;
+export const LEG_COUNTS = [0, 2, 4, 6, 8, 10] as const;
 export const LEG_SHAPES = [
   "stubby",
   "hoof",
   "springy",
   "clawed",
   "flippers",
+  "paws",
+  "stilt",
 ] as const;
-export const EYE_COUNTS = [1, 2, 3, 4, 5, 6, 8] as const;
+export const EYE_COUNTS = [1, 2, 3, 4, 5, 6, 8, 10] as const;
 export const MOUTH_SHAPES = [
   "smile",
   "fangs",
   "beak",
   "snout",
   "tusks",
+  "mandibles",
+  "tongue",
 ] as const;
-export const MONSTER_SIZES = ["small", "medium", "large"] as const;
+export const MONSTER_SIZES = [
+  "tiny",
+  "small",
+  "medium",
+  "large",
+  "huge",
+] as const;
+export const MONSTER_BUILDS = ["lean", "balanced", "sturdy"] as const;
 export const PATTERNS = [
   "plain",
   "spots",
   "stripes",
   "patches",
   "scales",
+  "rings",
+  "belly",
 ] as const;
 export const HORN_SHAPES = [
   "none",
@@ -38,14 +53,33 @@ export const HORN_SHAPES = [
   "spikes",
   "rhino",
   "antlers",
+  "single",
+  "ram",
 ] as const;
-export const TAIL_SHAPES = ["none", "tuft", "curly", "club", "fin"] as const;
+export const EAR_SHAPES = [
+  "none",
+  "round",
+  "pointed",
+  "floppy",
+  "fan",
+] as const;
+export const TAIL_SHAPES = [
+  "none",
+  "tuft",
+  "curly",
+  "club",
+  "fin",
+  "whip",
+  "forked",
+] as const;
 export const ADAPTATIONS = [
   "none",
   "fins",
   "wings",
   "shell",
   "plates",
+  "mane",
+  "antennae",
 ] as const;
 export const DIETS = ["herbivore", "carnivore", "omnivore"] as const;
 export const RESPIRATIONS = ["lungs", "gills", "both"] as const;
@@ -65,6 +99,12 @@ export const MONSTER_COLORS = [
   { id: "bubblegum", label: "Bubblegum", hex: "#EF9BC0", dark: "#B8618B" },
   { id: "cocoa", label: "Cocoa", hex: "#A97855", dark: "#684936" },
   { id: "lime", label: "Lime", hex: "#B6D94A", dark: "#758F2D" },
+  { id: "obsidian", label: "Obsidian", hex: "#434A57", dark: "#232833" },
+  { id: "snow", label: "Snow", hex: "#F1EFE8", dark: "#A6A9A4" },
+  { id: "gold", label: "Gold", hex: "#E8C04F", dark: "#A97924" },
+  { id: "ocean", label: "Ocean", hex: "#357FB8", dark: "#234F78" },
+  { id: "plum", label: "Plum", hex: "#87537E", dark: "#573650" },
+  { id: "rust", label: "Rust", hex: "#B75F3A", dark: "#743820" },
 ] as const;
 
 export const ACCENT_COLORS = [
@@ -78,6 +118,10 @@ export const ACCENT_COLORS = [
   { id: "cherry", label: "Cherry", hex: "#E76363" },
   { id: "aqua", label: "Aqua", hex: "#66D8CF" },
   { id: "white", label: "White", hex: "#FFFDF5" },
+  { id: "ink", label: "Ink", hex: "#24303D" },
+  { id: "silver", label: "Silver", hex: "#C3CBD1" },
+  { id: "orange", label: "Orange", hex: "#F28A3C" },
+  { id: "teal", label: "Teal", hex: "#2B9B91" },
 ] as const;
 
 export type BodyShape = (typeof BODY_SHAPES)[number];
@@ -86,8 +130,10 @@ export type LegShape = (typeof LEG_SHAPES)[number];
 export type EyeCount = (typeof EYE_COUNTS)[number];
 export type MouthShape = (typeof MOUTH_SHAPES)[number];
 export type MonsterSize = (typeof MONSTER_SIZES)[number];
+export type MonsterBuild = (typeof MONSTER_BUILDS)[number];
 export type Pattern = (typeof PATTERNS)[number];
 export type HornShape = (typeof HORN_SHAPES)[number];
+export type EarShape = (typeof EAR_SHAPES)[number];
 export type TailShape = (typeof TAIL_SHAPES)[number];
 export type Adaptation = (typeof ADAPTATIONS)[number];
 export type Diet = (typeof DIETS)[number];
@@ -104,10 +150,12 @@ export type MonsterDna = {
   eyes: EyeCount;
   mouth: MouthShape;
   size: MonsterSize;
+  build: MonsterBuild;
   color: MonsterColor;
   accent: AccentColor;
   pattern: Pattern;
   horns: HornShape;
+  ears: EarShape;
   tail: TailShape;
   adaptation: Adaptation;
   diet: Diet;
@@ -123,10 +171,12 @@ export const DEFAULT_MONSTER_DNA: MonsterDna = {
   eyes: 3,
   mouth: "smile",
   size: "medium",
+  build: "balanced",
   color: "moss",
   accent: "peach",
   pattern: "plain",
   horns: "spikes",
+  ears: "round",
   tail: "tuft",
   adaptation: "none",
   diet: "herbivore",
@@ -137,17 +187,19 @@ export const DEFAULT_MONSTER_DNA: MonsterDna = {
 
 export function encodeMonsterDna(dna: MonsterDna) {
   return [
-    "M5",
+    "M6",
     `body=${dna.body}`,
     `legs=${dna.legs}`,
     `leg=${dna.legShape}`,
     `eyes=${dna.eyes}`,
     `mouth=${dna.mouth}`,
     `size=${dna.size}`,
+    `build=${dna.build}`,
     `color=${dna.color}`,
     `accent=${dna.accent}`,
     `pattern=${dna.pattern}`,
     `horns=${dna.horns}`,
+    `ears=${dna.ears}`,
     `tail=${dna.tail}`,
     `adapt=${dna.adaptation}`,
     `diet=${dna.diet}`,
@@ -171,7 +223,7 @@ function readOption<T extends string | number>(
 
 function readGenes(
   source: string,
-  version: "M1" | "M2" | "M3" | "M4" | "M5",
+  version: "M1" | "M2" | "M3" | "M4" | "M5" | "M6",
 ) {
   const parts = source.trim().split(";");
   const expectedKeys = [
@@ -181,16 +233,19 @@ function readGenes(
     "eyes",
     "mouth",
     "size",
+    ...(version === "M6" ? ["build"] : []),
     "color",
     "accent",
     "pattern",
     "horns",
+    ...(version === "M6" ? ["ears"] : []),
     ...(version !== "M1" ? ["tail", "adapt"] : []),
     ...(version === "M3" ? ["diet"] : []),
     ...(version === "M4" || version === "M5"
       ? ["diet", "breathe", "social"]
       : []),
     ...(version === "M5" ? ["mesh"] : []),
+    ...(version === "M6" ? ["diet", "breathe", "social", "mesh"] : []),
   ];
 
   if (parts.length !== expectedKeys.length + 1) {
@@ -215,9 +270,10 @@ export function decodeMonsterDna(source: string): MonsterDna {
     version !== "M2" &&
     version !== "M3" &&
     version !== "M4" &&
-    version !== "M5"
+    version !== "M5" &&
+    version !== "M6"
   ) {
-    throw new Error("DNA must begin with M5 (old M1–M4 codes also work)");
+    throw new Error("DNA must begin with M6 (old M1–M5 codes also work)");
   }
   const values = readGenes(source, version);
 
@@ -228,6 +284,10 @@ export function decodeMonsterDna(source: string): MonsterDna {
     eyes: readOption("eyes", values.get("eyes")!, EYE_COUNTS),
     mouth: readOption("mouth", values.get("mouth")!, MOUTH_SHAPES),
     size: readOption("size", values.get("size")!, MONSTER_SIZES),
+    build:
+      version === "M6"
+        ? readOption("build", values.get("build")!, MONSTER_BUILDS)
+        : "balanced",
     color: readOption(
       "color",
       values.get("color")!,
@@ -240,6 +300,10 @@ export function decodeMonsterDna(source: string): MonsterDna {
     ),
     pattern: readOption("pattern", values.get("pattern")!, PATTERNS),
     horns: readOption("horns", values.get("horns")!, HORN_SHAPES),
+    ears:
+      version === "M6"
+        ? readOption("ears", values.get("ears")!, EAR_SHAPES)
+        : "none",
     tail:
       version !== "M1"
         ? readOption("tail", values.get("tail")!, TAIL_SHAPES)
@@ -249,19 +313,22 @@ export function decodeMonsterDna(source: string): MonsterDna {
         ? readOption("adapt", values.get("adapt")!, ADAPTATIONS)
         : "none",
     diet:
-      version === "M3" || version === "M4" || version === "M5"
+      version === "M3" ||
+      version === "M4" ||
+      version === "M5" ||
+      version === "M6"
         ? readOption("diet", values.get("diet")!, DIETS)
         : "herbivore",
     breathing:
-      version === "M4" || version === "M5"
+      version === "M4" || version === "M5" || version === "M6"
         ? readOption("breathe", values.get("breathe")!, RESPIRATIONS)
         : "lungs",
     social:
-      version === "M4" || version === "M5"
+      version === "M4" || version === "M5" || version === "M6"
         ? readOption("social", values.get("social")!, SOCIAL_BEHAVIORS)
         : "solitary",
     mesh:
-      version === "M5"
+      version === "M5" || version === "M6"
         ? readOption("mesh", values.get("mesh")!, MESH_STYLES)
         : "classic",
   };
@@ -276,7 +343,25 @@ export function getAccentColor(id: AccentColor) {
 }
 
 export function getMonsterSizeScale(size: MonsterSize) {
-  return size === "small" ? 0.78 : size === "large" ? 1.24 : 1;
+  return size === "tiny"
+    ? 0.6
+    : size === "small"
+      ? 0.78
+      : size === "large"
+        ? 1.24
+        : size === "huge"
+          ? 1.48
+          : 1;
+}
+
+export function getMonsterBuildScale(
+  build: MonsterBuild,
+): [number, number, number] {
+  return build === "lean"
+    ? [0.82, 1.08, 0.94]
+    : build === "sturdy"
+      ? [1.16, 0.94, 1.08]
+      : [1, 1, 1];
 }
 
 export function canMonsterSwim(dna: MonsterDna) {
@@ -303,7 +388,19 @@ export function getMonsterFollowerCount(dna: MonsterDna) {
   if (dna.social === "solitary") return 0;
   if (dna.social === "pair") return 1;
   if (dna.social === "pack") {
-    return dna.size === "small" ? 3 : dna.size === "medium" ? 2 : 1;
+    return dna.size === "tiny"
+      ? 4
+      : dna.size === "small"
+        ? 3
+        : dna.size === "medium"
+          ? 2
+          : 1;
   }
-  return dna.size === "small" ? 5 : dna.size === "medium" ? 3 : 1;
+  return dna.size === "tiny"
+    ? 7
+    : dna.size === "small"
+      ? 5
+      : dna.size === "medium"
+        ? 3
+        : 1;
 }

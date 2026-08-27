@@ -365,6 +365,27 @@ function isWaterAt(x: number, z: number) {
   return Math.abs(x - riverX(z)) < 1.48 && !bridge;
 }
 
+function waterBlendAt(x: number, z: number) {
+  const radius = Math.hypot(x, z);
+  const seaBlend = THREE.MathUtils.smoothstep(
+    radius,
+    PLAYABLE_RADIUS - 1.8,
+    PLAYABLE_RADIUS + 2.4,
+  );
+  const riverDistance = Math.abs(x - riverX(z));
+  const riverWidthBlend =
+    1 - THREE.MathUtils.smoothstep(riverDistance, 0.95, 2.35);
+  const bridgeDistance = Math.min(
+    ...BRIDGE_POSITIONS.map((bridgeZ) => Math.abs(z - bridgeZ)),
+  );
+  const bridgeOpeningBlend = THREE.MathUtils.smoothstep(
+    bridgeDistance,
+    1.05,
+    2.15,
+  );
+  return Math.max(seaBlend, riverWidthBlend * bridgeOpeningBlend);
+}
+
 function isBlockedByWater(x: number, z: number, canSwim: boolean) {
   if (canSwim) return Math.hypot(x, z) > WORLD_RADIUS + 22;
   return isWaterAt(x, z);
@@ -1390,26 +1411,38 @@ function SimulatedMonsterActor({
 
   useFrame(({ clock }, delta) => {
     if (!root.current || !visual.current) return;
+    const waterBlend = canMonsterSwim(creature.dna)
+      ? waterBlendAt(creature.x, creature.z)
+      : 0;
+    const landHeight = terrainHeight(creature.x, creature.z);
+    const swimmingHeight = THREE.MathUtils.lerp(
+      landHeight,
+      -0.72 + Math.sin(clock.elapsedTime * 2.1) * 0.07,
+      waterBlend,
+    );
     const targetY = creature.alive
       ? creature.dna.adaptation === "wings"
-        ? terrainHeight(creature.x, creature.z) +
-          4.2 +
-          Math.sin(clock.elapsedTime * 1.6) * 0.22
-        : canMonsterSwim(creature.dna) && isWaterAt(creature.x, creature.z)
-          ? -0.72 + Math.sin(clock.elapsedTime * 2.1) * 0.07
-          : terrainHeight(creature.x, creature.z)
-      : terrainHeight(creature.x, creature.z);
+        ? landHeight + 4.2 + Math.sin(clock.elapsedTime * 1.6) * 0.22
+        : swimmingHeight
+      : landHeight;
     root.current.position.x = THREE.MathUtils.damp(
       root.current.position.x,
       creature.x,
       10,
       delta,
     );
-    root.current.position.y = THREE.MathUtils.damp(
+    const dampedY = THREE.MathUtils.damp(
       root.current.position.y,
       targetY,
       9,
       delta,
+    );
+    const maximumVerticalStep =
+      (creature.dna.adaptation === "wings" ? 4.8 : 2.8) * delta;
+    root.current.position.y += THREE.MathUtils.clamp(
+      dampedY - root.current.position.y,
+      -maximumVerticalStep,
+      maximumVerticalStep,
     );
     root.current.position.z = THREE.MathUtils.damp(
       root.current.position.z,
@@ -1429,8 +1462,7 @@ function SimulatedMonsterActor({
       creature.z - lastPosition.current.z,
     );
     lastPosition.current = { x: creature.x, z: creature.z };
-    const swimming =
-      canMonsterSwim(creature.dna) && isWaterAt(creature.x, creature.z);
+    const swimming = waterBlend > 0.52;
     const flying = creature.dna.adaptation === "wings";
     const cadence =
       creature.intent === "flee" || creature.intent === "hunt" ? 14 : 9;
