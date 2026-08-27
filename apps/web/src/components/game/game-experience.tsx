@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Float, Sky, Sparkles } from "@react-three/drei";
 import {
@@ -11,18 +12,55 @@ import {
   MousePointer2,
   Swords,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import * as THREE from "three";
 import { MonsterMark } from "@/components/monster-mark";
-import { MonsterCreator } from "@/components/game/monster-creator";
 import {
   DEFAULT_MONSTER_DNA,
   type MonsterDna,
 } from "@/components/game/monster-dna";
 import { MonsterVisual } from "@/components/game/monster-model";
 
+const MonsterCreator = dynamic(
+  () =>
+    import("@/components/game/monster-creator").then(
+      (module) => module.MonsterCreator,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="creator-overlay" role="status" aria-live="polite">
+        <div className="creator-loading">Opening the DNA lab…</div>
+      </div>
+    ),
+  },
+);
+
 type Action = "eat" | "attack" | null;
 type EdibleKind = "tree" | "bush";
+type SceneQuality = "mobile" | "desktop";
+
+function subscribeToDeviceProfile() {
+  return () => undefined;
+}
+
+function getDeviceProfile(): SceneQuality {
+  return window.matchMedia("(pointer: coarse)").matches ||
+    window.matchMedia("(max-width: 900px)").matches
+    ? "mobile"
+    : "desktop";
+}
+
+function getServerDeviceProfile() {
+  return null;
+}
 
 type Edible = {
   id: string;
@@ -251,6 +289,20 @@ const EXTRA_ROCKS: Array<[number, number, number, number]> = scatterPositions(
 const EXTRA_PLANTS = scatterPositions(86, 4213);
 const ALL_TREES = [...TREES, ...EXTRA_TREES];
 const ALL_BUSHES = [...BUSHES, ...EXTRA_BUSHES];
+const MOBILE_SCENERY_STEP = 5;
+
+function isVisibleSceneryItem(
+  quality: SceneQuality,
+  index: number,
+  baseCount: number,
+) {
+  return (
+    quality === "desktop" ||
+    index < baseCount ||
+    (index - baseCount) % MOBILE_SCENERY_STEP === 0
+  );
+}
+
 const EDIBLES: Edible[] = [
   ...ALL_TREES.map(([x, z], index) => ({
     id: `tree-${index}`,
@@ -267,11 +319,16 @@ const EDIBLES: Edible[] = [
     energy: 28,
   })),
 ];
+const MOBILE_EDIBLES = EDIBLES.filter((edible) => {
+  const index = Number(edible.id.slice(edible.id.lastIndexOf("-") + 1));
+  const baseCount = edible.kind === "tree" ? TREES.length : BUSHES.length;
+  return isVisibleSceneryItem("mobile", index, baseCount);
+});
 
-function Terrain() {
+function Terrain({ quality }: { quality: SceneQuality }) {
   const geometry = useMemo(() => {
     const size = WORLD_RADIUS * 2 + 4;
-    const segments = 184;
+    const segments = quality === "mobile" ? 112 : 184;
     const vertices: number[] = [];
     const indices: number[] = [];
 
@@ -304,16 +361,21 @@ function Terrain() {
     result.setIndex(indices);
     result.computeVertexNormals();
     return result;
-  }, []);
+  }, [quality]);
 
   return (
     <>
-      <mesh geometry={geometry} receiveShadow>
+      <mesh geometry={geometry} receiveShadow={quality === "desktop"}>
         <meshStandardMaterial color="#72B95A" roughness={0.92} />
       </mesh>
-      <mesh position={[0, -0.5, 0]} receiveShadow>
+      <mesh position={[0, -0.5, 0]} receiveShadow={quality === "desktop"}>
         <cylinderGeometry
-          args={[WORLD_RADIUS, WORLD_RADIUS - 1.4, 1.08, 192]}
+          args={[
+            WORLD_RADIUS,
+            WORLD_RADIUS - 1.4,
+            1.08,
+            quality === "mobile" ? 96 : 192,
+          ]}
         />
         <meshStandardMaterial color="#E4C16E" roughness={1} />
       </mesh>
@@ -321,7 +383,7 @@ function Terrain() {
   );
 }
 
-function Sea() {
+function Sea({ quality }: { quality: SceneQuality }) {
   const sea = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
     if (sea.current)
@@ -334,9 +396,9 @@ function Sea() {
       ref={sea}
       position={[0, -0.42, 0]}
       rotation={[-Math.PI / 2, 0, 0]}
-      receiveShadow
+      receiveShadow={quality === "desktop"}
     >
-      <circleGeometry args={[420, 192]} />
+      <circleGeometry args={[420, quality === "mobile" ? 96 : 192]} />
       <meshStandardMaterial
         color="#4AAFC5"
         roughness={0.32}
@@ -348,24 +410,24 @@ function Sea() {
   );
 }
 
-function River() {
-  const segments = useMemo(
-    () =>
-      Array.from({ length: 128 }, (_, index) => {
-        const riverExtent = PLAYABLE_RADIUS + 0.5;
-        const segmentLength = (riverExtent * 2) / 127;
-        const z = -riverExtent + index * segmentLength;
-        const nextZ = Math.min(riverExtent, z + segmentLength);
-        const x = riverX(z);
-        const nextX = riverX(nextZ);
-        return {
-          x: (x + nextX) / 2,
-          z: (z + nextZ) / 2,
-          angle: Math.atan2(nextX - x, nextZ - z),
-        };
-      }),
-    [],
-  );
+function River({ quality }: { quality: SceneQuality }) {
+  const segments = useMemo(() => {
+    const segmentCount = quality === "mobile" ? 64 : 128;
+    return Array.from({ length: segmentCount }, (_, index) => {
+      const riverExtent = PLAYABLE_RADIUS + 0.5;
+      const segmentLength = (riverExtent * 2) / (segmentCount - 1);
+      const z = -riverExtent + index * segmentLength;
+      const nextZ = Math.min(riverExtent, z + segmentLength);
+      const x = riverX(z);
+      const nextX = riverX(nextZ);
+      return {
+        x: (x + nextX) / 2,
+        z: (z + nextZ) / 2,
+        angle: Math.atan2(nextX - x, nextZ - z),
+        length: segmentLength + 0.25,
+      };
+    });
+  }, [quality]);
 
   return (
     <group>
@@ -374,9 +436,9 @@ function River() {
           key={index}
           position={[segment.x, 0.16, segment.z]}
           rotation={[0, segment.angle, 0]}
-          receiveShadow
+          receiveShadow={quality === "desktop"}
         >
-          <boxGeometry args={[2.85, 0.09, 2.35]} />
+          <boxGeometry args={[2.85, 0.09, segment.length]} />
           <meshStandardMaterial
             color="#55B8CE"
             roughness={0.2}
@@ -385,13 +447,13 @@ function River() {
         </mesh>
       ))}
       {BRIDGE_POSITIONS.map((z) => (
-        <Bridge key={z} z={z} />
+        <Bridge key={z} z={z} quality={quality} />
       ))}
     </group>
   );
 }
 
-function Bridge({ z }: { z: number }) {
+function Bridge({ z, quality }: { z: number; quality: SceneQuality }) {
   const x = riverX(z);
   return (
     <group position={[x, terrainHeight(x, z) + 0.27, z]}>
@@ -399,8 +461,8 @@ function Bridge({ z }: { z: number }) {
         <mesh
           key={index}
           position={[0, 0, (index - 3) * 0.36]}
-          castShadow
-          receiveShadow
+          castShadow={quality === "desktop"}
+          receiveShadow={quality === "desktop"}
         >
           <boxGeometry args={[3.65, 0.18, 0.3]} />
           <meshStandardMaterial
@@ -409,11 +471,11 @@ function Bridge({ z }: { z: number }) {
           />
         </mesh>
       ))}
-      <mesh position={[-1.62, -0.18, 0]} castShadow>
+      <mesh position={[-1.62, -0.18, 0]} castShadow={quality === "desktop"}>
         <boxGeometry args={[0.18, 0.25, 2.6]} />
         <meshStandardMaterial color="#70452F" />
       </mesh>
-      <mesh position={[1.62, -0.18, 0]} castShadow>
+      <mesh position={[1.62, -0.18, 0]} castShadow={quality === "desktop"}>
         <boxGeometry args={[0.18, 0.25, 2.6]} />
         <meshStandardMaterial color="#70452F" />
       </mesh>
@@ -421,42 +483,97 @@ function Bridge({ z }: { z: number }) {
   );
 }
 
-function Tree({ x, z, scale }: { x: number; z: number; scale: number }) {
+function Tree({
+  x,
+  z,
+  scale,
+  quality,
+}: {
+  x: number;
+  z: number;
+  scale: number;
+  quality: SceneQuality;
+}) {
+  const castsShadow = quality === "desktop";
   return (
     <group position={[x, terrainHeight(x, z), z]} scale={scale}>
-      <mesh position={[0, 1.25, 0]} castShadow>
-        <cylinderGeometry args={[0.28, 0.42, 2.5, 18]} />
+      <mesh position={[0, 1.25, 0]} castShadow={castsShadow}>
+        <cylinderGeometry
+          args={[0.28, 0.42, 2.5, quality === "mobile" ? 10 : 18]}
+        />
         <meshStandardMaterial color="#855333" roughness={1} />
       </mesh>
-      <mesh position={[0, 3.15, 0]} scale={[1, 1.05, 0.96]} castShadow>
-        <sphereGeometry args={[1.45, 24, 18]} />
+      <mesh
+        position={[0, 3.15, 0]}
+        scale={[1, 1.05, 0.96]}
+        castShadow={castsShadow}
+      >
+        <sphereGeometry
+          args={[
+            1.45,
+            quality === "mobile" ? 12 : 24,
+            quality === "mobile" ? 9 : 18,
+          ]}
+        />
         <meshStandardMaterial color="#2F7D4A" roughness={0.95} />
       </mesh>
-      <mesh position={[-0.8, 2.75, 0.3]} castShadow>
-        <sphereGeometry args={[0.9, 22, 16]} />
+      <mesh position={[-0.8, 2.75, 0.3]} castShadow={castsShadow}>
+        <sphereGeometry
+          args={[
+            0.9,
+            quality === "mobile" ? 12 : 22,
+            quality === "mobile" ? 9 : 16,
+          ]}
+        />
         <meshStandardMaterial color="#3E9152" roughness={1} />
       </mesh>
-      <mesh position={[0.78, 2.75, 0.2]} castShadow>
-        <sphereGeometry args={[0.85, 22, 16]} />
+      <mesh position={[0.78, 2.75, 0.2]} castShadow={castsShadow}>
+        <sphereGeometry
+          args={[
+            0.85,
+            quality === "mobile" ? 12 : 22,
+            quality === "mobile" ? 9 : 16,
+          ]}
+        />
         <meshStandardMaterial color="#4BA15A" roughness={1} />
       </mesh>
     </group>
   );
 }
 
-function Bush({ x, z, scale }: { x: number; z: number; scale: number }) {
+function Bush({
+  x,
+  z,
+  scale,
+  quality,
+}: {
+  x: number;
+  z: number;
+  scale: number;
+  quality: SceneQuality;
+}) {
+  const castsShadow = quality === "desktop";
+  const segments: [number, number] = quality === "mobile" ? [10, 8] : [20, 14];
   return (
     <group position={[x, terrainHeight(x, z) + 0.48 * scale, z]} scale={scale}>
-      <mesh position={[-0.48, 0, 0]} scale={[1, 0.9, 1.05]} castShadow>
-        <sphereGeometry args={[0.7, 20, 14]} />
+      <mesh
+        position={[-0.48, 0, 0]}
+        scale={[1, 0.9, 1.05]}
+        castShadow={castsShadow}
+      >
+        <sphereGeometry args={[0.7, ...segments]} />
         <meshStandardMaterial color="#3F9850" roughness={0.92} />
       </mesh>
-      <mesh position={[0.42, 0.05, 0]} scale={[1.05, 0.92, 1]} castShadow>
-        <sphereGeometry args={[0.78, 20, 14]} />
+      <mesh
+        position={[0.42, 0.05, 0]}
+        scale={[1.05, 0.92, 1]}
+        castShadow={castsShadow}
+      >
+        <sphereGeometry args={[0.78, ...segments]} />
         <meshStandardMaterial color="#54AA57" roughness={0.92} />
       </mesh>
-      <mesh position={[0, 0.38, 0.12]} castShadow>
-        <sphereGeometry args={[0.72, 20, 14]} />
+      <mesh position={[0, 0.38, 0.12]} castShadow={castsShadow}>
+        <sphereGeometry args={[0.72, ...segments]} />
         <meshStandardMaterial color="#68B95C" roughness={0.92} />
       </mesh>
       <mesh position={[0.55, 0.28, -0.45]}>
@@ -476,27 +593,43 @@ function Rock({
   z,
   scale,
   rotation,
+  quality,
 }: {
   x: number;
   z: number;
   scale: number;
   rotation: number;
+  quality: SceneQuality;
 }) {
   return (
     <mesh
       position={[x, terrainHeight(x, z) + scale * 0.35, z]}
       rotation={[0.1, rotation, -0.08]}
       scale={[scale, scale * 0.72, scale * 0.9]}
-      castShadow
-      receiveShadow
+      castShadow={quality === "desktop"}
+      receiveShadow={quality === "desktop"}
     >
-      <sphereGeometry args={[0.9, 22, 15]} />
+      <sphereGeometry
+        args={[
+          0.9,
+          quality === "mobile" ? 12 : 22,
+          quality === "mobile" ? 9 : 15,
+        ]}
+      />
       <meshStandardMaterial color="#718A7D" roughness={0.9} />
     </mesh>
   );
 }
 
-function Plant({ x, z }: { x: number; z: number }) {
+function Plant({
+  x,
+  z,
+  quality,
+}: {
+  x: number;
+  z: number;
+  quality: SceneQuality;
+}) {
   return (
     <group position={[x, terrainHeight(x, z), z]}>
       {[-0.22, 0, 0.22].map((offset, index) => (
@@ -504,9 +637,16 @@ function Plant({ x, z }: { x: number; z: number }) {
           key={offset}
           position={[offset, 0.32 + index * 0.06, 0]}
           rotation={[0, 0, offset * 1.6]}
-          castShadow
+          castShadow={quality === "desktop"}
         >
-          <capsuleGeometry args={[0.11, 0.45, 3, 7]} />
+          <capsuleGeometry
+            args={[
+              0.11,
+              0.45,
+              quality === "mobile" ? 2 : 3,
+              quality === "mobile" ? 5 : 7,
+            ]}
+          />
           <meshStandardMaterial color={index === 1 ? "#82C95E" : "#62AC52"} />
         </mesh>
       ))}
@@ -709,11 +849,13 @@ function World({
   monsterKey,
   onPlayerFrame,
   dna,
+  quality,
 }: {
   controls: React.RefObject<ControlState>;
   eatenIds: ReadonlySet<string>;
   monsterKey: number;
   dna: MonsterDna;
+  quality: SceneQuality;
   onPlayerFrame: (
     x: number,
     z: number,
@@ -736,44 +878,70 @@ function World({
         position={[-16, 24, -10]}
         intensity={2.15}
         color="#FFF4D5"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
+        castShadow={quality === "desktop"}
+        shadow-mapSize={quality === "desktop" ? [2048, 2048] : [512, 512]}
         shadow-camera-left={-140}
         shadow-camera-right={140}
         shadow-camera-top={140}
         shadow-camera-bottom={-140}
       />
-      <Sea />
-      <Terrain />
-      <River />
+      <Sea quality={quality} />
+      <Terrain quality={quality} />
+      <River quality={quality} />
       {ALL_TREES.map(([x, z, scale], index) =>
-        eatenIds.has(`tree-${index}`) ? null : (
-          <Tree key={`tree-${index}`} x={x} z={z} scale={scale} />
+        eatenIds.has(`tree-${index}`) ||
+        !isVisibleSceneryItem(quality, index, TREES.length) ? null : (
+          <Tree
+            key={`tree-${index}`}
+            x={x}
+            z={z}
+            scale={scale}
+            quality={quality}
+          />
         ),
       )}
       {ALL_BUSHES.map(([x, z, scale], index) =>
-        eatenIds.has(`bush-${index}`) ? null : (
-          <Bush key={`bush-${index}`} x={x} z={z} scale={scale} />
+        eatenIds.has(`bush-${index}`) ||
+        !isVisibleSceneryItem(quality, index, BUSHES.length) ? null : (
+          <Bush
+            key={`bush-${index}`}
+            x={x}
+            z={z}
+            scale={scale}
+            quality={quality}
+          />
         ),
       )}
       {ROCKS.map(([x, z, scale, rotation]) => (
-        <Rock key={`${x}-${z}`} x={x} z={z} scale={scale} rotation={rotation} />
-      ))}
-      {EXTRA_ROCKS.map(([x, z, scale, rotation]) => (
         <Rock
-          key={`extra-${x}-${z}`}
+          key={`${x}-${z}`}
           x={x}
           z={z}
           scale={scale}
           rotation={rotation}
+          quality={quality}
         />
       ))}
+      {EXTRA_ROCKS.map(([x, z, scale, rotation], index) =>
+        !isVisibleSceneryItem(quality, index, 0) ? null : (
+          <Rock
+            key={`extra-${x}-${z}`}
+            x={x}
+            z={z}
+            scale={scale}
+            rotation={rotation}
+            quality={quality}
+          />
+        ),
+      )}
       {PLANTS.map(([x, z]) => (
-        <Plant key={`${x}-${z}`} x={x} z={z} />
+        <Plant key={`${x}-${z}`} x={x} z={z} quality={quality} />
       ))}
-      {EXTRA_PLANTS.map(([x, z]) => (
-        <Plant key={`extra-${x}-${z}`} x={x} z={z} />
-      ))}
+      {EXTRA_PLANTS.map(([x, z], index) =>
+        !isVisibleSceneryItem(quality, index, 0) ? null : (
+          <Plant key={`extra-${x}-${z}`} x={x} z={z} quality={quality} />
+        ),
+      )}
       <Float
         speed={1.2}
         rotationIntensity={0.04}
@@ -790,7 +958,7 @@ function World({
         </group>
       </Float>
       <Sparkles
-        count={64}
+        count={quality === "mobile" ? 16 : 64}
         scale={[74, 9, 74]}
         position={[0, 4, 0]}
         size={1.6}
@@ -893,6 +1061,11 @@ export function GameExperience() {
   const [monsterKey, setMonsterKey] = useState(0);
   const [monsterDna, setMonsterDna] = useState<MonsterDna>(DEFAULT_MONSTER_DNA);
   const [creatorOpen, setCreatorOpen] = useState(false);
+  const sceneQuality = useSyncExternalStore(
+    subscribeToDeviceProfile,
+    getDeviceProfile,
+    getServerDeviceProfile,
+  );
 
   const reportPlayerFrame = useCallback(
     (x: number, z: number, moving: boolean, sprinting: boolean) => {
@@ -952,7 +1125,8 @@ export function GameExperience() {
 
         let nearest: Edible | null = null;
         let nearestDistance = EAT_DISTANCE;
-        for (const edible of EDIBLES) {
+        const ediblePool = sceneQuality === "mobile" ? MOBILE_EDIBLES : EDIBLES;
+        for (const edible of ediblePool) {
           if (eatenIdsRef.current.has(edible.id)) continue;
           const distance = Math.hypot(
             edible.x - controls.current.playerPosition.x,
@@ -989,7 +1163,7 @@ export function GameExperience() {
         if (!controls.current.isDead) setStatus("Explore the island");
       }, 1400);
     },
-    [killMonster, setEnergyLevel],
+    [killMonster, sceneQuality, setEnergyLevel],
   );
 
   const resetGame = useCallback(() => {
@@ -1159,29 +1333,39 @@ export function GameExperience() {
 
   return (
     <main className="game-shell">
-      <Canvas
-        shadows
-        dpr={[1, 1.6]}
-        camera={{ fov: 48, near: 0.1, far: 420, position: [8, 8, 12] }}
-        gl={{ antialias: true, powerPreference: "high-performance" }}
-        onPointerDown={(event) => {
-          if (
-            event.pointerType === "mouse" &&
-            event.target instanceof HTMLCanvasElement &&
-            !document.pointerLockElement
-          ) {
-            void event.target.requestPointerLock();
-          }
-        }}
-      >
-        <World
-          controls={controls}
-          eatenIds={eatenIds}
-          monsterKey={monsterKey}
-          onPlayerFrame={reportPlayerFrame}
-          dna={monsterDna}
-        />
-      </Canvas>
+      {sceneQuality ? (
+        <Canvas
+          shadows={sceneQuality === "desktop"}
+          dpr={sceneQuality === "mobile" ? 1 : [1, 1.6]}
+          camera={{ fov: 48, near: 0.1, far: 420, position: [8, 8, 12] }}
+          gl={{
+            antialias: sceneQuality === "desktop",
+            powerPreference: "high-performance",
+          }}
+          onPointerDown={(event) => {
+            if (
+              event.pointerType === "mouse" &&
+              event.target instanceof HTMLCanvasElement &&
+              !document.pointerLockElement
+            ) {
+              void event.target.requestPointerLock();
+            }
+          }}
+        >
+          <World
+            controls={controls}
+            eatenIds={eatenIds}
+            monsterKey={monsterKey}
+            onPlayerFrame={reportPlayerFrame}
+            dna={monsterDna}
+            quality={sceneQuality}
+          />
+        </Canvas>
+      ) : (
+        <div className="scene-loading" role="status" aria-live="polite">
+          Growing the island…
+        </div>
+      )}
 
       <div className="game-hud" aria-live="polite">
         <div className="hud-top-left">
