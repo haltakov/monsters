@@ -1,0 +1,27 @@
+{
+  "name": "monsters",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A family-built monster ecosystem game.",
+  "packageManager": "pnpm@11.18.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently -n WEB,API -c cyan,green \"pnpm dev:web\" \"pnpm dev:api\"",
+    "dev:web": "pnpm --filter @monsters/web dev",
+    "dev:api": "pnpm --filter @monsters/api dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "format": "prettier --write .",
+    "db:generate": "pnpm --filter @monsters/api prisma:generate",
+    "db:migrate": "pnpm --filter @monsters/api prisma:migrate",
+    "db:studio": "pnpm --filter @monsters/api prisma:studio"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "prettier": "^3.6.2"
+  }
+}

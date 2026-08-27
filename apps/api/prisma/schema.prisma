@@ -1,0 +1,33 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model World {
+  id        String    @id @default(cuid())
+  name      String
+  seed      Int
+  monsters Monster[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Monster {
+  id        String   @id @default(cuid())
+  name      String
+  species   String
+  dna       Json
+  position  Json?
+  energy    Int      @default(100)
+  world     World    @relation(fields: [worldId], references: [id], onDelete: Cascade)
+  worldId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([worldId])
+}

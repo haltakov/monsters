@@ -1,0 +1,26 @@
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+out/
+dist/
+coverage/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Codex scratch and deliverable directories
+/work/
+/outputs/
+
+# Prisma generated client
+apps/api/src/generated/prisma/
