@@ -510,6 +510,11 @@ button {
   justify-items: end;
   gap: 8px;
 }
+.dna-hud-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .dna-chip {
   display: flex;
   align-items: center;
@@ -521,6 +526,27 @@ button {
   background: rgb(255 249 232 / 90%);
   font-family: var(--font-mono), monospace;
   font-size: 9px;
+}
+.dna-lab-button {
+  height: 34px;
+  padding: 0 12px;
+  border: 1.5px solid var(--ink);
+  border-radius: 11px;
+  background: var(--coral);
+  box-shadow: 2px 2px 0 rgb(23 63 53 / 22%);
+  color: var(--ink);
+  font-family: var(--font-display), sans-serif;
+  font-size: 11px;
+  font-weight: 680;
+  pointer-events: auto;
+  cursor: pointer;
+  transition:
+    transform 0.14s ease,
+    box-shadow 0.14s ease;
+}
+.dna-lab-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 2px 3px 0 rgb(23 63 53 / 24%);
 }
 .energy-bar {
   position: relative;
@@ -749,6 +775,362 @@ kbd {
   font-size: 9px;
   font-weight: 700;
 }
+.creator-overlay {
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  padding: clamp(12px, 2.4vw, 30px);
+  display: grid;
+  place-items: center;
+  background: rgb(18 54 47 / 78%);
+  font-family: var(--font-body), sans-serif;
+  backdrop-filter: blur(10px);
+}
+.creator-lab {
+  width: min(1220px, 100%);
+  height: min(790px, calc(100dvh - 24px));
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 2px solid var(--ink);
+  border-radius: 24px;
+  background: #f7f0d9;
+  box-shadow: 10px 12px 0 rgb(9 37 31 / 34%);
+}
+.creator-header,
+.creator-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 17px 20px;
+  background: #fff9e8;
+}
+.creator-header {
+  border-bottom: 1.5px solid rgb(23 63 53 / 30%);
+}
+.creator-header h2 {
+  margin-top: 2px;
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(24px, 3vw, 35px);
+  line-height: 1;
+}
+.creator-kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #54746b;
+  font-family: var(--font-mono), monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.creator-close {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--ink);
+  border-radius: 12px;
+  background: #e7e1cc;
+  color: var(--ink);
+  cursor: pointer;
+}
+.creator-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(370px, 0.92fr) minmax(500px, 1.08fr);
+}
+.creator-stage {
+  position: relative;
+  min-height: 0;
+  padding: 18px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  overflow: hidden;
+  border-right: 1.5px solid rgb(23 63 53 / 30%);
+  background:
+    radial-gradient(
+      circle at 15% 16%,
+      rgb(255 255 255 / 50%) 0 2px,
+      transparent 3px
+    ),
+    linear-gradient(150deg, #a6d3c9, #75b6a5);
+  background-size:
+    34px 34px,
+    auto;
+}
+.creator-stage::before {
+  content: "LIVE SPECIMEN";
+  position: absolute;
+  z-index: 2;
+  top: 30px;
+  left: 30px;
+  padding: 6px 8px;
+  border: 1px solid rgb(23 63 53 / 38%);
+  border-radius: 7px;
+  background: rgb(255 249 232 / 76%);
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  pointer-events: none;
+}
+.creator-canvas {
+  min-height: 300px;
+  overflow: hidden;
+  border: 1.5px solid rgb(23 63 53 / 45%);
+  border-radius: 20px 20px 42px 42px;
+  background: #b9dfd8;
+  box-shadow: inset 0 -30px 60px rgb(44 111 93 / 16%);
+  cursor: grab;
+}
+.creator-canvas:active {
+  cursor: grabbing;
+}
+.rotate-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #315e53;
+  font-family: var(--font-mono), monospace;
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.specimen-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  overflow: hidden;
+  border: 1.5px solid var(--ink);
+  border-radius: 10px;
+  background: #fff9e8;
+}
+.specimen-stats span {
+  padding: 7px 5px;
+  text-align: center;
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.specimen-stats span + span {
+  border-left: 1px solid rgb(23 63 53 / 25%);
+}
+.creator-controls {
+  min-height: 0;
+  padding: 19px 20px 28px;
+  overflow-y: auto;
+  scrollbar-color: #6ba996 #efe6ca;
+}
+.builder-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.builder-heading > div {
+  display: grid;
+  gap: 3px;
+}
+.builder-heading span,
+.dna-tape > span {
+  font-family: var(--font-mono), monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+}
+.builder-heading strong {
+  font-family: var(--font-display), sans-serif;
+  font-size: 17px;
+}
+.surprise-button {
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--ink);
+  border-radius: 9px;
+  background: #b9dfd8;
+  color: var(--ink);
+  font-family: var(--font-display), sans-serif;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.gene-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.gene-field {
+  min-width: 0;
+  padding: 9px 10px 10px;
+  border: 1px solid rgb(23 63 53 / 28%);
+  border-radius: 10px;
+  background: rgb(255 249 232 / 56%);
+}
+.gene-field legend {
+  padding: 0 5px;
+  color: #54746b;
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.gene-options {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 5px;
+}
+.gene-options button {
+  min-width: 0;
+  padding: 7px 4px;
+  border: 1px solid rgb(23 63 53 / 30%);
+  border-radius: 7px;
+  background: #eee7d1;
+  color: var(--ink);
+  font-family: var(--font-body), sans-serif;
+  font-size: 9px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.gene-options button.selected {
+  border-color: var(--ink);
+  background: var(--coral);
+  box-shadow: 1px 2px 0 rgb(23 63 53 / 22%);
+}
+.color-gene-field {
+  padding-bottom: 9px;
+}
+.color-options {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.color-options button {
+  aspect-ratio: 1.25;
+  padding: 3px;
+  border: 1.5px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.color-options button span {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: 1px solid rgb(23 63 53 / 38%);
+  border-radius: 5px;
+  background: var(--swatch);
+}
+.color-options button.selected {
+  border-color: var(--ink);
+  background: #fff9e8;
+  box-shadow: 1px 2px 0 rgb(23 63 53 / 22%);
+}
+.dna-tape {
+  margin-top: 13px;
+  padding: 11px;
+  display: grid;
+  gap: 7px;
+  border: 1.5px dashed #315e53;
+  border-radius: 10px;
+  background: #dce6bc;
+}
+.dna-tape > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dna-tape textarea {
+  width: 100%;
+  min-height: 74px;
+  resize: vertical;
+  padding: 9px 10px;
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  outline: none;
+  background: #fffdf4;
+  color: var(--ink);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  line-height: 1.55;
+}
+.dna-tape textarea:focus {
+  box-shadow: 0 0 0 3px rgb(241 140 115 / 32%);
+}
+.dna-tape small {
+  color: #54746b;
+  font-size: 9px;
+}
+.dna-tape.invalid {
+  border-color: #b64f46;
+  background: #f3d4c7;
+}
+.dna-tape.invalid small {
+  color: #9e3f38;
+  font-weight: 700;
+}
+.creator-footer {
+  border-top: 1.5px solid rgb(23 63 53 / 30%);
+}
+.creator-footer > span {
+  color: #54746b;
+  font-family: var(--font-mono), monospace;
+  font-size: 8px;
+  letter-spacing: 0.04em;
+}
+.creator-footer > div {
+  display: flex;
+  gap: 9px;
+}
+.creator-cancel,
+.creator-apply {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1.5px solid var(--ink);
+  border-radius: 10px;
+  color: var(--ink);
+  font-family: var(--font-display), sans-serif;
+  font-size: 11px;
+  font-weight: 680;
+  cursor: pointer;
+}
+.creator-cancel {
+  background: #e7e1cc;
+}
+.creator-apply {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--coral);
+  box-shadow: 3px 3px 0 rgb(23 63 53 / 23%);
+}
+.creator-apply:disabled {
+  filter: grayscale(0.8);
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+.creator-close:focus-visible,
+.dna-lab-button:focus-visible,
+.surprise-button:focus-visible,
+.gene-options button:focus-visible,
+.color-options button:focus-visible,
+.creator-cancel:focus-visible,
+.creator-apply:focus-visible {
+  outline: 3px solid #fff9e8;
+  box-shadow: 0 0 0 5px var(--ink);
+}
+
 .mobile-controls {
   display: none;
 }
@@ -796,6 +1178,31 @@ kbd {
 }
 
 @media (max-width: 920px) {
+  .creator-overlay {
+    padding: 8px;
+  }
+  .creator-lab {
+    height: calc(100dvh - 16px);
+  }
+  .creator-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(270px, 0.85fr) minmax(0, 1.15fr);
+  }
+  .creator-stage {
+    padding: 12px;
+    border-right: 0;
+    border-bottom: 1.5px solid rgb(23 63 53 / 30%);
+  }
+  .creator-stage::before {
+    top: 22px;
+    left: 22px;
+  }
+  .creator-canvas {
+    min-height: 205px;
+  }
+  .creator-footer > span {
+    display: none;
+  }
   .hero {
     grid-template-columns: 1fr;
     gap: 34px;
@@ -881,6 +1288,63 @@ kbd {
 }
 
 @media (max-width: 620px) {
+  .creator-overlay {
+    padding: 0;
+  }
+  .creator-lab {
+    height: 100dvh;
+    border-width: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .creator-header,
+  .creator-footer {
+    padding: 11px 12px;
+  }
+  .creator-header h2 {
+    font-size: 24px;
+  }
+  .creator-kicker {
+    font-size: 7px;
+  }
+  .creator-layout {
+    grid-template-rows: minmax(235px, 0.72fr) minmax(0, 1.28fr);
+  }
+  .creator-stage {
+    padding: 8px;
+    gap: 5px;
+  }
+  .creator-stage::before {
+    top: 16px;
+    left: 16px;
+  }
+  .creator-canvas {
+    min-height: 175px;
+    border-radius: 15px 15px 30px 30px;
+  }
+  .rotate-hint {
+    font-size: 7px;
+  }
+  .specimen-stats span {
+    padding: 5px 2px;
+    font-size: 6px;
+  }
+  .creator-controls {
+    padding: 14px 12px 22px;
+  }
+  .gene-grid {
+    grid-template-columns: 1fr;
+  }
+  .creator-footer > div {
+    width: 100%;
+  }
+  .creator-cancel,
+  .creator-apply {
+    flex: 1;
+    justify-content: center;
+    padding: 0 9px;
+    font-size: 10px;
+  }
   .site-header,
   .hero,
   .trait-strip,

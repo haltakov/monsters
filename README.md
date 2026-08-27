@@ -34,12 +34,17 @@ Open [http://localhost:3100](http://localhost:3100). The API health check lives 
 - Move the mouse after clicking the game — rotate only the camera; the monster aligns with it once movement starts
 - `E` — eat
 - `Space` — attack
+- **Edit monster** — open the rotatable character creator and DNA editor
 - `Esc` — release the mouse
 - Touchscreen — twin virtual sticks and action buttons
 
 The player cannot enter the sea or river. Cross the river using one of the log bridges.
 
 Walking gradually uses energy, sprinting drains it faster, and every attack costs 7 energy. Eat a nearby bush or tree to recover energy. Reaching zero energy kills the monster; press `R` or use the restart button to try again.
+
+## Monster DNA
+
+The creator exposes 10 deterministic genes: body shape, size, leg count, leg shape, eye count, mouth, body color, accent color, pattern, and horns. The builder and direct DNA field both use the same versioned `M1` codec, and the preview shares its geometry component with the playable monster. A valid DNA string therefore always produces exactly the same creature.
 
 ## Project layout
 

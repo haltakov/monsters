@@ -14,6 +14,12 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { MonsterMark } from "@/components/monster-mark";
+import { MonsterCreator } from "@/components/game/monster-creator";
+import {
+  DEFAULT_MONSTER_DNA,
+  type MonsterDna,
+} from "@/components/game/monster-dna";
+import { MonsterVisual } from "@/components/game/monster-model";
 
 type Action = "eat" | "attack" | null;
 type EdibleKind = "tree" | "bush";
@@ -39,6 +45,7 @@ type ControlState = {
   isDead: boolean;
   moving: boolean;
   sprinting: boolean;
+  paused: boolean;
   playerPosition: { x: number; z: number };
 };
 
@@ -514,8 +521,10 @@ function Plant({ x, z }: { x: number; z: number }) {
 function CuteMonster({
   controls,
   onPlayerFrame,
+  dna,
 }: {
   controls: React.RefObject<ControlState>;
+  dna: MonsterDna;
   onPlayerFrame: (
     x: number,
     z: number,
@@ -526,6 +535,8 @@ function CuteMonster({
   const root = useRef<THREE.Group>(null);
   const visual = useRef<THREE.Group>(null);
   const legs = [
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
     useRef<THREE.Group>(null),
     useRef<THREE.Group>(null),
     useRef<THREE.Group>(null),
@@ -550,7 +561,11 @@ function CuteMonster({
     const sprinting = keys.has("ShiftLeft") || keys.has("ShiftRight");
 
     velocity.set(0, 0, 0);
-    if (!state.isDead && Math.abs(horizontal) + Math.abs(forward) > 0.06) {
+    if (
+      !state.isDead &&
+      !state.paused &&
+      Math.abs(horizontal) + Math.abs(forward) > 0.06
+    ) {
       const length = Math.hypot(horizontal, forward);
       const xInput = horizontal / Math.max(1, length);
       const zInput = forward / Math.max(1, length);
@@ -575,6 +590,7 @@ function CuteMonster({
     root.current.rotation.y = state.characterYaw;
     const moving =
       !state.isDead &&
+      !state.paused &&
       Math.hypot(
         root.current.position.x - previousX,
         root.current.position.z - previousZ,
@@ -681,93 +697,7 @@ function CuteMonster({
   return (
     <group ref={root} position={[-8, terrainHeight(-8, 8), 8]}>
       <group ref={visual}>
-        <group>
-          <mesh position={[0, 1.22, 0]} scale={[1.05, 0.95, 1.22]} castShadow>
-            <sphereGeometry args={[0.92, 32, 24]} />
-            <meshStandardMaterial color="#8FCB69" roughness={0.72} />
-          </mesh>
-          <mesh
-            position={[0, 1.02, -0.83]}
-            scale={[0.66, 0.55, 0.18]}
-            castShadow
-          >
-            <sphereGeometry args={[0.78, 28, 20]} />
-            <meshStandardMaterial color="#B7DF85" roughness={0.8} />
-          </mesh>
-          <mesh position={[-0.39, 1.55, -0.86]}>
-            <sphereGeometry args={[0.29, 24, 18]} />
-            <meshStandardMaterial color="#FFF8D9" />
-          </mesh>
-          <mesh position={[0.39, 1.55, -0.86]}>
-            <sphereGeometry args={[0.29, 24, 18]} />
-            <meshStandardMaterial color="#FFF8D9" />
-          </mesh>
-          <mesh position={[-0.4, 1.56, -1.12]}>
-            <sphereGeometry args={[0.105, 18, 14]} />
-            <meshStandardMaterial color="#173F35" />
-          </mesh>
-          <mesh position={[0.38, 1.56, -1.12]}>
-            <sphereGeometry args={[0.105, 18, 14]} />
-            <meshStandardMaterial color="#173F35" />
-          </mesh>
-          <mesh position={[0, 1.98, -0.58]} scale={[0.72, 0.72, 0.35]}>
-            <sphereGeometry args={[0.25, 22, 16]} />
-            <meshStandardMaterial color="#FFF8D9" />
-          </mesh>
-          <mesh position={[0, 2, -0.79]}>
-            <sphereGeometry args={[0.075, 16, 12]} />
-            <meshStandardMaterial color="#173F35" />
-          </mesh>
-          <mesh
-            position={[-0.57, 2.05, -0.12]}
-            rotation={[0, 0, -0.34]}
-            castShadow
-          >
-            <coneGeometry args={[0.2, 0.62, 18]} />
-            <meshStandardMaterial color="#FF8D6B" />
-          </mesh>
-          <mesh
-            position={[0.57, 2.05, -0.12]}
-            rotation={[0, 0, 0.34]}
-            castShadow
-          >
-            <coneGeometry args={[0.2, 0.62, 18]} />
-            <meshStandardMaterial color="#FF8D6B" />
-          </mesh>
-          <mesh position={[0, 0.96, -1.02]} rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[0.19, 0.035, 12, 28, Math.PI]} />
-            <meshStandardMaterial color="#173F35" />
-          </mesh>
-          <mesh position={[0, 1.12, 1.1]} rotation={[-0.75, 0, 0]} castShadow>
-            <coneGeometry args={[0.24, 1.25, 18]} />
-            <meshStandardMaterial color="#79B957" />
-          </mesh>
-        </group>
-        {[
-          [-0.56, 0.58, -0.52],
-          [0.56, 0.58, -0.52],
-          [-0.56, 0.58, 0.56],
-          [0.56, 0.58, 0.56],
-        ].map((position, index) => (
-          <group
-            key={index}
-            ref={legs[index]}
-            position={position as [number, number, number]}
-          >
-            <mesh position={[0, -0.25, 0]} castShadow>
-              <capsuleGeometry args={[0.17, 0.42, 8, 14]} />
-              <meshStandardMaterial color="#679D4D" roughness={0.78} />
-            </mesh>
-            <mesh
-              position={[0, -0.52, -0.09]}
-              scale={[1.3, 0.65, 1.5]}
-              castShadow
-            >
-              <sphereGeometry args={[0.22, 20, 14]} />
-              <meshStandardMaterial color="#FFB66E" roughness={0.72} />
-            </mesh>
-          </group>
-        ))}
+        <MonsterVisual dna={dna} legRefs={legs} />
       </group>
     </group>
   );
@@ -778,10 +708,12 @@ function World({
   eatenIds,
   monsterKey,
   onPlayerFrame,
+  dna,
 }: {
   controls: React.RefObject<ControlState>;
   eatenIds: ReadonlySet<string>;
   monsterKey: number;
+  dna: MonsterDna;
   onPlayerFrame: (
     x: number,
     z: number,
@@ -869,6 +801,7 @@ function World({
         key={monsterKey}
         controls={controls}
         onPlayerFrame={onPlayerFrame}
+        dna={dna}
       />
     </>
   );
@@ -947,6 +880,7 @@ export function GameExperience() {
     isDead: false,
     moving: false,
     sprinting: false,
+    paused: false,
     playerPosition: { x: -8, z: 8 },
   });
   const displayedEnergy = useRef(100);
@@ -957,6 +891,8 @@ export function GameExperience() {
   const [isDead, setIsDead] = useState(false);
   const [eatenIds, setEatenIds] = useState<Set<string>>(() => new Set());
   const [monsterKey, setMonsterKey] = useState(0);
+  const [monsterDna, setMonsterDna] = useState<MonsterDna>(DEFAULT_MONSTER_DNA);
+  const [creatorOpen, setCreatorOpen] = useState(false);
 
   const reportPlayerFrame = useCallback(
     (x: number, z: number, moving: boolean, sprinting: boolean) => {
@@ -995,7 +931,7 @@ export function GameExperience() {
 
   const triggerAction = useCallback(
     (action: Exclude<Action, null>) => {
-      if (controls.current.isDead) return;
+      if (controls.current.isDead || controls.current.paused) return;
 
       if (action === "attack") {
         controls.current.action = action;
@@ -1068,6 +1004,7 @@ export function GameExperience() {
     controls.current.isDead = false;
     controls.current.moving = false;
     controls.current.sprinting = false;
+    controls.current.paused = false;
     controls.current.playerPosition = { x: -8, z: 8 };
     eatenIdsRef.current = new Set();
     setEatenIds(new Set());
@@ -1076,6 +1013,29 @@ export function GameExperience() {
     setMonsterKey((current) => current + 1);
     setStatus("Moss Muncher is ready to explore again!");
   }, [setEnergyLevel]);
+
+  const openCreator = useCallback(() => {
+    controls.current.paused = true;
+    controls.current.keys.clear();
+    controls.current.move = { x: 0, y: 0 };
+    controls.current.look = { x: 0, y: 0 };
+    if (document.pointerLockElement) document.exitPointerLock();
+    setCreatorOpen(true);
+  }, []);
+
+  const closeCreator = useCallback(() => {
+    controls.current.paused = false;
+    controls.current.keys.clear();
+    setCreatorOpen(false);
+  }, []);
+
+  const applyMonsterDna = useCallback((nextDna: MonsterDna) => {
+    controls.current.paused = false;
+    controls.current.keys.clear();
+    setMonsterDna(nextDna);
+    setCreatorOpen(false);
+    setStatus("New DNA expressed. Go test those genes!");
+  }, []);
 
   useEffect(() => {
     let animationFrame = 0;
@@ -1114,6 +1074,7 @@ export function GameExperience() {
         controls.current.move.y;
       if (
         !controls.current.isDead &&
+        !controls.current.paused &&
         Math.abs(horizontal) + Math.abs(forward) > 0.06
       ) {
         const targetYaw =
@@ -1133,7 +1094,11 @@ export function GameExperience() {
         0.72,
       );
 
-      if (!controls.current.isDead && controls.current.moving) {
+      if (
+        !controls.current.isDead &&
+        !controls.current.paused &&
+        controls.current.moving
+      ) {
         const energyRate = controls.current.sprinting
           ? SPRINT_ENERGY_PER_SECOND
           : WALK_ENERGY_PER_SECOND;
@@ -1145,6 +1110,7 @@ export function GameExperience() {
       animationFrame = window.requestAnimationFrame(updateLook);
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      if (controls.current.paused) return;
       controls.current.keys.add(event.code);
       if (
         ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
@@ -1213,6 +1179,7 @@ export function GameExperience() {
           eatenIds={eatenIds}
           monsterKey={monsterKey}
           onPlayerFrame={reportPlayerFrame}
+          dna={monsterDna}
         />
       </Canvas>
 
@@ -1230,9 +1197,21 @@ export function GameExperience() {
           </div>
         </div>
         <div className="hud-top-right">
-          <div className="dna-chip">
-            <Dna size={16} />
-            <span>3 eyes · herbivore · speed 6.2</span>
+          <div className="dna-hud-row">
+            <div className="dna-chip">
+              <Dna size={16} />
+              <span>
+                {monsterDna.eyes} {monsterDna.eyes === 1 ? "eye" : "eyes"} ·{" "}
+                {monsterDna.legs} legs · {monsterDna.pattern}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="dna-lab-button"
+              onClick={openCreator}
+            >
+              Edit monster
+            </button>
           </div>
           <div
             className={`energy-bar${energy <= 25 ? " energy-low" : ""}${isDead ? " energy-empty" : ""}`}
@@ -1351,6 +1330,13 @@ export function GameExperience() {
           <span>Water is off limits. Look for a bridge.</span>
         </div>
       </div>
+      {creatorOpen && (
+        <MonsterCreator
+          dna={monsterDna}
+          onApply={applyMonsterDna}
+          onClose={closeCreator}
+        />
+      )}
     </main>
   );
 }
