@@ -187,9 +187,7 @@ function legPositions(count: MonsterDna["legs"], profile: BodyProfile) {
     profile.scale[2] * (isDenseBiped ? 1.6 : 1.05),
   );
   const rows = Array.from({ length: rowCount }, (_, index) =>
-    rowCount === 1
-      ? 0
-      : -legSpan / 2 + (index / (rowCount - 1)) * legSpan,
+    rowCount === 1 ? 0 : -legSpan / 2 + (index / (rowCount - 1)) * legSpan,
   );
   return rows.flatMap((z) => [
     [-profile.legX, profile.legY, z] as [number, number, number],
@@ -951,11 +949,7 @@ function RespirationDetails({
               faceY - 0.2 + depthOffset * 0.15,
               faceZ + 0.38 + depthOffset,
             ]}
-            rotation={[
-              0.04,
-              side * 0.12,
-              side * (-0.18 - depthOffset * 0.22),
-            ]}
+            rotation={[0.04, side * 0.12, side * (-0.18 - depthOffset * 0.22)]}
             scale={[0.034, 0.095, 0.018]}
           >
             <capsuleGeometry args={[1, 0.46, 6, 10]} />
@@ -970,15 +964,59 @@ function RespirationDetails({
 const SMOOTH_FIELD_SCALE = 2.15;
 const SMOOTH_FIELD_ORIGIN_Y = 1.35;
 const SMOOTH_TAIL_FIELD_SCALE = 1.25;
-const smoothGeometryCache = new Map<string, THREE.BufferGeometry>();
+const SMOOTH_GEOMETRY_CACHE_LIMIT = 64;
+const SMOOTH_GEOMETRY_MOUNT_GRACE_MS = 2_000;
+type SmoothGeometryCacheEntry = {
+  geometry: THREE.BufferGeometry;
+  mountedUsers: number;
+  lastUsedAt: number;
+};
+const smoothGeometryCache = new Map<string, SmoothGeometryCacheEntry>();
 
 type SmoothRig = {
   mesh: THREE.SkinnedMesh;
+  cacheKey: string;
   legBones: THREE.Bone[];
   armBones: THREE.Bone[];
   tailBone?: THREE.Bone;
   material: THREE.MeshStandardMaterial;
 };
+
+function getSmoothGeometryCacheKey(dna: MonsterDna) {
+  return `smooth-hybrid-rig-v1:${JSON.stringify(dna)}`;
+}
+
+function pruneSmoothGeometryCache() {
+  if (smoothGeometryCache.size <= SMOOTH_GEOMETRY_CACHE_LIMIT) return;
+  const now = Date.now();
+  const disposable = [...smoothGeometryCache.entries()]
+    .filter(
+      ([, entry]) =>
+        entry.mountedUsers === 0 &&
+        now - entry.lastUsedAt >= SMOOTH_GEOMETRY_MOUNT_GRACE_MS,
+    )
+    .sort((first, second) => first[1].lastUsedAt - second[1].lastUsedAt);
+  for (const [key, entry] of disposable) {
+    if (smoothGeometryCache.size <= SMOOTH_GEOMETRY_CACHE_LIMIT) break;
+    smoothGeometryCache.delete(key);
+    entry.geometry.dispose();
+  }
+}
+
+function retainSmoothGeometry(cacheKey: string) {
+  const entry = smoothGeometryCache.get(cacheKey);
+  if (!entry) return;
+  entry.mountedUsers += 1;
+  entry.lastUsedAt = Date.now();
+}
+
+function releaseSmoothGeometry(cacheKey: string) {
+  const entry = smoothGeometryCache.get(cacheKey);
+  if (!entry) return;
+  entry.mountedUsers = Math.max(0, entry.mountedUsers - 1);
+  entry.lastUsedAt = Date.now();
+  pruneSmoothGeometryCache();
+}
 
 function addSmoothBall(
   field: MarchingCubes,
@@ -1004,8 +1042,7 @@ function smoothScalarMin(first: number, second: number, smoothing: number) {
     1,
   );
   return (
-    THREE.MathUtils.lerp(second, first, blend) -
-    smoothing * blend * (1 - blend)
+    THREE.MathUtils.lerp(second, first, blend) - smoothing * blend * (1 - blend)
   );
 }
 
@@ -1073,9 +1110,7 @@ function buildSmoothTailPositions(dna: MonsterDna, profile: BodyProfile) {
   ) => {
     const normalizedRadius = radius / (SMOOTH_TAIL_FIELD_SCALE * 2);
     const strength =
-      normalizedRadius *
-      normalizedRadius *
-      (field.isolation + subtract);
+      normalizedRadius * normalizedRadius * (field.isolation + subtract);
     field.addBall(
       0.5 + (x - origin[0]) / (SMOOTH_TAIL_FIELD_SCALE * 2),
       0.5 + (y - origin[1]) / (SMOOTH_TAIL_FIELD_SCALE * 2),
@@ -1195,22 +1230,16 @@ function carveSmoothArch(
 
       for (let y = 1; y < size - 1; y += 1) {
         const worldY =
-          (y / size - 0.5) * SMOOTH_FIELD_SCALE * 2 +
-          SMOOTH_FIELD_ORIGIN_Y;
+          (y / size - 0.5) * SMOOTH_FIELD_SCALE * 2 + SMOOTH_FIELD_ORIGIN_Y;
         const distanceRoof = worldY - roofY;
         const voidDistance = smoothScalarMax(
           smoothScalarMax(distanceNarrow, distanceRoof, csgSmoothing),
           distanceAcross,
           csgSmoothing,
         );
-        const limiter =
-          field.isolation + (24 / fieldCellSize) * voidDistance;
+        const limiter = field.isolation + (24 / fieldCellSize) * voidDistance;
         const fieldIndex = z * field.size2 + y * size + x;
-        let nextValue = smoothScalarMin(
-          field.field[fieldIndex],
-          limiter,
-          8,
-        );
+        let nextValue = smoothScalarMin(field.field[fieldIndex], limiter, 8);
         if (voidDistance <= -fieldCellSize * 1.5) {
           nextValue = Math.min(nextValue, field.isolation - 32);
         }
@@ -1294,8 +1323,7 @@ function smoothPatternMix(
   const nz = (z - cz) / Math.max(0.7, sz);
 
   if (dna.pattern === "stripes") {
-    const wave =
-      0.5 + 0.5 * Math.cos((nz * 3.35 + ny * 0.18) * Math.PI * 2);
+    const wave = 0.5 + 0.5 * Math.cos((nz * 3.35 + ny * 0.18) * Math.PI * 2);
     return THREE.MathUtils.smoothstep(wave, 0.38, 0.68) * 0.7;
   }
   if (dna.pattern === "spots") {
@@ -1317,10 +1345,7 @@ function smoothPatternMix(
     return THREE.MathUtils.smoothstep(signal, 0.5, 0.72) * 0.66;
   }
   const scales =
-    0.5 +
-    0.5 *
-      Math.sin((nx + nz) * 11.5) *
-      Math.sin((ny - nz * 0.72) * 10.5);
+    0.5 + 0.5 * Math.sin((nx + nz) * 11.5) * Math.sin((ny - nz * 0.72) * 10.5);
   return 0.1 + THREE.MathUtils.smoothstep(scales, 0.56, 0.8) * 0.38;
 }
 
@@ -1330,9 +1355,12 @@ function buildSmoothGeometry(
   bodyColor: string,
   accentColor: string,
 ) {
-  const cacheKey = `smooth-hybrid-rig-v1:${JSON.stringify(dna)}`;
+  const cacheKey = getSmoothGeometryCacheKey(dna);
   const cached = smoothGeometryCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    cached.lastUsedAt = Date.now();
+    return cached.geometry;
+  }
 
   const temporaryMaterial = new THREE.MeshStandardMaterial();
   const fieldResolution =
@@ -1373,7 +1401,8 @@ function buildSmoothGeometry(
         field,
         THREE.MathUtils.lerp(arm.shoulder[0], arm.hand[0], progress),
         THREE.MathUtils.lerp(arm.shoulder[1], arm.hand[1], progress),
-        THREE.MathUtils.lerp(arm.shoulder[2], arm.hand[2], progress) - elbowBend,
+        THREE.MathUtils.lerp(arm.shoulder[2], arm.hand[2], progress) -
+          elbowBend,
         THREE.MathUtils.lerp(0.26, 0.2, progress),
         10.4,
       );
@@ -1491,10 +1520,7 @@ function buildSmoothGeometry(
       carveSmoothArch(
         field,
         [0, gapZ],
-        [
-          SMOOTH_FIELD_SCALE * 1.05,
-          gapRadiusZ,
-        ],
+        [SMOOTH_FIELD_SCALE * 1.05, gapRadiusZ],
         archBaseY,
         archTopY,
         "z",
@@ -1650,7 +1676,12 @@ function buildSmoothGeometry(
   );
   geometry.computeBoundingSphere();
   temporaryMaterial.dispose();
-  smoothGeometryCache.set(cacheKey, geometry);
+  smoothGeometryCache.set(cacheKey, {
+    geometry,
+    mountedUsers: 0,
+    lastUsedAt: Date.now(),
+  });
+  pruneSmoothGeometryCache();
   return geometry;
 }
 
@@ -1661,6 +1692,7 @@ function createSmoothRig(
   accentColor: string,
   castShadow: boolean,
 ): SmoothRig {
+  const cacheKey = getSmoothGeometryCacheKey(dna);
   const geometry = buildSmoothGeometry(dna, profile, bodyColor, accentColor);
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
@@ -1716,7 +1748,7 @@ function createSmoothRig(
       ...(tailBone ? [tailBone] : []),
     ]),
   );
-  return { mesh, legBones, armBones, tailBone, material };
+  return { mesh, cacheKey, legBones, armBones, tailBone, material };
 }
 
 function legGaitDirection(index: number) {
@@ -1750,10 +1782,14 @@ function SmoothMonsterCore({
   const tailBoneRef = useRef<THREE.Bone>(null);
 
   useEffect(() => {
+    retainSmoothGeometry(rig.cacheKey);
     legBonesRef.current = rig.legBones;
     armBonesRef.current = rig.armBones;
     tailBoneRef.current = rig.tailBone ?? null;
-    return () => rig.material.dispose();
+    return () => {
+      rig.material.dispose();
+      releaseSmoothGeometry(rig.cacheKey);
+    };
   }, [rig]);
 
   useFrame(({ clock }, delta) => {

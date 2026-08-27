@@ -629,16 +629,22 @@ button {
   cursor: not-allowed;
   transform: none;
 }
-.energy-bar {
+.survival-bars {
+  display: flex;
+  gap: 6px;
+}
+.energy-bar,
+.health-bar {
   position: relative;
-  width: 184px;
+  width: 136px;
   height: 20px;
   border: 2px solid var(--ink);
   border-radius: 9px;
   background: var(--paper);
   overflow: hidden;
 }
-.energy-bar i {
+.energy-bar i,
+.health-bar i {
   display: block;
   width: 100%;
   height: 100%;
@@ -647,13 +653,23 @@ button {
     width 0.3s ease,
     background 0.3s ease;
 }
+.health-bar i {
+  background: linear-gradient(90deg, #d96655, #f18c73);
+}
 .energy-bar.energy-low i {
   background: linear-gradient(90deg, #e88b4d, #f4c45d);
+}
+.health-bar.health-low i {
+  background: linear-gradient(90deg, #ba3f4d, #ef7370);
 }
 .energy-bar.energy-empty i {
   background: var(--coral);
 }
-.energy-bar span {
+.health-bar.health-empty i {
+  background: #9d3147;
+}
+.energy-bar span,
+.health-bar span {
   position: absolute;
   inset: 0;
   display: grid;
@@ -707,6 +723,72 @@ button {
   font-size: 13px;
   font-weight: 600;
   backdrop-filter: blur(8px);
+}
+.ecosystem-pulse {
+  position: absolute;
+  top: 168px;
+  left: 50%;
+  min-width: 350px;
+  min-height: 30px;
+  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transform: translateX(-50%);
+  border: 1.5px solid rgb(23 63 53 / 42%);
+  border-radius: 12px;
+  background: rgb(255 249 232 / 82%);
+  color: var(--ink);
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+  letter-spacing: 0.04em;
+  backdrop-filter: blur(8px);
+}
+.ecosystem-pulse strong {
+  font-size: 10px;
+}
+.ecosystem-pulse > i {
+  width: 1px;
+  height: 12px;
+  margin-inline: 3px;
+  background: rgb(23 63 53 / 24%);
+}
+.ecosystem-live {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #347f68;
+  font-weight: 800;
+}
+.ecosystem-live svg {
+  animation: ecosystem-heartbeat 1.8s ease-in-out infinite;
+}
+.ecosystem-pulse small {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  width: max-content;
+  max-width: 440px;
+  padding: 3px 8px;
+  transform: translateX(-50%);
+  border-radius: 7px;
+  background: rgb(23 63 53 / 74%);
+  color: white;
+  font-family: var(--font-body), sans-serif;
+  font-size: 8px;
+  letter-spacing: 0;
+}
+@keyframes ecosystem-heartbeat {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.72;
+  }
+  45% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
 }
 .death-card {
   position: absolute;
@@ -860,6 +942,9 @@ kbd {
 }
 .attack-button {
   background: var(--coral);
+}
+.mate-button {
+  background: #f3d65c;
 }
 .action-button span {
   font-family: var(--font-display), sans-serif;
@@ -1762,6 +1847,14 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
     left: 16px;
     bottom: 160px;
   }
+  .survival-bars {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .energy-bar,
+  .health-bar {
+    width: 142px;
+  }
   .dna-chip {
     display: none;
   }
@@ -1808,6 +1901,14 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
     top: 88px;
     font-size: 11px;
     min-width: 190px;
+  }
+  .ecosystem-pulse {
+    top: 136px;
+    min-width: 292px;
+  }
+  .ecosystem-pulse small {
+    max-width: min(380px, calc(100vw - 28px));
+    text-align: center;
   }
   .ability-controls {
     top: 126px;
@@ -1977,6 +2078,18 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
     transform: none;
     min-width: 0;
     max-width: none;
+  }
+  .ecosystem-pulse {
+    top: 126px;
+    min-width: 260px;
+    max-width: calc(100vw - 32px);
+  }
+  .ecosystem-live {
+    font-size: 0;
+  }
+  .ecosystem-live svg {
+    width: 14px;
+    height: 14px;
   }
   .mobile-controls .joystick:first-child {
     left: 16px;

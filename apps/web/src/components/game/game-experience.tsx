@@ -3,11 +3,14 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Float, Sky, Sparkles } from "@react-three/drei";
+import { Billboard, Float, Sky, Sparkles } from "@react-three/drei";
 import {
+  Activity,
   ArrowLeft,
   Crosshair,
   Dna,
+  Egg,
+  Heart,
   Leaf,
   MousePointer2,
   Plus,
@@ -30,13 +33,31 @@ import {
   canMonsterHunt,
   canMonsterSwim,
   DEFAULT_MONSTER_DNA,
-  getMonsterFollowerCount,
+  getMonsterSizeScale,
   type MonsterDna,
 } from "@/components/game/monster-dna";
 import {
   MonsterVisual,
   type MonsterMotionState,
 } from "@/components/game/monster-model";
+import {
+  ADULT_AGE_SECONDS,
+  createBabyName,
+  createInitialWildPopulation,
+  createSeededRandom,
+  dnaSimilarity,
+  EGG_HATCH_SECONDS,
+  getCreaturePower,
+  getCreatureSpeed,
+  MATING_COOLDOWN_SECONDS,
+  MAX_WILD_MONSTERS,
+  mixMonsterDna,
+  type SimulatedCreature,
+  type SimulationEgg,
+  type SimulationEvent,
+  type SimulationIntent,
+  type SimulationSnapshot,
+} from "@/components/game/monster-simulation";
 import {
   LanguageSwitcher,
   useI18n,
@@ -85,6 +106,45 @@ type StatusMessage = {
   values?: Record<string, string | number>;
 };
 
+type SimulationAttackResult = {
+  hit: boolean;
+  targetName?: string;
+  defeated?: boolean;
+  energyReward?: number;
+};
+
+type SimulationMateResult =
+  | {
+      ok: true;
+      partnerName: string;
+      mutations: number;
+      cooldownUntil: number;
+    }
+  | {
+      ok: false;
+      reason:
+        "cooldown" | "noPartner" | "tooFar" | "notReady" | "populationFull";
+      partnerName?: string;
+      seconds?: number;
+    };
+
+type SimulationApi = {
+  getTime: () => number;
+  attackAt: (
+    x: number,
+    z: number,
+    attackerDna: MonsterDna,
+  ) => SimulationAttackResult;
+  requestMate: (
+    playerId: string,
+    playerName: string,
+    playerDna: MonsterDna,
+    x: number,
+    z: number,
+    playerCooldownUntil: number,
+  ) => SimulationMateResult;
+};
+
 function subscribeToDeviceProfile() {
   return () => undefined;
 }
@@ -124,6 +184,9 @@ type ControlState = {
   action: Action;
   actionStarted: number;
   energy: number;
+  health: number;
+  matingCooldownUntil: number;
+  lastAttackedAt: number;
   isDead: boolean;
   moving: boolean;
   sprinting: boolean;
@@ -1258,138 +1321,973 @@ function CuteMonster({
   );
 }
 
-const PACK_FORMATION: Array<[number, number]> = [
-  [-1.7, 2.6],
-  [1.7, 2.6],
-  [-3.1, 4.6],
-  [3.1, 4.6],
-  [0, 5.8],
-];
+type SimulationParent = {
+  id: string;
+  name: string;
+  dna: MonsterDna;
+  generation: number;
+  x: number;
+  z: number;
+};
 
-function PackFollowers({
-  controls,
-  dna,
+function settleCreatureHabitat(creature: SimulatedCreature, index = 0) {
+  const aquatic =
+    canMonsterSwim(creature.dna) && creature.dna.adaptation !== "wings";
+  if (aquatic) {
+    creature.z = THREE.MathUtils.clamp(creature.z, -96, 96);
+    creature.x = riverX(creature.z) + ((index % 3) - 1) * 0.35;
+    creature.y = -0.72;
+    return creature;
+  }
+
+  let attempts = 0;
+  while (
+    (isWaterAt(creature.x, creature.z) ||
+      Math.hypot(creature.x, creature.z) > PLAYABLE_RADIUS - 8) &&
+    attempts < 12
+  ) {
+    const angle = creature.wanderAngle + attempts * 0.83;
+    const radius = 14 + ((index * 13 + attempts * 7) % 42);
+    creature.x = Math.cos(angle) * radius;
+    creature.z = Math.sin(angle) * radius;
+    attempts += 1;
+  }
+  creature.y =
+    terrainHeight(creature.x, creature.z) +
+    (creature.dna.adaptation === "wings" ? 4.2 : 0);
+  return creature;
+}
+
+function direction(fromX: number, fromZ: number, toX: number, toZ: number) {
+  const dx = toX - fromX;
+  const dz = toZ - fromZ;
+  const distance = Math.hypot(dx, dz);
+  return {
+    x: distance > 0.0001 ? dx / distance : 0,
+    z: distance > 0.0001 ? dz / distance : 0,
+    distance,
+  };
+}
+
+function SimulatedMonsterActor({
+  creature,
   quality,
 }: {
-  controls: React.RefObject<ControlState>;
-  dna: MonsterDna;
+  creature: SimulatedCreature;
   quality: SceneQuality;
 }) {
-  const followers = [
-    useRef<THREE.Group>(null),
-    useRef<THREE.Group>(null),
-    useRef<THREE.Group>(null),
-    useRef<THREE.Group>(null),
-    useRef<THREE.Group>(null),
-  ];
-  const smoothMotions = [
-    useRef<MonsterMotionState>({ stride: 0, intensity: 0, gait: "idle" }),
-    useRef<MonsterMotionState>({ stride: 0, intensity: 0, gait: "idle" }),
-    useRef<MonsterMotionState>({ stride: 0, intensity: 0, gait: "idle" }),
-    useRef<MonsterMotionState>({ stride: 0, intensity: 0, gait: "idle" }),
-    useRef<MonsterMotionState>({ stride: 0, intensity: 0, gait: "idle" }),
-  ];
-  const target = useMemo(() => new THREE.Vector3(), []);
-  const count = getMonsterFollowerCount(dna);
-  const canSwim = canMonsterSwim(dna);
+  const root = useRef<THREE.Group>(null);
+  const visual = useRef<THREE.Group>(null);
+  const vitals = useRef<THREE.Group>(null);
+  const healthFill = useRef<THREE.Mesh>(null);
+  const energyFill = useRef<THREE.Mesh>(null);
+  const lastPosition = useRef({ x: creature.x, z: creature.z });
+  const motion = useRef<MonsterMotionState>({
+    stride: 0,
+    intensity: 0,
+    gait: "idle",
+  });
 
   useFrame(({ clock }, delta) => {
-    const yaw = controls.current.characterYaw;
-    const sin = Math.sin(yaw);
-    const cos = Math.cos(yaw);
-    followers.forEach((follower, index) => {
-      if (!follower.current || index >= count) return;
-      const [lateral, behind] = PACK_FORMATION[index];
-      const x =
-        controls.current.playerPosition.x + lateral * cos + behind * sin;
-      const z =
-        controls.current.playerPosition.z - lateral * sin + behind * cos;
-      const swimming = canSwim && isWaterAt(x, z);
-      const mode = controls.current.locomotionMode;
-      const moving = controls.current.moving;
-      const sprinting = controls.current.sprinting;
-      const gait: MonsterMotionState["gait"] =
-        mode === "fly"
-          ? "fly"
-          : mode === "swim" || mode === "dive" || swimming
-            ? "swim"
-            : sprinting && moving
-              ? "sprint"
-              : moving
-                ? "walk"
-                : "idle";
-      const cadence =
-        gait === "sprint"
-          ? 15
-          : gait === "swim"
-            ? 7.4
-            : gait === "fly"
-              ? 6.2
-              : 10.5;
-      const amount =
-        gait === "sprint"
-          ? 0.64
-          : gait === "swim"
-            ? 0.32
-            : gait === "fly"
-              ? 0.15
-              : 0.46;
-      smoothMotions[index].current.stride = moving
-        ? Math.sin(clock.elapsedTime * cadence + index * 0.72) * amount
+    if (!root.current || !visual.current) return;
+    const targetY = creature.alive
+      ? creature.dna.adaptation === "wings"
+        ? terrainHeight(creature.x, creature.z) +
+          4.2 +
+          Math.sin(clock.elapsedTime * 1.6) * 0.22
+        : canMonsterSwim(creature.dna) && isWaterAt(creature.x, creature.z)
+          ? -0.72 + Math.sin(clock.elapsedTime * 2.1) * 0.07
+          : terrainHeight(creature.x, creature.z)
+      : terrainHeight(creature.x, creature.z);
+    root.current.position.x = THREE.MathUtils.damp(
+      root.current.position.x,
+      creature.x,
+      10,
+      delta,
+    );
+    root.current.position.y = THREE.MathUtils.damp(
+      root.current.position.y,
+      targetY,
+      9,
+      delta,
+    );
+    root.current.position.z = THREE.MathUtils.damp(
+      root.current.position.z,
+      creature.z,
+      10,
+      delta,
+    );
+    root.current.rotation.y = dampAngle(
+      root.current.rotation.y,
+      creature.yaw,
+      8,
+      delta,
+    );
+
+    const moved = Math.hypot(
+      creature.x - lastPosition.current.x,
+      creature.z - lastPosition.current.z,
+    );
+    lastPosition.current = { x: creature.x, z: creature.z };
+    const swimming =
+      canMonsterSwim(creature.dna) && isWaterAt(creature.x, creature.z);
+    const flying = creature.dna.adaptation === "wings";
+    const cadence =
+      creature.intent === "flee" || creature.intent === "hunt" ? 14 : 9;
+    motion.current.stride =
+      moved > 0.0005 ? Math.sin(clock.elapsedTime * cadence) * 0.48 : 0;
+    motion.current.intensity = moved > 0.0005 ? 0.82 : 0;
+    motion.current.gait = flying
+      ? "fly"
+      : swimming
+        ? "swim"
+        : creature.intent === "flee" || creature.intent === "hunt"
+          ? "sprint"
+          : moved > 0.0005
+            ? "walk"
+            : "idle";
+
+    const juvenileScale = THREE.MathUtils.lerp(
+      0.48,
+      0.66,
+      THREE.MathUtils.smoothstep(creature.age, 0, ADULT_AGE_SECONDS),
+    );
+    visual.current.scale.setScalar(juvenileScale);
+    visual.current.rotation.z = THREE.MathUtils.damp(
+      visual.current.rotation.z,
+      creature.alive ? 0 : -Math.PI * 0.46,
+      6,
+      delta,
+    );
+    const actionPulse =
+      creature.intent === "hunt" || creature.intent === "defend"
+        ? Math.max(0, Math.sin(clock.elapsedTime * 7.5))
         : 0;
-      smoothMotions[index].current.intensity = moving
-        ? sprinting
-          ? 1
-          : 0.76
-        : 0;
-      smoothMotions[index].current.gait = gait;
-      const y =
-        mode === "fly" || mode === "dive"
-          ? controls.current.playerPosition.y +
-            Math.sin(clock.elapsedTime * 2.7 + index) * 0.18
-          : swimming
-            ? (isDeepWaterAt(x, z) ? -1.05 : -0.72) +
-              Math.sin(clock.elapsedTime * 2.4 + index) * 0.08
-            : terrainHeight(x, z);
-      target.set(x, y, z);
-      if (!follower.current.userData.ready) {
-        follower.current.position.copy(target);
-        follower.current.userData.ready = true;
-      } else {
-        follower.current.position.lerp(target, 1 - Math.exp(-delta * 3.2));
+    visual.current.position.z = THREE.MathUtils.damp(
+      visual.current.position.z,
+      -actionPulse * 0.24,
+      12,
+      delta,
+    );
+
+    if (vitals.current) {
+      vitals.current.visible =
+        creature.alive && (creature.health < 98 || creature.energy < 72);
+    }
+    const healthRatio = THREE.MathUtils.clamp(creature.health / 100, 0.015, 1);
+    const energyRatio = THREE.MathUtils.clamp(creature.energy / 100, 0.015, 1);
+    if (healthFill.current) {
+      healthFill.current.scale.x = healthRatio;
+      healthFill.current.position.x = -(1 - healthRatio) * 0.52;
+    }
+    if (energyFill.current) {
+      energyFill.current.scale.x = energyRatio;
+      energyFill.current.position.x = -(1 - energyRatio) * 0.52;
+    }
+  });
+
+  const barHeight = 2.25 * getMonsterSizeScale(creature.dna.size);
+  return (
+    <group ref={root} position={[creature.x, creature.y, creature.z]}>
+      <group ref={visual}>
+        <MonsterVisual
+          dna={creature.dna}
+          motionRef={motion}
+          castShadow={quality === "desktop"}
+        />
+      </group>
+      <Billboard position={[0, barHeight, 0]} follow>
+        <group ref={vitals}>
+          <mesh position={[0, 0.08, 0]} scale={[0.58, 0.065, 0.025]}>
+            <planeGeometry args={[2, 1]} />
+            <meshBasicMaterial color="#173F35" transparent opacity={0.72} />
+          </mesh>
+          <mesh
+            ref={healthFill}
+            position={[0, 0.08, 0.01]}
+            scale={[1, 0.045, 0.025]}
+          >
+            <planeGeometry args={[1.04, 1]} />
+            <meshBasicMaterial color="#F18C73" />
+          </mesh>
+          <mesh position={[0, -0.08, 0]} scale={[0.58, 0.055, 0.025]}>
+            <planeGeometry args={[2, 1]} />
+            <meshBasicMaterial color="#173F35" transparent opacity={0.72} />
+          </mesh>
+          <mesh
+            ref={energyFill}
+            position={[0, -0.08, 0.01]}
+            scale={[1, 0.035, 0.025]}
+          >
+            <planeGeometry args={[1.04, 1]} />
+            <meshBasicMaterial color="#B6D94A" />
+          </mesh>
+        </group>
+      </Billboard>
+    </group>
+  );
+}
+
+function SimulationEggActor({ egg }: { egg: SimulationEgg }) {
+  const root = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (!root.current) return;
+    const age = Math.max(0, clock.elapsedTime - egg.laidAt);
+    const urgency = THREE.MathUtils.smoothstep(
+      age,
+      EGG_HATCH_SECONDS * 0.6,
+      EGG_HATCH_SECONDS,
+    );
+    root.current.rotation.z =
+      Math.sin(clock.elapsedTime * (2.2 + urgency * 5)) *
+      (0.04 + urgency * 0.09);
+    root.current.position.y =
+      egg.y + 0.42 + Math.sin(clock.elapsedTime * 1.8) * 0.025;
+  });
+  return (
+    <group ref={root} position={[egg.x, egg.y + 0.42, egg.z]}>
+      <mesh scale={[0.38, 0.54, 0.38]} castShadow>
+        <sphereGeometry args={[1, 22, 16]} />
+        <meshStandardMaterial color="#FFF3D4" roughness={0.72} />
+      </mesh>
+      <mesh position={[0, 0.04, 0.35]} scale={[0.24, 0.12, 0.04]}>
+        <sphereGeometry args={[1, 14, 10]} />
+        <meshStandardMaterial color="#F3D65C" roughness={0.7} />
+      </mesh>
+      <mesh position={[0, -0.37, 0]} scale={[0.58, 0.08, 0.48]}>
+        <cylinderGeometry args={[1, 1.12, 1, 18]} />
+        <meshStandardMaterial color="#A97855" roughness={1} />
+      </mesh>
+    </group>
+  );
+}
+
+function SimulationPopulation({
+  controls,
+  apiRef,
+  playerName,
+  playerDna,
+  quality,
+  onPlayerDamage,
+  onSnapshot,
+}: {
+  controls: React.RefObject<ControlState>;
+  apiRef: React.MutableRefObject<SimulationApi | null>;
+  playerName: string;
+  playerDna: MonsterDna;
+  quality: SceneQuality;
+  onPlayerDamage: (amount: number, attackerName: string) => void;
+  onSnapshot: (snapshot: SimulationSnapshot) => void;
+}) {
+  const [creatures, setCreatures] = useState(() =>
+    createInitialWildPopulation().map((creature, index) =>
+      settleCreatureHabitat(creature, index),
+    ),
+  );
+  const [eggs, setEggs] = useState<SimulationEgg[]>([]);
+  const creaturesRef = useRef(creatures);
+  const eggsRef = useRef(eggs);
+  const randomRef = useRef(createSeededRandom(0x45434f53));
+  const simulationTime = useRef(0);
+  const accumulator = useRef(0);
+  const nextSnapshotAt = useRef(0);
+  const births = useRef(0);
+  const deaths = useRef(0);
+  const latestEvent = useRef<SimulationEvent | null>(null);
+  const nextEggId = useRef(1);
+  const nextCreatureId = useRef(1);
+
+  const publishCreatures = useCallback((next: SimulatedCreature[]) => {
+    creaturesRef.current = next;
+    setCreatures(next);
+  }, []);
+
+  const publishEggs = useCallback((next: SimulationEgg[]) => {
+    eggsRef.current = next;
+    setEggs(next);
+  }, []);
+
+  const layEgg = useCallback(
+    (first: SimulationParent, second: SimulationParent, now: number) => {
+      const random = randomRef.current;
+      const mix = mixMonsterDna(first.dna, second.dna, random);
+      const x = (first.x + second.x) / 2;
+      const z = (first.z + second.z) / 2;
+      const egg: SimulationEgg = {
+        id: `egg-${nextEggId.current++}`,
+        dna: mix.dna,
+        parentIds: [first.id, second.id],
+        parentNames: [first.name, second.name],
+        generation: Math.max(first.generation, second.generation) + 1,
+        x,
+        y: terrainHeight(x, z),
+        z,
+        laidAt: now,
+        hatchAt: now + EGG_HATCH_SECONDS,
+        mutations: mix.mutations,
+      };
+      publishEggs([...eggsRef.current, egg]);
+      latestEvent.current = {
+        kind: "egg",
+        names: [first.name, second.name],
+        mutations: mix.mutations,
+      };
+      return mix.mutations;
+    },
+    [publishEggs],
+  );
+
+  const markDead = useCallback((creature: SimulatedCreature, now: number) => {
+    if (!creature.alive) return;
+    creature.alive = false;
+    creature.health = 0;
+    creature.deathAt = now;
+    deaths.current += 1;
+    latestEvent.current = { kind: "death", names: [creature.name] };
+  }, []);
+
+  const attackAt = useCallback(
+    (x: number, z: number, attackerDna: MonsterDna): SimulationAttackResult => {
+      let nearest: SimulatedCreature | null = null;
+      let nearestDistance = HUNT_DISTANCE;
+      for (const creature of creaturesRef.current) {
+        if (!creature.alive) continue;
+        const distance = Math.hypot(creature.x - x, creature.z - z);
+        if (distance < nearestDistance) {
+          nearest = creature;
+          nearestDistance = distance;
+        }
       }
-      follower.current.rotation.y = dampAngle(
-        follower.current.rotation.y,
-        yaw,
-        8,
-        delta,
+      if (!nearest) return { hit: false };
+      const damage = 7.5 + getCreaturePower(attackerDna) * 5.2;
+      const nextHealth = Math.max(0, nearest.health - damage);
+      const updated: SimulatedCreature = {
+        ...nearest,
+        health: nextHealth,
+        lastAttackedAt: simulationTime.current,
+        lastAttackerId: "player",
+        intent: nextHealth < 28 ? "flee" : "defend",
+        targetId: "player",
+      };
+      const defeated = nextHealth <= 0;
+      if (defeated) markDead(updated, simulationTime.current);
+      publishCreatures(
+        creaturesRef.current.map((creature) =>
+          creature.id === updated.id ? updated : creature,
+        ),
       );
-      follower.current.rotation.x = THREE.MathUtils.damp(
-        follower.current.rotation.x,
-        mode === "fly" ? -0.14 : mode === "dive" ? 0.08 : 0,
-        7,
-        delta,
+      latestEvent.current = {
+        kind: "fight",
+        names: [playerName, nearest.name],
+      };
+      return {
+        hit: true,
+        targetName: nearest.name,
+        defeated,
+        energyReward:
+          defeated && canMonsterHunt(attackerDna)
+            ? attackerDna.diet === "carnivore"
+              ? 34
+              : 20
+            : 0,
+      };
+    },
+    [markDead, playerName, publishCreatures],
+  );
+
+  const requestMate = useCallback(
+    (
+      requestPlayerId: string,
+      requestPlayerName: string,
+      requestPlayerDna: MonsterDna,
+      x: number,
+      z: number,
+      playerCooldownUntil: number,
+    ): SimulationMateResult => {
+      const now = simulationTime.current;
+      const living = creaturesRef.current.filter(
+        (creature) => creature.alive,
+      ).length;
+      if (living + eggsRef.current.length >= MAX_WILD_MONSTERS)
+        return { ok: false, reason: "populationFull" };
+      if (playerCooldownUntil > now) {
+        return {
+          ok: false,
+          reason: "cooldown",
+          seconds: Math.ceil(playerCooldownUntil - now),
+        };
+      }
+      if (controls.current.health < 55 || controls.current.energy < 55)
+        return { ok: false, reason: "notReady" };
+
+      let nearest: SimulatedCreature | null = null;
+      let nearestDistance = 18;
+      for (const creature of creaturesRef.current) {
+        if (
+          !creature.alive ||
+          creature.age < ADULT_AGE_SECONDS ||
+          creature.health < 55 ||
+          creature.energy < 55 ||
+          creature.mateCooldownUntil > now
+        )
+          continue;
+        const distance = Math.hypot(creature.x - x, creature.z - z);
+        if (distance < nearestDistance) {
+          nearest = creature;
+          nearestDistance = distance;
+        }
+      }
+      if (!nearest) return { ok: false, reason: "noPartner" };
+      if (nearestDistance > 6.2)
+        return {
+          ok: false,
+          reason: "tooFar",
+          partnerName: nearest.name,
+        };
+
+      const cooldownUntil = now + MATING_COOLDOWN_SECONDS;
+      const updatedPartner: SimulatedCreature = {
+        ...nearest,
+        mateCooldownUntil: cooldownUntil,
+        energy: Math.max(0, nearest.energy - 16),
+      };
+      publishCreatures(
+        creaturesRef.current.map((creature) =>
+          creature.id === updatedPartner.id ? updatedPartner : creature,
+        ),
       );
-      follower.current.rotation.z = THREE.MathUtils.damp(
-        follower.current.rotation.z,
-        Math.sin(clock.elapsedTime * 4 + index) *
-          (mode === "land" ? 0.025 : 0.065),
-        7,
-        delta,
+      const mutations = layEgg(
+        {
+          id: requestPlayerId,
+          name: requestPlayerName,
+          dna: requestPlayerDna,
+          generation: 0,
+          x,
+          z,
+        },
+        updatedPartner,
+        now,
       );
-    });
+      return {
+        ok: true,
+        partnerName: nearest.name,
+        mutations,
+        cooldownUntil,
+      };
+    },
+    [controls, layEgg, publishCreatures],
+  );
+
+  useEffect(() => {
+    apiRef.current = {
+      getTime: () => simulationTime.current,
+      attackAt,
+      requestMate,
+    };
+    return () => {
+      apiRef.current = null;
+    };
+  }, [apiRef, attackAt, requestMate]);
+
+  useFrame(({ clock }, delta) => {
+    simulationTime.current = clock.elapsedTime;
+    accumulator.current += Math.min(delta, 0.1);
+    if (accumulator.current < 0.1) return;
+    const step = Math.min(0.3, accumulator.current);
+    accumulator.current = 0;
+    const now = clock.elapsedTime;
+    const random = randomRef.current;
+    const population = creaturesRef.current;
+    const living = population.filter((creature) => creature.alive);
+    const resourcePool = quality === "mobile" ? MOBILE_EDIBLES : EDIBLES;
+
+    for (const creature of living) {
+      // Another creature earlier in this same simulation step may have killed
+      // this one. The `living` snapshot is intentionally stable for iteration,
+      // so re-check the mutable flag before evaluating any objectives.
+      if (!creature.alive) continue;
+      creature.age += step;
+      const recentlyHurt = now - creature.lastAttackedAt < 4;
+      if (!recentlyHurt && creature.energy > 4) {
+        const recovery = 0.12 + (creature.energy / 100) * 1.02;
+        creature.health = Math.min(100, creature.health + recovery * step);
+      }
+      creature.energy = Math.max(0, creature.energy - 0.045 * step);
+      if (creature.energy <= 0) {
+        markDead(creature, now);
+        continue;
+      }
+
+      let steerX = Math.cos(creature.wanderAngle) * 0.16;
+      let steerZ = Math.sin(creature.wanderAngle) * 0.16;
+      const scores: Array<[SimulationIntent, number]> = [["wander", 0.16]];
+      const hunger = THREE.MathUtils.clamp((72 - creature.energy) / 72, 0, 1);
+      const lowHealth = THREE.MathUtils.clamp(
+        (60 - creature.health) / 60,
+        0,
+        1,
+      );
+      const power = getCreaturePower(creature.dna);
+
+      if (now >= creature.nextDecisionAt) {
+        creature.wanderAngle += (random() - 0.5) * 1.3;
+        creature.nextDecisionAt = now + 0.7 + random() * 1.4;
+      }
+
+      let nearestThreat: SimulatedCreature | null = null;
+      let threatDistance = 16;
+      for (const other of living) {
+        if (other.id === creature.id) continue;
+        if (!canMonsterHunt(other.dna)) continue;
+        const separation = direction(creature.x, creature.z, other.x, other.z);
+        const dangerous =
+          other.lastAttackerId === creature.id ||
+          (other.dna.diet === "carnivore" &&
+            (creature.dna.diet === "herbivore" ||
+              getCreaturePower(other.dna) > power * 1.08));
+        if (dangerous && separation.distance < threatDistance) {
+          nearestThreat = other;
+          threatDistance = separation.distance;
+        }
+      }
+
+      if (nearestThreat) {
+        const away = direction(
+          nearestThreat.x,
+          nearestThreat.z,
+          creature.x,
+          creature.z,
+        );
+        const fleeScore =
+          THREE.MathUtils.clamp((16 - threatDistance) / 12, 0, 1) *
+          (0.8 + lowHealth * 1.4);
+        steerX += away.x * fleeScore * 1.9;
+        steerZ += away.z * fleeScore * 1.9;
+        scores.push(["flee", fleeScore]);
+      }
+
+      const playerSeparation = direction(
+        creature.x,
+        creature.z,
+        controls.current.playerPosition.x,
+        controls.current.playerPosition.z,
+      );
+      const socialCandidates = [
+        ...living
+          .filter((other) => other.id !== creature.id)
+          .map((other) => ({
+            id: other.id,
+            dna: other.dna,
+            x: other.x,
+            z: other.z,
+            distance: Math.hypot(other.x - creature.x, other.z - creature.z),
+          })),
+        ...(!controls.current.isDead
+          ? [
+              {
+                id: "player",
+                dna: playerDna,
+                x: controls.current.playerPosition.x,
+                z: controls.current.playerPosition.z,
+                distance: playerSeparation.distance,
+              },
+            ]
+          : []),
+      ];
+
+      if (creature.dna.social === "solitary") {
+        let repelX = 0;
+        let repelZ = 0;
+        let nearby = 0;
+        for (const other of socialCandidates) {
+          if (other.distance > 11 || other.distance < 0.001) continue;
+          const away = direction(other.x, other.z, creature.x, creature.z);
+          const strength = (11 - other.distance) / 11;
+          repelX += away.x * strength;
+          repelZ += away.z * strength;
+          nearby += strength;
+        }
+        if (nearby > 0) {
+          steerX += repelX * 0.95;
+          steerZ += repelZ * 0.95;
+          scores.push(["socialize", Math.min(0.78, nearby * 0.42)]);
+        }
+      } else {
+        const desiredNeighbors =
+          creature.dna.social === "pair"
+            ? 1
+            : creature.dna.social === "pack"
+              ? 3
+              : 7;
+        const preferred = socialCandidates
+          .map((other) => ({
+            ...other,
+            similarity: dnaSimilarity(creature.dna, other.dna),
+          }))
+          .sort(
+            (first, second) =>
+              second.similarity / (1 + second.distance * 0.025) -
+              first.similarity / (1 + first.distance * 0.025),
+          )
+          .slice(0, desiredNeighbors);
+        let socialX = 0;
+        let socialZ = 0;
+        let socialWeight = 0;
+        for (const other of preferred) {
+          const toward = direction(creature.x, creature.z, other.x, other.z);
+          const idealDistance = creature.dna.social === "pair" ? 4.2 : 5.5;
+          const distanceError = THREE.MathUtils.clamp(
+            (toward.distance - idealDistance) / 12,
+            -0.7,
+            1,
+          );
+          const weight = 0.18 + other.similarity ** 2 * 0.82;
+          socialX += toward.x * distanceError * weight;
+          socialZ += toward.z * distanceError * weight;
+          socialWeight += Math.abs(distanceError) * weight;
+        }
+        if (socialWeight > 0.02) {
+          steerX += socialX * 0.9;
+          steerZ += socialZ * 0.9;
+          scores.push(["socialize", Math.min(0.82, socialWeight * 0.45)]);
+        }
+      }
+
+      if (canMonsterEatPlants(creature.dna) && hunger > 0.05) {
+        let nearestFood: Edible | null = null;
+        let foodDistance = 52;
+        for (const edible of resourcePool) {
+          const distance = Math.hypot(
+            edible.x - creature.x,
+            edible.z - creature.z,
+          );
+          if (distance < foodDistance) {
+            foodDistance = distance;
+            nearestFood = edible;
+          }
+        }
+        if (nearestFood) {
+          const towardFood = direction(
+            creature.x,
+            creature.z,
+            nearestFood.x,
+            nearestFood.z,
+          );
+          const forageScore =
+            hunger * (0.72 + Math.min(0.28, foodDistance / 80));
+          steerX += towardFood.x * forageScore * 1.55;
+          steerZ += towardFood.z * forageScore * 1.55;
+          scores.push(["forage", forageScore]);
+          if (foodDistance < 2.5 && now >= creature.forageCooldownUntil) {
+            const dietFactor = creature.dna.diet === "omnivore" ? 0.72 : 1;
+            creature.energy = Math.min(
+              100,
+              creature.energy + nearestFood.energy * 0.5 * dietFactor,
+            );
+            creature.forageCooldownUntil = now + 5.5;
+          }
+        }
+      }
+
+      let prey: SimulatedCreature | null = null;
+      let preyDistance = 34;
+      const shouldHunt =
+        canMonsterHunt(creature.dna) &&
+        (creature.dna.diet === "carnivore"
+          ? creature.energy < 68
+          : creature.energy < 38);
+      if (shouldHunt) {
+        for (const other of living) {
+          if (other.id === creature.id) continue;
+          const otherPower = getCreaturePower(other.dna);
+          const distance = Math.hypot(
+            other.x - creature.x,
+            other.z - creature.z,
+          );
+          if (distance < preyDistance && otherPower < power * 1.22) {
+            prey = other;
+            preyDistance = distance;
+          }
+        }
+      }
+
+      const defending =
+        now - creature.lastAttackedAt < 7 && creature.lastAttackerId !== null;
+      let combatTarget: SimulatedCreature | "player" | null = prey;
+      if (defending) {
+        combatTarget =
+          creature.lastAttackerId === "player"
+            ? "player"
+            : (living.find((other) => other.id === creature.lastAttackerId) ??
+              null);
+      }
+      if (combatTarget) {
+        const targetX =
+          combatTarget === "player"
+            ? controls.current.playerPosition.x
+            : combatTarget.x;
+        const targetZ =
+          combatTarget === "player"
+            ? controls.current.playerPosition.z
+            : combatTarget.z;
+        const towardTarget = direction(
+          creature.x,
+          creature.z,
+          targetX,
+          targetZ,
+        );
+        const combatScore = defending
+          ? creature.health < 25
+            ? 0
+            : 0.9
+          : hunger * 1.08;
+        if (defending && creature.health < 25) {
+          steerX -= towardTarget.x * 1.8;
+          steerZ -= towardTarget.z * 1.8;
+          scores.push(["flee", 1]);
+        } else {
+          steerX += towardTarget.x * combatScore * 1.8;
+          steerZ += towardTarget.z * combatScore * 1.8;
+          scores.push([defending ? "defend" : "hunt", combatScore]);
+          creature.targetId =
+            combatTarget === "player" ? "player" : combatTarget.id;
+          if (
+            towardTarget.distance < 2.8 &&
+            now >= creature.attackCooldownUntil
+          ) {
+            creature.attackCooldownUntil = now + 1.35 + random() * 0.35;
+            creature.energy = Math.max(0, creature.energy - 3.6);
+            const damage = 4.5 + power * (3.2 + random() * 2.4);
+            if (combatTarget === "player") {
+              if (!controls.current.isDead)
+                onPlayerDamage(damage, creature.name);
+            } else {
+              combatTarget.health = Math.max(0, combatTarget.health - damage);
+              combatTarget.lastAttackedAt = now;
+              combatTarget.lastAttackerId = creature.id;
+              if (combatTarget.health <= 0) {
+                markDead(combatTarget, now);
+                creature.energy = Math.min(
+                  100,
+                  creature.energy +
+                    (creature.dna.diet === "carnivore" ? 38 : 22),
+                );
+              }
+            }
+            latestEvent.current = {
+              kind: "fight",
+              names: [
+                creature.name,
+                combatTarget === "player" ? playerName : combatTarget.name,
+              ],
+            };
+          }
+        }
+      }
+
+      const readyToMate =
+        creature.age >= ADULT_AGE_SECONDS &&
+        creature.energy >= 62 &&
+        creature.health >= 62 &&
+        creature.mateCooldownUntil <= now &&
+        living.length + eggsRef.current.length < MAX_WILD_MONSTERS;
+      if (readyToMate) {
+        const partner = living
+          .filter(
+            (other) =>
+              other.id !== creature.id &&
+              other.age >= ADULT_AGE_SECONDS &&
+              other.energy >= 60 &&
+              other.health >= 60 &&
+              other.mateCooldownUntil <= now,
+          )
+          .map((other) => ({
+            other,
+            similarity: dnaSimilarity(creature.dna, other.dna),
+            distance: Math.hypot(other.x - creature.x, other.z - creature.z),
+          }))
+          .filter((candidate) => candidate.similarity >= 0.28)
+          .sort(
+            (first, second) =>
+              second.similarity / (1 + second.distance * 0.035) -
+              first.similarity / (1 + first.distance * 0.035),
+          )[0];
+        if (partner) {
+          const towardPartner = direction(
+            creature.x,
+            creature.z,
+            partner.other.x,
+            partner.other.z,
+          );
+          const mateScore = 0.42 + partner.similarity * 0.48;
+          steerX += towardPartner.x * mateScore;
+          steerZ += towardPartner.z * mateScore;
+          scores.push(["mate", mateScore]);
+          creature.targetId = partner.other.id;
+          if (partner.distance < 2.8) {
+            const cooldownUntil = now + MATING_COOLDOWN_SECONDS;
+            creature.mateCooldownUntil = cooldownUntil;
+            partner.other.mateCooldownUntil = cooldownUntil;
+            creature.energy = Math.max(0, creature.energy - 16);
+            partner.other.energy = Math.max(0, partner.other.energy - 16);
+            layEgg(creature, partner.other, now);
+          }
+        }
+      }
+
+      // Local separation is always active, even for armies, so a group stays a
+      // readable cluster rather than collapsing into one overlapping mesh.
+      for (const other of living) {
+        if (other.id === creature.id) continue;
+        const separation = direction(other.x, other.z, creature.x, creature.z);
+        if (separation.distance < 2.6 && separation.distance > 0.001) {
+          const strength = (2.6 - separation.distance) / 2.6;
+          steerX += separation.x * strength * 1.4;
+          steerZ += separation.z * strength * 1.4;
+        }
+      }
+
+      const radius = Math.hypot(creature.x, creature.z);
+      if (radius > PLAYABLE_RADIUS - 12) {
+        steerX += (-creature.x / radius) * 2;
+        steerZ += (-creature.z / radius) * 2;
+      }
+      const length = Math.hypot(steerX, steerZ);
+      const dominant = scores.sort((first, second) => second[1] - first[1])[0];
+      creature.intent = dominant?.[0] ?? "wander";
+      if (length > 0.0001) {
+        const speedScale =
+          creature.intent === "flee"
+            ? 1.28
+            : creature.intent === "hunt" || creature.intent === "defend"
+              ? 1.12
+              : creature.intent === "rest"
+                ? 0.2
+                : 0.82;
+        const speed = getCreatureSpeed(creature.dna) * speedScale;
+        const moveX = (steerX / length) * speed * step;
+        const moveZ = (steerZ / length) * speed * step;
+        const nextX = creature.x + moveX;
+        const nextZ = creature.z + moveZ;
+        const blocked = isBlockedByWater(
+          nextX,
+          nextZ,
+          canMonsterSwim(creature.dna),
+        );
+        if (!blocked) {
+          creature.x = nextX;
+          creature.z = nextZ;
+          creature.yaw = Math.atan2(-moveX, -moveZ);
+          creature.energy = Math.max(
+            0,
+            creature.energy -
+              (creature.intent === "flee" || creature.intent === "hunt"
+                ? 0.42
+                : 0.2) *
+                step,
+          );
+        } else {
+          creature.wanderAngle += Math.PI * (0.45 + random() * 0.4);
+        }
+      }
+    }
+
+    const dueEggs = eggsRef.current.filter((egg) => egg.hatchAt <= now);
+    if (dueEggs.length > 0) {
+      const nextPopulation = [...population];
+      for (const egg of dueEggs) {
+        if (
+          nextPopulation.filter((creature) => creature.alive).length >=
+          MAX_WILD_MONSTERS
+        )
+          break;
+        const baby = settleCreatureHabitat(
+          {
+            id: `baby-${nextCreatureId.current++}`,
+            name: createBabyName(
+              egg.parentNames[0],
+              egg.parentNames[1],
+              random,
+            ),
+            dna: egg.dna,
+            generation: egg.generation,
+            parentIds: egg.parentIds,
+            x: egg.x + (random() - 0.5) * 1.2,
+            y: egg.y,
+            z: egg.z + (random() - 0.5) * 1.2,
+            yaw: random() * Math.PI * 2,
+            energy: 78,
+            health: 100,
+            age: 0,
+            intent: "socialize",
+            targetId: egg.parentIds[0],
+            wanderAngle: random() * Math.PI * 2,
+            nextDecisionAt: now + 1,
+            attackCooldownUntil: now + 8,
+            forageCooldownUntil: now + 3,
+            mateCooldownUntil: now + ADULT_AGE_SECONDS,
+            lastAttackedAt: -100,
+            lastAttackerId: null,
+            alive: true,
+            deathAt: null,
+          },
+          nextCreatureId.current,
+        );
+        nextPopulation.push(baby);
+        births.current += 1;
+        latestEvent.current = {
+          kind: "birth",
+          names: [baby.name],
+          mutations: egg.mutations,
+        };
+      }
+      publishCreatures(nextPopulation);
+      publishEggs(eggsRef.current.filter((egg) => egg.hatchAt > now));
+    }
+
+    const populationAfterHatching = creaturesRef.current;
+    const expiredBodies = populationAfterHatching.some(
+      (creature) =>
+        !creature.alive &&
+        creature.deathAt !== null &&
+        now - creature.deathAt > 8,
+    );
+    if (expiredBodies) {
+      publishCreatures(
+        populationAfterHatching.filter(
+          (creature) =>
+            creature.alive ||
+            creature.deathAt === null ||
+            now - creature.deathAt <= 8,
+        ),
+      );
+    }
+
+    if (now >= nextSnapshotAt.current) {
+      nextSnapshotAt.current = now + 1;
+      onSnapshot({
+        living:
+          creaturesRef.current.filter((creature) => creature.alive).length +
+          (controls.current.isDead ? 0 : 1),
+        eggs: eggsRef.current.length,
+        births: births.current,
+        deaths: deaths.current,
+        event: latestEvent.current,
+      });
+    }
   });
 
   return (
     <group>
-      {PACK_FORMATION.slice(0, count).map((_, index) => (
-        <group key={index} ref={followers[index]} scale={0.76}>
-          <MonsterVisual
-            dna={dna}
-            motionRef={smoothMotions[index]}
-            castShadow={quality === "desktop"}
-          />
-        </group>
+      {creatures.map((creature) => (
+        <SimulatedMonsterActor
+          key={creature.id}
+          creature={creature}
+          quality={quality}
+        />
+      ))}
+      {eggs.map((egg) => (
+        <SimulationEggActor key={egg.id} egg={egg} />
       ))}
     </group>
   );
@@ -1402,6 +2300,10 @@ function World({
   family,
   monsterKey,
   onPlayerFrame,
+  onPlayerDamage,
+  onSimulationSnapshot,
+  playerName,
+  simulationApi,
   dna,
   quality,
 }: {
@@ -1412,6 +2314,10 @@ function World({
   monsterKey: number;
   dna: MonsterDna;
   quality: SceneQuality;
+  playerName: string;
+  simulationApi: React.MutableRefObject<SimulationApi | null>;
+  onPlayerDamage: (amount: number, attackerName: string) => void;
+  onSimulationSnapshot: (snapshot: SimulationSnapshot) => void;
   onPlayerFrame: (
     x: number,
     y: number,
@@ -1538,13 +2444,21 @@ function World({
         speed={0.24}
         color="#FFF1A8"
       />
+      <SimulationPopulation
+        controls={controls}
+        apiRef={simulationApi}
+        playerName={playerName}
+        playerDna={dna}
+        quality={quality}
+        onPlayerDamage={onPlayerDamage}
+        onSnapshot={onSimulationSnapshot}
+      />
       <CuteMonster
         key={monsterKey}
         controls={controls}
         onPlayerFrame={onPlayerFrame}
         dna={dna}
       />
-      <PackFollowers controls={controls} dna={dna} quality={quality} />
     </>
   );
 }
@@ -1620,6 +2534,9 @@ export function GameExperience() {
     action: null,
     actionStarted: 0,
     energy: 100,
+    health: 100,
+    matingCooldownUntil: 0,
+    lastAttackedAt: -100_000,
     isDead: false,
     moving: false,
     sprinting: false,
@@ -1628,7 +2545,11 @@ export function GameExperience() {
     playerPosition: { x: -8, y: terrainHeight(-8, 8), z: 8 },
   });
   const displayedEnergy = useRef(100);
+  const displayedHealth = useRef(100);
+  const displayedMatingCooldown = useRef(0);
   const displayedLocomotion = useRef<LocomotionMode>("land");
+  const simulationApi = useRef<SimulationApi | null>(null);
+  const playerMatingCooldowns = useRef<Map<string, number>>(new Map());
   const eatenIdsRef = useRef<Set<string>>(new Set());
   const huntedIdsRef = useRef<Set<string>>(new Set());
   const nextMonsterId = useRef(2);
@@ -1637,8 +2558,19 @@ export function GameExperience() {
     key: "game.welcome",
   });
   const [energy, setEnergy] = useState(100);
+  const [health, setHealth] = useState(100);
+  const [matingCooldown, setMatingCooldown] = useState(0);
   const [locomotionMode, setLocomotionMode] = useState<LocomotionMode>("land");
   const [isDead, setIsDead] = useState(false);
+  const [deathReason, setDeathReason] = useState<"energy" | "health">("energy");
+  const [simulationSnapshot, setSimulationSnapshot] =
+    useState<SimulationSnapshot>({
+      living: 11,
+      eggs: 0,
+      births: 0,
+      deaths: 0,
+      event: null,
+    });
   const [eatenIds, setEatenIds] = useState<Set<string>>(() => new Set());
   const [huntedIds, setHuntedIds] = useState<Set<string>>(() => new Set());
   const [monsterKey, setMonsterKey] = useState(0);
@@ -1710,20 +2642,53 @@ export function GameExperience() {
     return normalizedEnergy;
   }, []);
 
-  const killMonster = useCallback(() => {
-    if (controls.current.isDead) return;
-    controls.current.isDead = true;
-    controls.current.moving = false;
-    controls.current.sprinting = false;
-    controls.current.action = null;
-    controls.current.keys.clear();
-    controls.current.move = { x: 0, y: 0 };
-    setMovementMode("land");
-    setEnergyLevel(0);
-    setIsDead(true);
-    setStatus({ key: "game.ranOut", values: { name: activeMonster.name } });
-    if (document.pointerLockElement) document.exitPointerLock();
-  }, [activeMonster.name, setEnergyLevel, setMovementMode]);
+  const setHealthLevel = useCallback((nextHealth: number) => {
+    const normalizedHealth = THREE.MathUtils.clamp(nextHealth, 0, 100);
+    controls.current.health = normalizedHealth;
+    const nextDisplay = Math.ceil(normalizedHealth);
+    if (displayedHealth.current !== nextDisplay) {
+      displayedHealth.current = nextDisplay;
+      setHealth(nextDisplay);
+    }
+    return normalizedHealth;
+  }, []);
+
+  const killMonster = useCallback(
+    (reason: "energy" | "health" = "energy") => {
+      if (controls.current.isDead) return;
+      controls.current.isDead = true;
+      controls.current.moving = false;
+      controls.current.sprinting = false;
+      controls.current.action = null;
+      controls.current.keys.clear();
+      controls.current.move = { x: 0, y: 0 };
+      setMovementMode("land");
+      if (reason === "energy") setEnergyLevel(0);
+      if (reason === "health") setHealthLevel(0);
+      setDeathReason(reason);
+      setIsDead(true);
+      setStatus({
+        key: reason === "energy" ? "game.ranOut" : "game.lostHealth",
+        values: { name: activeMonster.name },
+      });
+      if (document.pointerLockElement) document.exitPointerLock();
+    },
+    [activeMonster.name, setEnergyLevel, setHealthLevel, setMovementMode],
+  );
+
+  const handlePlayerDamage = useCallback(
+    (amount: number, attackerName: string) => {
+      if (controls.current.isDead) return;
+      controls.current.lastAttackedAt = performance.now();
+      const remainingHealth = setHealthLevel(controls.current.health - amount);
+      setStatus({
+        key: "game.attackedBy",
+        values: { name: attackerName, damage: Math.ceil(amount) },
+      });
+      if (remainingHealth <= 0) killMonster("health");
+    },
+    [killMonster, setHealthLevel],
+  );
 
   const triggerAction = useCallback(
     (action: Exclude<Action, null>) => {
@@ -1740,45 +2705,68 @@ export function GameExperience() {
           return;
         }
 
-        let nearestPrey: Prey | null = null;
-        let nearestDistance = HUNT_DISTANCE;
-        if (canMonsterHunt(monsterDna)) {
-          for (const prey of PREY) {
-            if (huntedIdsRef.current.has(prey.id)) continue;
-            const distance = Math.hypot(
-              prey.x - controls.current.playerPosition.x,
-              prey.z - controls.current.playerPosition.z,
-            );
-            if (distance <= nearestDistance) {
-              nearestPrey = prey;
-              nearestDistance = distance;
-            }
-          }
-        }
-
-        if (nearestPrey) {
-          huntedIdsRef.current.add(nearestPrey.id);
-          setHuntedIds(new Set(huntedIdsRef.current));
-          const huntEnergy = monsterDna.diet === "carnivore" ? 45 : 28;
-          const restoredEnergy = Math.min(huntEnergy, 100 - remainingEnergy);
-          setEnergyLevel(remainingEnergy + restoredEnergy);
+        const wildAttack = simulationApi.current?.attackAt(
+          controls.current.playerPosition.x,
+          controls.current.playerPosition.z,
+          monsterDna,
+        );
+        if (wildAttack?.hit) {
+          const restoredEnergy = Math.min(
+            wildAttack.energyReward ?? 0,
+            100 - remainingEnergy,
+          );
+          if (restoredEnergy > 0)
+            setEnergyLevel(remainingEnergy + restoredEnergy);
           setStatus({
-            key:
-              monsterDna.diet === "carnivore"
-                ? "game.carnivoreFeast"
-                : "game.omnivoreSnack",
-            values: { energy: Math.ceil(restoredEnergy) },
-          });
-        } else if (canMonsterHunt(monsterDna)) {
-          setStatus({
-            key: "game.noPrey",
-            values: { cost: ATTACK_ENERGY_COST },
+            key: wildAttack.defeated
+              ? "game.defeatedMonster"
+              : "game.hitMonster",
+            values: {
+              name: wildAttack.targetName ?? t("game.genericMonster"),
+              energy: Math.ceil(restoredEnergy),
+            },
           });
         } else {
-          setStatus({
-            key: "game.herbivoreAttack",
-            values: { cost: ATTACK_ENERGY_COST },
-          });
+          let nearestPrey: Prey | null = null;
+          let nearestDistance = HUNT_DISTANCE;
+          if (canMonsterHunt(monsterDna)) {
+            for (const prey of PREY) {
+              if (huntedIdsRef.current.has(prey.id)) continue;
+              const distance = Math.hypot(
+                prey.x - controls.current.playerPosition.x,
+                prey.z - controls.current.playerPosition.z,
+              );
+              if (distance <= nearestDistance) {
+                nearestPrey = prey;
+                nearestDistance = distance;
+              }
+            }
+          }
+
+          if (nearestPrey) {
+            huntedIdsRef.current.add(nearestPrey.id);
+            setHuntedIds(new Set(huntedIdsRef.current));
+            const huntEnergy = monsterDna.diet === "carnivore" ? 45 : 28;
+            const restoredEnergy = Math.min(huntEnergy, 100 - remainingEnergy);
+            setEnergyLevel(remainingEnergy + restoredEnergy);
+            setStatus({
+              key:
+                monsterDna.diet === "carnivore"
+                  ? "game.carnivoreFeast"
+                  : "game.omnivoreSnack",
+              values: { energy: Math.ceil(restoredEnergy) },
+            });
+          } else if (canMonsterHunt(monsterDna)) {
+            setStatus({
+              key: "game.noPrey",
+              values: { cost: ATTACK_ENERGY_COST },
+            });
+          } else {
+            setStatus({
+              key: "game.herbivoreAttack",
+              values: { cost: ATTACK_ENERGY_COST },
+            });
+          }
         }
       } else {
         if (!canMonsterEatPlants(monsterDna)) {
@@ -1831,8 +2819,62 @@ export function GameExperience() {
         if (!controls.current.isDead) setStatus({ key: "game.explore" });
       }, 1400);
     },
-    [killMonster, monsterDna, sceneQuality, setEnergyLevel],
+    [killMonster, monsterDna, sceneQuality, setEnergyLevel, t],
   );
+
+  const triggerMate = useCallback(() => {
+    if (controls.current.isDead || controls.current.paused) return;
+    const result = simulationApi.current?.requestMate(
+      activeMonsterId,
+      activeMonster.name,
+      monsterDna,
+      controls.current.playerPosition.x,
+      controls.current.playerPosition.z,
+      controls.current.matingCooldownUntil,
+    );
+    if (!result) return;
+    if (result.ok) {
+      controls.current.matingCooldownUntil = result.cooldownUntil;
+      playerMatingCooldowns.current.set(activeMonsterId, result.cooldownUntil);
+      displayedMatingCooldown.current = MATING_COOLDOWN_SECONDS;
+      setMatingCooldown(MATING_COOLDOWN_SECONDS);
+      const remainingEnergy = setEnergyLevel(controls.current.energy - 18);
+      setStatus({
+        key: "game.eggLaid",
+        values: {
+          name: result.partnerName,
+          mutations: result.mutations,
+        },
+      });
+      if (remainingEnergy <= 0) killMonster("energy");
+      return;
+    }
+
+    const statusByReason: Record<
+      Exclude<SimulationMateResult, { ok: true }>["reason"],
+      TranslationKey
+    > = {
+      cooldown: "game.mateCooldown",
+      noPartner: "game.noMate",
+      tooFar: "game.mateCloser",
+      notReady: "game.mateNeeds",
+      populationFull: "game.populationFull",
+    };
+    setStatus({
+      key: statusByReason[result.reason],
+      values: {
+        name: result.partnerName ?? t("game.genericMonster"),
+        seconds: result.seconds ?? 0,
+      },
+    });
+  }, [
+    activeMonster.name,
+    activeMonsterId,
+    killMonster,
+    monsterDna,
+    setEnergyLevel,
+    t,
+  ]);
 
   const resetGame = useCallback(() => {
     controls.current.keys.clear();
@@ -1843,6 +2885,9 @@ export function GameExperience() {
     controls.current.cameraPitch = 0.38;
     controls.current.action = null;
     controls.current.actionStarted = 0;
+    controls.current.matingCooldownUntil =
+      playerMatingCooldowns.current.get(activeMonsterId) ?? 0;
+    controls.current.lastAttackedAt = -100_000;
     controls.current.isDead = false;
     controls.current.moving = false;
     controls.current.sprinting = false;
@@ -1853,7 +2898,18 @@ export function GameExperience() {
     setEatenIds(new Set());
     setHuntedIds(new Set());
     setEnergyLevel(100);
+    setHealthLevel(100);
+    const cooldownSeconds = Math.max(
+      0,
+      Math.ceil(
+        controls.current.matingCooldownUntil -
+          (simulationApi.current?.getTime() ?? 0),
+      ),
+    );
+    displayedMatingCooldown.current = cooldownSeconds;
+    setMatingCooldown(cooldownSeconds);
     setIsDead(false);
+    setDeathReason("energy");
     setMonsterKey((current) => current + 1);
     setStatus({
       key: "game.ready",
@@ -1861,9 +2917,11 @@ export function GameExperience() {
     });
   }, [
     activeMonster.dna,
+    activeMonsterId,
     activeMonster.name,
     resetMonsterMovement,
     setEnergyLevel,
+    setHealthLevel,
   ]);
 
   const openCreator = useCallback(() => {
@@ -1915,6 +2973,9 @@ export function GameExperience() {
       if (creatorDraft?.mode === "new") {
         const id = `monster-${nextMonsterId.current}`;
         nextMonsterId.current += 1;
+        controls.current.matingCooldownUntil = 0;
+        displayedMatingCooldown.current = 0;
+        setMatingCooldown(0);
         setMonsterFamily((current) => [...current, { id, name, dna: nextDna }]);
         setActiveMonsterId(id);
         setStatus({ key: "game.joined", values: { name } });
@@ -1941,17 +3002,37 @@ export function GameExperience() {
       controls.current.move = { x: 0, y: 0 };
       controls.current.action = null;
       controls.current.isDead = false;
+      controls.current.matingCooldownUntil =
+        playerMatingCooldowns.current.get(id) ?? 0;
+      controls.current.lastAttackedAt = -100_000;
       resetMonsterMovement(nextMonster.dna);
       setActiveMonsterId(id);
       setMonsterKey((current) => current + 1);
       setEnergyLevel(100);
+      setHealthLevel(100);
+      const cooldownSeconds = Math.max(
+        0,
+        Math.ceil(
+          controls.current.matingCooldownUntil -
+            (simulationApi.current?.getTime() ?? 0),
+        ),
+      );
+      displayedMatingCooldown.current = cooldownSeconds;
+      setMatingCooldown(cooldownSeconds);
       setIsDead(false);
+      setDeathReason("energy");
       setStatus({
         key: "game.nowPlaying",
         values: { name: nextMonster.name },
       });
     },
-    [activeMonsterId, monsterFamily, resetMonsterMovement, setEnergyLevel],
+    [
+      activeMonsterId,
+      monsterFamily,
+      resetMonsterMovement,
+      setEnergyLevel,
+      setHealthLevel,
+    ],
   );
 
   const toggleFlight = useCallback(() => {
@@ -2079,6 +3160,24 @@ export function GameExperience() {
         );
         if (remainingEnergy <= 0) killMonster();
       }
+      if (
+        !controls.current.isDead &&
+        time - controls.current.lastAttackedAt > 4_000 &&
+        controls.current.health < 100 &&
+        controls.current.energy > 0
+      ) {
+        const recoveryRate = 0.12 + (controls.current.energy / 100) * 1.02;
+        setHealthLevel(controls.current.health + recoveryRate * delta);
+      }
+      const simulationNow = simulationApi.current?.getTime() ?? 0;
+      const cooldownSeconds = Math.max(
+        0,
+        Math.ceil(controls.current.matingCooldownUntil - simulationNow),
+      );
+      if (displayedMatingCooldown.current !== cooldownSeconds) {
+        displayedMatingCooldown.current = cooldownSeconds;
+        setMatingCooldown(cooldownSeconds);
+      }
       animationFrame = window.requestAnimationFrame(updateLook);
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2092,6 +3191,7 @@ export function GameExperience() {
         event.preventDefault();
       if (!event.repeat && event.code === "Space") triggerAction("attack");
       if (!event.repeat && event.code === "KeyE") triggerAction("eat");
+      if (!event.repeat && event.code === "KeyM") triggerMate();
       if (!event.repeat && event.code === "KeyF") toggleFlight();
       if (!event.repeat && event.code === "KeyC") toggleDive();
       if (!event.repeat && event.code === "KeyR" && controls.current.isDead)
@@ -2133,10 +3233,33 @@ export function GameExperience() {
     killMonster,
     resetGame,
     setEnergyLevel,
+    setHealthLevel,
     toggleDive,
     toggleFlight,
     triggerAction,
+    triggerMate,
   ]);
+
+  const ecosystemEvent = simulationSnapshot.event
+    ? simulationSnapshot.event.kind === "birth"
+      ? t("game.simBirth", {
+          name: simulationSnapshot.event.names[0],
+          mutations: simulationSnapshot.event.mutations ?? 0,
+        })
+      : simulationSnapshot.event.kind === "egg"
+        ? t("game.simEgg", {
+            first: simulationSnapshot.event.names[0],
+            second: simulationSnapshot.event.names[1],
+          })
+        : simulationSnapshot.event.kind === "fight"
+          ? t("game.simFight", {
+              first: simulationSnapshot.event.names[0],
+              second: simulationSnapshot.event.names[1],
+            })
+          : t("game.simDeath", {
+              name: simulationSnapshot.event.names[0],
+            })
+    : t("game.simWatching");
 
   return (
     <main className="game-shell">
@@ -2168,6 +3291,10 @@ export function GameExperience() {
             )}
             monsterKey={monsterKey}
             onPlayerFrame={reportPlayerFrame}
+            onPlayerDamage={handlePlayerDamage}
+            onSimulationSnapshot={setSimulationSnapshot}
+            playerName={activeMonster.name}
+            simulationApi={simulationApi}
             dna={monsterDna}
             quality={sceneQuality}
           />
@@ -2202,9 +3329,6 @@ export function GameExperience() {
                 {monsterDna.eyes}{" "}
                 {monsterDna.eyes === 1 ? t("creator.eye") : t("creator.eyes")} ·{" "}
                 {option(monsterDna.diet)} · {option(monsterDna.social)}
-                {getMonsterFollowerCount(monsterDna)
-                  ? ` +${getMonsterFollowerCount(monsterDna)}`
-                  : ""}
               </span>
             </div>
             <label className="family-picker">
@@ -2236,13 +3360,23 @@ export function GameExperience() {
               {t("game.edit")}
             </button>
           </div>
-          <div
-            className={`energy-bar${energy <= 25 ? " energy-low" : ""}${isDead ? " energy-empty" : ""}`}
-          >
-            <i style={{ width: `${energy}%` }} />
-            <span>
-              {t("game.energy")} {energy}
-            </span>
+          <div className="survival-bars">
+            <div
+              className={`health-bar${health <= 25 ? " health-low" : ""}${isDead && deathReason === "health" ? " health-empty" : ""}`}
+            >
+              <i style={{ width: `${health}%` }} />
+              <span>
+                {t("game.health")} {health}
+              </span>
+            </div>
+            <div
+              className={`energy-bar${energy <= 25 ? " energy-low" : ""}${isDead && deathReason === "energy" ? " energy-empty" : ""}`}
+            >
+              <i style={{ width: `${energy}%` }} />
+              <span>
+                {t("game.energy")} {energy}
+              </span>
+            </div>
           </div>
           <div className="locomotion-chip" data-mode={locomotionMode}>
             <span>{t("game.movementMode")}</span>
@@ -2252,12 +3386,32 @@ export function GameExperience() {
           </div>
         </div>
         <div className="status-bubble">{t(status.key, status.values)}</div>
+        <div className="ecosystem-pulse">
+          <span className="ecosystem-live">
+            <Activity size={13} /> {t("game.ecosystem")}
+          </span>
+          <strong>{simulationSnapshot.living}</strong>
+          <span>{t("game.living")}</span>
+          <i />
+          <Egg size={13} />
+          <strong>{simulationSnapshot.eggs}</strong>
+          <span>{t("game.eggs")}</span>
+          <small>{ecosystemEvent}</small>
+        </div>
 
         {isDead && (
           <div className="death-card" role="dialog" aria-modal="true">
-            <span>{t("game.outOfEnergy")}</span>
+            <span>
+              {deathReason === "energy"
+                ? t("game.outOfEnergy")
+                : t("game.outOfHealth")}
+            </span>
             <strong>{t("game.collapsed", { name: activeMonster.name })}</strong>
-            <p>{t("game.deathHint")}</p>
+            <p>
+              {deathReason === "energy"
+                ? t("game.deathHint")
+                : t("game.healthDeathHint")}
+            </p>
             <button type="button" onClick={resetGame}>
               {t("game.tryAgain")} <kbd>R</kbd>
             </button>
@@ -2303,6 +3457,10 @@ export function GameExperience() {
           <div>
             <kbd>SPACE</kbd>
             <span>{t("game.attack")}</span>
+          </div>
+          <div>
+            <kbd>M</kbd>
+            <span>{t("game.mate")}</span>
           </div>
           <div>
             <kbd>SHIFT</kbd>
@@ -2355,6 +3513,23 @@ export function GameExperience() {
                 : t("game.attackButton")}
             </span>
             <small>{t("game.space")}</small>
+          </button>
+          <button
+            type="button"
+            className="action-button mate-button"
+            disabled={isDead || matingCooldown > 0}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              triggerMate();
+            }}
+          >
+            {matingCooldown > 0 ? <Egg size={24} /> : <Heart size={24} />}
+            <span>
+              {matingCooldown > 0
+                ? t("game.mateReadyIn", { seconds: matingCooldown })
+                : t("game.mateButton")}
+            </span>
+            <small>M</small>
           </button>
         </div>
 
