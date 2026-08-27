@@ -1,6 +1,17 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useI18n, useLocalizedTitle } from "@/components/i18n";
+
+function GameLoading() {
+  const { t } = useI18n();
+  return (
+    <div className="game-loading">
+      <div className="loading-monster">●ᴥ●</div>
+      <p>{t("loading.island")}</p>
+    </div>
+  );
+}
 
 const GameExperience = dynamic(
   () =>
@@ -9,15 +20,11 @@ const GameExperience = dynamic(
     ),
   {
     ssr: false,
-    loading: () => (
-      <div className="game-loading">
-        <div className="loading-monster">●ᴥ●</div>
-        <p>Growing the island…</p>
-      </div>
-    ),
+    loading: GameLoading,
   },
 );
 
 export function GameClient() {
+  useLocalizedTitle("meta.gameTitle");
   return <GameExperience />;
 }

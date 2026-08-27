@@ -83,6 +83,42 @@ button {
   gap: 13px;
   color: var(--leaf);
 }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.language-switcher {
+  height: 36px;
+  display: inline-grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 3px;
+  border: 1.5px solid var(--ink);
+  border-radius: 12px;
+  background: rgb(255 249 232 / 88%);
+  box-shadow: 2px 2px 0 rgb(23 63 53 / 18%);
+  pointer-events: auto;
+}
+.language-switcher button {
+  min-width: 31px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.language-switcher button.selected {
+  background: var(--sun);
+  box-shadow: inset 0 0 0 1px rgb(23 63 53 / 16%);
+}
+.language-switcher button:focus-visible {
+  outline: 2px solid var(--leaf);
+  outline-offset: 1px;
+}
 
 .hero {
   width: min(1180px, calc(100% - 48px));
@@ -457,6 +493,10 @@ button {
   align-items: center;
   gap: 10px;
 }
+.game-language-switcher {
+  height: 34px;
+  background: rgb(255 249 232 / 92%);
+}
 .back-button {
   width: 46px;
   height: 46px;
@@ -625,7 +665,7 @@ button {
 }
 .status-bubble {
   position: absolute;
-  top: 24px;
+  top: 82px;
   left: 50%;
   transform: translateX(-50%);
   min-width: 220px;
@@ -694,7 +734,7 @@ button {
 .mouse-hint {
   position: absolute;
   left: 50%;
-  top: 78px;
+  top: 126px;
   transform: translateX(-50%);
   padding: 8px 12px;
   border-radius: 9px;
@@ -873,6 +913,14 @@ kbd {
 .creator-header {
   border-bottom: 1.5px solid rgb(23 63 53 / 30%);
 }
+.creator-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.creator-language-switcher {
+  height: 34px;
+}
 .creator-header h2 {
   margin-top: 2px;
   font-family: var(--font-display), sans-serif;
@@ -927,7 +975,7 @@ kbd {
     auto;
 }
 .creator-stage::before {
-  content: "LIVE SPECIMEN";
+  content: attr(data-live-label);
   position: absolute;
   z-index: 2;
   top: 30px;
@@ -1638,6 +1686,13 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
   .creator-header h2 {
     font-size: 24px;
   }
+  .creator-header-actions {
+    gap: 6px;
+  }
+  .creator-language-switcher button {
+    min-width: 25px;
+    padding-inline: 3px;
+  }
   .creator-kicker {
     font-size: 7px;
   }
@@ -1691,6 +1746,13 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
   .site-header {
     height: 78px;
   }
+  .header-actions {
+    gap: 10px;
+  }
+  .site-header .language-switcher button {
+    min-width: 27px;
+    padding-inline: 4px;
+  }
   .brand-mark {
     width: 40px;
     height: 40px;
@@ -1702,7 +1764,7 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
     font-size: 0;
   }
   .header-play::before {
-    content: "PLAY";
+    content: attr(data-short-label);
     font-size: 12px;
   }
   .hero {
@@ -1744,12 +1806,12 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
     width: 56px;
   }
   .status-bubble {
-    top: 18px;
-    left: auto;
+    top: 78px;
+    left: 12px;
     right: 12px;
     transform: none;
     min-width: 0;
-    max-width: calc(100% - 146px);
+    max-width: none;
   }
   .mobile-controls .joystick:first-child {
     left: 16px;
@@ -1770,6 +1832,12 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
   .action-button {
     width: 64px;
     height: 64px;
+  }
+  .action-button span {
+    max-width: 100%;
+    font-size: 9px;
+    line-height: 1;
+    white-space: nowrap;
   }
 }
 

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { GameClient } from "./game-client";
 
 export const metadata: Metadata = {
-  title: "Island prototype",
-  description: "Explore a tiny 3D island as a curious monster.",
+  title: "Островен прототип",
+  description: "Изследвай малък 3D остров като любопитно чудовище.",
 };
 
 export default function GamePage() {

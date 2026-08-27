@@ -32,6 +32,20 @@ import {
   type MonsterDna,
 } from "@/components/game/monster-dna";
 import { MonsterVisual } from "@/components/game/monster-model";
+import {
+  LanguageSwitcher,
+  useI18n,
+  type TranslationKey,
+} from "@/components/i18n";
+
+function CreatorLoading() {
+  const { t } = useI18n();
+  return (
+    <div className="creator-overlay" role="status" aria-live="polite">
+      <div className="creator-loading">{t("loading.creator")}</div>
+    </div>
+  );
+}
 
 const MonsterCreator = dynamic(
   () =>
@@ -40,11 +54,7 @@ const MonsterCreator = dynamic(
     ),
   {
     ssr: false,
-    loading: () => (
-      <div className="creator-overlay" role="status" aria-live="polite">
-        <div className="creator-loading">Opening the DNA lab…</div>
-      </div>
-    ),
+    loading: CreatorLoading,
   },
 );
 
@@ -62,6 +72,11 @@ type CreatorDraft = {
   mode: "edit" | "new";
   dna: MonsterDna;
   name: string;
+};
+
+type StatusMessage = {
+  key: TranslationKey;
+  values?: Record<string, string | number>;
 };
 
 function subscribeToDeviceProfile() {
@@ -1241,6 +1256,7 @@ function Joystick({
 }
 
 export function GameExperience() {
+  const { t, option } = useI18n();
   const controls = useRef<ControlState>({
     keys: new Set(),
     move: { x: 0, y: 0 },
@@ -1262,7 +1278,9 @@ export function GameExperience() {
   const huntedIdsRef = useRef<Set<string>>(new Set());
   const nextMonsterId = useRef(2);
   const [pointerLocked, setPointerLocked] = useState(false);
-  const [status, setStatus] = useState("Welcome to Mossmunch Island");
+  const [status, setStatus] = useState<StatusMessage>({
+    key: "game.welcome",
+  });
   const [energy, setEnergy] = useState(100);
   const [isDead, setIsDead] = useState(false);
   const [eatenIds, setEatenIds] = useState<Set<string>>(() => new Set());
@@ -1314,7 +1332,7 @@ export function GameExperience() {
     controls.current.move = { x: 0, y: 0 };
     setEnergyLevel(0);
     setIsDead(true);
-    setStatus(`${activeMonster.name} ran out of energy.`);
+    setStatus({ key: "game.ranOut", values: { name: activeMonster.name } });
     if (document.pointerLockElement) document.exitPointerLock();
   }, [activeMonster.name, setEnergyLevel]);
 
@@ -1355,25 +1373,31 @@ export function GameExperience() {
           const huntEnergy = monsterDna.diet === "carnivore" ? 45 : 28;
           const restoredEnergy = Math.min(huntEnergy, 100 - remainingEnergy);
           setEnergyLevel(remainingEnergy + restoredEnergy);
-          setStatus(
-            `${monsterDna.diet === "carnivore" ? "Carnivore feast" : "Omnivore snack"}! +${Math.ceil(restoredEnergy)} energy`,
-          );
+          setStatus({
+            key:
+              monsterDna.diet === "carnivore"
+                ? "game.carnivoreFeast"
+                : "game.omnivoreSnack",
+            values: { energy: Math.ceil(restoredEnergy) },
+          });
         } else if (canMonsterHunt(monsterDna)) {
-          setStatus(
-            `No prey in range. The attack still cost ${ATTACK_ENERGY_COST} energy.`,
-          );
+          setStatus({
+            key: "game.noPrey",
+            values: { cost: ATTACK_ENERGY_COST },
+          });
         } else {
-          setStatus(
-            `Herbivores attack only to defend themselves. −${ATTACK_ENERGY_COST} energy`,
-          );
+          setStatus({
+            key: "game.herbivoreAttack",
+            values: { cost: ATTACK_ENERGY_COST },
+          });
         }
       } else {
         if (!canMonsterEatPlants(monsterDna)) {
-          setStatus("Carnivores cannot digest plants. Hunt a small critter.");
+          setStatus({ key: "game.noPlants" });
           return;
         }
         if (controls.current.energy >= 99.5) {
-          setStatus("Energy is already full.");
+          setStatus({ key: "game.energyFull" });
           return;
         }
 
@@ -1393,7 +1417,7 @@ export function GameExperience() {
         }
 
         if (!nearest) {
-          setStatus("Get closer to a bush or tree to eat.");
+          setStatus({ key: "game.getCloser" });
           return;
         }
 
@@ -1408,15 +1432,17 @@ export function GameExperience() {
           100 - controls.current.energy,
         );
         setEnergyLevel(controls.current.energy + restoredEnergy);
-        setStatus(
-          nearest.kind === "bush"
-            ? `Crunchy bush! +${Math.ceil(restoredEnergy)} energy`
-            : `Tasty tree! +${Math.ceil(restoredEnergy)} energy`,
-        );
+        setStatus({
+          key:
+            nearest.kind === "bush"
+              ? "game.crunchyBush"
+              : "game.tastyTree",
+          values: { energy: Math.ceil(restoredEnergy) },
+        });
       }
 
       window.setTimeout(() => {
-        if (!controls.current.isDead) setStatus("Explore the island");
+        if (!controls.current.isDead) setStatus({ key: "game.explore" });
       }, 1400);
     },
     [killMonster, monsterDna, sceneQuality, setEnergyLevel],
@@ -1443,7 +1469,10 @@ export function GameExperience() {
     setEnergyLevel(100);
     setIsDead(false);
     setMonsterKey((current) => current + 1);
-    setStatus(`${activeMonster.name} is ready to explore again!`);
+    setStatus({
+      key: "game.ready",
+      values: { name: activeMonster.name },
+    });
   }, [activeMonster.name, setEnergyLevel]);
 
   const openCreator = useCallback(() => {
@@ -1461,7 +1490,10 @@ export function GameExperience() {
 
   const openNewMonster = useCallback(() => {
     if (monsterFamily.length >= MAX_FAMILY_SIZE) {
-      setStatus(`The family can hold up to ${MAX_FAMILY_SIZE} monsters.`);
+      setStatus({
+        key: "game.familyFull",
+        values: { count: MAX_FAMILY_SIZE },
+      });
       return;
     }
     controls.current.paused = true;
@@ -1472,9 +1504,9 @@ export function GameExperience() {
     setCreatorDraft({
       mode: "new",
       dna: DEFAULT_MONSTER_DNA,
-      name: `Monster ${monsterFamily.length + 1}`,
+      name: `${t("game.genericMonster")} ${monsterFamily.length + 1}`,
     });
-  }, [monsterFamily.length]);
+  }, [monsterFamily.length, t]);
 
   const closeCreator = useCallback(() => {
     controls.current.paused = false;
@@ -1493,7 +1525,7 @@ export function GameExperience() {
         setMonsterFamily((current) => [...current, { id, name, dna: nextDna }]);
         setActiveMonsterId(id);
         setMonsterKey((current) => current + 1);
-        setStatus(`${name} joined the monster family!`);
+        setStatus({ key: "game.joined", values: { name } });
       } else {
         setMonsterFamily((current) =>
           current.map((profile) =>
@@ -1502,7 +1534,7 @@ export function GameExperience() {
               : profile,
           ),
         );
-        setStatus(`${name}'s new DNA is ready to test!`);
+        setStatus({ key: "game.dnaReady", values: { name } });
       }
       setCreatorDraft(null);
     },
@@ -1522,7 +1554,10 @@ export function GameExperience() {
       setMonsterKey((current) => current + 1);
       setEnergyLevel(100);
       setIsDead(false);
-      setStatus(`Now playing as ${nextMonster.name}.`);
+      setStatus({
+        key: "game.nowPlaying",
+        values: { name: nextMonster.name },
+      });
     },
     [activeMonsterId, monsterFamily, setEnergyLevel],
   );
@@ -1683,37 +1718,43 @@ export function GameExperience() {
         </Canvas>
       ) : (
         <div className="scene-loading" role="status" aria-live="polite">
-          Growing the island…
+          {t("loading.island")}
         </div>
       )}
 
       <div className="game-hud" aria-live="polite">
         <div className="hud-top-left">
-          <Link href="/" className="back-button" aria-label="Back to home">
+          <Link href="/" className="back-button" aria-label={t("game.home")}>
             <ArrowLeft size={19} />
           </Link>
           <div className="monster-card">
             <MonsterMark className="hud-monster" />
             <div>
               <span>{activeMonster.name.toUpperCase()}</span>
-              <strong>{monsterDna.diet} · level 1 explorer</strong>
+              <strong>
+                {option(monsterDna.diet)} · {t("game.explorer")}
+              </strong>
             </div>
           </div>
+          <LanguageSwitcher className="game-language-switcher" />
         </div>
         <div className="hud-top-right">
           <div className="dna-hud-row">
             <div className="dna-chip">
               <Dna size={16} />
               <span>
-                {monsterDna.eyes} {monsterDna.eyes === 1 ? "eye" : "eyes"} ·{" "}
-                {monsterDna.diet} · {monsterDna.social}
+                {monsterDna.eyes}{" "}
+                {monsterDna.eyes === 1
+                  ? t("creator.eye")
+                  : t("creator.eyes")}{" "}
+                · {option(monsterDna.diet)} · {option(monsterDna.social)}
                 {getMonsterFollowerCount(monsterDna)
                   ? ` +${getMonsterFollowerCount(monsterDna)}`
                   : ""}
               </span>
             </div>
             <label className="family-picker">
-              <span>Monster</span>
+              <span>{t("game.monster")}</span>
               <select
                 value={activeMonsterId}
                 onChange={(event) => switchMonster(event.target.value)}
@@ -1731,34 +1772,36 @@ export function GameExperience() {
               onClick={openNewMonster}
               disabled={monsterFamily.length >= MAX_FAMILY_SIZE}
             >
-              <Plus size={14} /> New
+              <Plus size={14} /> {t("game.new")}
             </button>
             <button
               type="button"
               className="dna-lab-button"
               onClick={openCreator}
             >
-              Edit monster
+              {t("game.edit")}
             </button>
           </div>
           <div
             className={`energy-bar${energy <= 25 ? " energy-low" : ""}${isDead ? " energy-empty" : ""}`}
           >
             <i style={{ width: `${energy}%` }} />
-            <span>ENERGY {energy}</span>
+            <span>
+              {t("game.energy")} {energy}
+            </span>
           </div>
         </div>
-        <div className="status-bubble">{status}</div>
+        <div className="status-bubble">{t(status.key, status.values)}</div>
 
         {isDead && (
           <div className="death-card" role="dialog" aria-modal="true">
-            <span>OUT OF ENERGY</span>
-            <strong>{activeMonster.name} has collapsed!</strong>
-            <p>
-              Walk to forage, sprint carefully, and save energy for attacks.
-            </p>
+            <span>{t("game.outOfEnergy")}</span>
+            <strong>
+              {t("game.collapsed", { name: activeMonster.name })}
+            </strong>
+            <p>{t("game.deathHint")}</p>
             <button type="button" onClick={resetGame}>
-              Try again <kbd>R</kbd>
+              {t("game.tryAgain")} <kbd>R</kbd>
             </button>
           </div>
         )}
@@ -1766,7 +1809,7 @@ export function GameExperience() {
         {!pointerLocked && (
           <div className="mouse-hint">
             <MousePointer2 size={18} />
-            <span>Click the world to look around</span>
+            <span>{t("game.mouseHint")}</span>
           </div>
         )}
 
@@ -1774,50 +1817,50 @@ export function GameExperience() {
           <div>
             <kbd>W</kbd>
             <kbd>S</kbd>
-            <span>forward / back</span>
+            <span>{t("game.forwardBack")}</span>
           </div>
           <div>
             <kbd>A</kbd>
             <kbd>D</kbd>
-            <span>face + move sideways</span>
+            <span>{t("game.sideways")}</span>
           </div>
           <div>
             <MousePointer2 size={16} />
-            <span>camera</span>
+            <span>{t("game.camera")}</span>
           </div>
           <div>
             <kbd>←</kbd>
             <kbd>→</kbd>
-            <span>turn + camera</span>
+            <span>{t("game.turnCamera")}</span>
           </div>
           <div>
             <kbd>↑</kbd>
             <kbd>↓</kbd>
-            <span>forward / back</span>
+            <span>{t("game.forwardBack")}</span>
           </div>
           <div>
             <kbd>E</kbd>
-            <span>eat</span>
+            <span>{t("game.eat")}</span>
           </div>
           <div>
             <kbd>SPACE</kbd>
-            <span>attack</span>
+            <span>{t("game.attack")}</span>
           </div>
           <div>
             <kbd>SHIFT</kbd>
-            <span>sprint</span>
+            <span>{t("game.sprint")}</span>
           </div>
         </div>
 
         <div className="mobile-controls">
           <Joystick
-            label="MOVE"
+            label={t("game.move")}
             onMove={(x, y) => {
               controls.current.move = { x, y };
             }}
           />
           <Joystick
-            label="LOOK"
+            label={t("game.look")}
             onMove={(x, y) => {
               controls.current.look = { x, y: -y };
             }}
@@ -1835,7 +1878,7 @@ export function GameExperience() {
             }}
           >
             <Leaf size={25} />
-            <span>Eat</span>
+            <span>{t("game.eatButton")}</span>
             <small>E</small>
           </button>
           <button
@@ -1848,8 +1891,12 @@ export function GameExperience() {
             }}
           >
             <Swords size={25} />
-            <span>{canMonsterHunt(monsterDna) ? "Hunt" : "Attack"}</span>
-            <small>Space</small>
+            <span>
+              {canMonsterHunt(monsterDna)
+                ? t("game.huntButton")
+                : t("game.attackButton")}
+            </span>
+            <small>{t("game.space")}</small>
           </button>
         </div>
 
@@ -1857,8 +1904,8 @@ export function GameExperience() {
           <Crosshair size={14} />
           <span>
             {canMonsterSwim(monsterDna)
-              ? "Aquatic DNA: rivers and sea are open."
-              : "Water is off limits. Look for a bridge."}
+              ? t("game.waterOpen")
+              : t("game.waterClosed")}
           </span>
         </div>
       </div>

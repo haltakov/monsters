@@ -1,31 +1,40 @@
 import type { Metadata } from "next";
-import { Fredoka, IBM_Plex_Mono, Nunito } from "next/font/google";
+import { Comfortaa, IBM_Plex_Mono, Nunito } from "next/font/google";
+import { LanguageProvider } from "@/components/i18n";
 import "./globals.css";
 
-const display = Fredoka({ variable: "--font-display", subsets: ["latin"] });
-const body = Nunito({ variable: "--font-body", subsets: ["latin"] });
+const display = Comfortaa({
+  variable: "--font-display",
+  subsets: ["cyrillic", "latin"],
+});
+const body = Nunito({
+  variable: "--font-body",
+  subsets: ["cyrillic", "latin"],
+});
 const mono = IBM_Plex_Mono({
   variable: "--font-mono",
-  subsets: ["latin"],
+  subsets: ["cyrillic", "latin"],
   weight: ["500", "600"],
 });
 
 export const metadata: Metadata = {
   title: {
-    default: "Monsters — grow a tiny wild world",
+    default: "Monsters — отгледай малък див свят",
     template: "%s · Monsters",
   },
   description:
-    "Create curious monsters, explore their island, and discover what their DNA can do.",
+    "Създавай чудовища, изследвай острова им и открий какво може тяхното DNA.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="en"
+      lang="bg"
       className={`${display.variable} ${body.variable} ${mono.variable} h-full antialiased`}
     >
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        <LanguageProvider>{children}</LanguageProvider>
+      </body>
     </html>
   );
 }

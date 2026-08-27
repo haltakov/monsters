@@ -27,63 +27,17 @@ import {
 } from "@/components/game/monster-dna";
 import { MONSTER_ARCHETYPES } from "@/components/game/monster-archetypes";
 import { MonsterVisual } from "@/components/game/monster-model";
+import {
+  LanguageSwitcher,
+  useI18n,
+  type TranslationKey,
+} from "@/components/i18n";
 
 type MonsterCreatorProps = {
   dna: MonsterDna;
   name: string;
   onApply: (dna: MonsterDna, name: string) => void;
   onClose: () => void;
-};
-
-const LABELS: Record<string, string> = {
-  round: "Round",
-  bean: "Bean",
-  long: "Long",
-  pig: "Pig",
-  biped: "Humanoid",
-  saurian: "Dinosaur",
-  rhino: "Rhino",
-  aquatic: "Aquatic",
-  stubby: "Stubby",
-  hoof: "Hooves",
-  springy: "Springy",
-  clawed: "Clawed",
-  flippers: "Flippers",
-  smile: "Smile",
-  fangs: "Fangs",
-  beak: "Beak",
-  snout: "Snout",
-  tusks: "Tusks",
-  small: "Small",
-  medium: "Medium",
-  large: "Large",
-  plain: "Plain",
-  spots: "Spots",
-  stripes: "Stripes",
-  patches: "Patches",
-  scales: "Scales",
-  none: "None",
-  buds: "Buds",
-  spikes: "Spikes",
-  antlers: "Antlers",
-  tuft: "Tuft",
-  curly: "Curly",
-  club: "Club",
-  fin: "Tail fin",
-  fins: "Fins",
-  wings: "Wings",
-  shell: "Shell",
-  plates: "Back plates",
-  herbivore: "Herbivore",
-  carnivore: "Carnivore",
-  omnivore: "Omnivore",
-  lungs: "Lungs",
-  gills: "Gills",
-  both: "Lungs + gills",
-  solitary: "Solitary",
-  pair: "Pair",
-  pack: "Pack",
-  army: "Small army",
 };
 
 function GeneChoices<T extends string | number>({
@@ -99,6 +53,7 @@ function GeneChoices<T extends string | number>({
   onChange: (value: T) => void;
   featured?: boolean;
 }) {
+  const { option: optionLabel } = useI18n();
   return (
     <fieldset className={`gene-field${featured ? " silhouette-gene" : ""}`}>
       <legend>{label}</legend>
@@ -113,7 +68,7 @@ function GeneChoices<T extends string | number>({
             onClick={() => onChange(option)}
           >
             {featured && <i className="gene-silhouette" aria-hidden="true" />}
-            {LABELS[String(option)] ?? option}
+            {optionLabel(option)}
           </button>
         ))}
       </div>
@@ -132,6 +87,7 @@ function ColorChoices({
   options: ReadonlyArray<{ id: string; label: string; hex: string }>;
   onChange: (value: string) => void;
 }) {
+  const { option: optionLabel } = useI18n();
   return (
     <fieldset className="gene-field color-gene-field">
       <legend>{label}</legend>
@@ -141,9 +97,9 @@ function ColorChoices({
             key={option.id}
             type="button"
             className={value === option.id ? "selected" : ""}
-            aria-label={`${label}: ${option.label}`}
+            aria-label={`${label}: ${optionLabel(option.id)}`}
             aria-pressed={value === option.id}
-            title={option.label}
+            title={optionLabel(option.id)}
             style={{ "--swatch": option.hex } as CSSProperties}
             onClick={() => onChange(option.id)}
           >
@@ -166,11 +122,12 @@ function ArchetypeGuide({
   activeId?: string;
   onChoose: (dna: MonsterDna) => void;
 }) {
+  const { t, option } = useI18n();
   return (
     <section className="archetype-guide" aria-labelledby="archetype-title">
       <div className="archetype-guide-heading">
-        <span id="archetype-title">FIELD GUIDE · ANIMAL-LIKE STARTERS</span>
-        <small>Choose one, then change any gene.</small>
+        <span id="archetype-title">{t("creator.guide")}</span>
+        <small>{t("creator.guideHint")}</small>
       </div>
       <div className="archetype-cards">
         {MONSTER_ARCHETYPES.map((archetype) => (
@@ -179,14 +136,18 @@ function ArchetypeGuide({
             type="button"
             className={activeId === archetype.id ? "selected" : ""}
             aria-pressed={activeId === archetype.id}
-            title={archetype.summary}
+            title={t(
+              `archetype.${archetype.id}.summary` as TranslationKey,
+            )}
             onClick={() => onChoose(archetype.dna)}
           >
             <i>{archetype.mark}</i>
-            <strong>{archetype.label}</strong>
+            <strong>
+              {t(`archetype.${archetype.id}.label` as TranslationKey)}
+            </strong>
             <small>
-              {archetype.dna.size} · {archetype.dna.diet} ·{" "}
-              {archetype.dna.social}
+              {option(archetype.dna.size)} · {option(archetype.dna.diet)} ·{" "}
+              {option(archetype.dna.social)}
             </small>
           </button>
         ))}
@@ -201,6 +162,7 @@ export function MonsterCreator({
   onApply,
   onClose,
 }: MonsterCreatorProps) {
+  const { t, option } = useI18n();
   const [draft, setDraft] = useState<MonsterDna>(dna);
   const [draftName, setDraftName] = useState(name);
   const [dnaText, setDnaText] = useState(() => encodeMonsterDna(dna));
@@ -231,8 +193,8 @@ export function MonsterCreator({
       const parsed = decodeMonsterDna(source);
       setDraft(parsed);
       setDnaError(null);
-    } catch (error) {
-      setDnaError(error instanceof Error ? error.message : "Invalid DNA");
+    } catch {
+      setDnaError(t("creator.invalidDna"));
     }
   };
 
@@ -272,22 +234,25 @@ export function MonsterCreator({
         <header className="creator-header">
           <div>
             <span className="creator-kicker">
-              <Dna size={15} /> DNA LAB · SPECIMEN 001
+              <Dna size={15} /> {t("creator.kicker")}
             </span>
-            <h2 id="creator-title">Build your monster</h2>
+            <h2 id="creator-title">{t("creator.title")}</h2>
           </div>
-          <button
-            type="button"
-            className="creator-close"
-            onClick={onClose}
-            aria-label="Close creator"
-          >
-            <X size={20} />
-          </button>
+          <div className="creator-header-actions">
+            <LanguageSwitcher className="creator-language-switcher" />
+            <button
+              type="button"
+              className="creator-close"
+              onClick={onClose}
+              aria-label={t("creator.close")}
+            >
+              <X size={20} />
+            </button>
+          </div>
         </header>
 
         <div className="creator-layout">
-          <div className="creator-stage">
+          <div className="creator-stage" data-live-label={t("creator.live")}>
             <div className="creator-canvas">
               <Canvas shadows camera={{ fov: 42, position: [4.2, 2.8, -5.2] }}>
                 <color attach="background" args={["#B9DFD8"]} />
@@ -328,16 +293,21 @@ export function MonsterCreator({
               </Canvas>
             </div>
             <div className="rotate-hint">
-              <Rotate3D size={16} /> Drag to rotate · scroll to zoom
+              <Rotate3D size={16} /> {t("creator.rotate")}
             </div>
             <div className="specimen-stats">
               <span>
-                {draft.eyes} {draft.eyes === 1 ? "eye" : "eyes"}
+                {draft.eyes}{" "}
+                {draft.eyes === 1 ? t("creator.eye") : t("creator.eyes")}
               </span>
-              <span>{draft.legs} legs</span>
-              <span>{LABELS[draft.body]}</span>
               <span>
-                {followerCount ? `${followerCount} followers` : "solo"}
+                {draft.legs} {t("creator.legs")}
+              </span>
+              <span>{option(draft.body)}</span>
+              <span>
+                {followerCount
+                  ? `${followerCount} ${t("creator.followers")}`
+                  : t("creator.solo")}
               </span>
             </div>
           </div>
@@ -345,15 +315,15 @@ export function MonsterCreator({
           <div className="creator-controls">
             <div className="builder-heading">
               <div>
-                <span>CHARACTER BUILDER</span>
-                <strong>Every choice writes one gene.</strong>
+                <span>{t("creator.builder")}</span>
+                <strong>{t("creator.builderHint")}</strong>
               </div>
               <button
                 type="button"
                 className="surprise-button"
                 onClick={surpriseMe}
               >
-                <Shuffle size={14} /> Surprise me
+                <Shuffle size={14} /> {t("creator.surprise")}
               </button>
             </div>
 
@@ -361,95 +331,95 @@ export function MonsterCreator({
 
             <div className="gene-grid">
               <label className="monster-name-field">
-                <span>Monster name</span>
+                <span>{t("creator.name")}</span>
                 <input
                   value={draftName}
                   maxLength={24}
-                  placeholder="Give this monster a name"
+                  placeholder={t("creator.namePlaceholder")}
                   onChange={(event) => setDraftName(event.target.value)}
                 />
               </label>
               <GeneChoices
-                label="Body shape"
+                label={t("creator.body")}
                 value={draft.body}
                 options={BODY_SHAPES}
                 onChange={(value) => changeGene("body", value)}
                 featured
               />
               <GeneChoices
-                label="Diet"
+                label={t("creator.diet")}
                 value={draft.diet}
                 options={DIETS}
                 onChange={(value) => changeGene("diet", value)}
               />
               <GeneChoices
-                label="Breathing"
+                label={t("creator.breathing")}
                 value={draft.breathing}
                 options={RESPIRATIONS}
                 onChange={(value) => changeGene("breathing", value)}
               />
               <GeneChoices
-                label="Social behavior"
+                label={t("creator.social")}
                 value={draft.social}
                 options={SOCIAL_BEHAVIORS}
                 onChange={(value) => changeGene("social", value)}
               />
               <GeneChoices
-                label="Size"
+                label={t("creator.size")}
                 value={draft.size}
                 options={MONSTER_SIZES}
                 onChange={(value) => changeGene("size", value)}
               />
               <GeneChoices
-                label="Number of legs"
+                label={t("creator.legCount")}
                 value={draft.legs}
                 options={LEG_COUNTS}
                 onChange={(value) => changeGene("legs", value)}
               />
               <GeneChoices
-                label="Leg shape"
+                label={t("creator.legShape")}
                 value={draft.legShape}
                 options={LEG_SHAPES}
                 onChange={(value) => changeGene("legShape", value)}
               />
               <GeneChoices
-                label="Number of eyes"
+                label={t("creator.eyeCount")}
                 value={draft.eyes}
                 options={EYE_COUNTS}
                 onChange={(value) => changeGene("eyes", value)}
               />
               <GeneChoices
-                label="Mouth"
+                label={t("creator.mouth")}
                 value={draft.mouth}
                 options={MOUTH_SHAPES}
                 onChange={(value) => changeGene("mouth", value)}
               />
               <GeneChoices
-                label="Pattern"
+                label={t("creator.pattern")}
                 value={draft.pattern}
                 options={PATTERNS}
                 onChange={(value) => changeGene("pattern", value)}
               />
               <GeneChoices
-                label="Horns"
+                label={t("creator.horns")}
                 value={draft.horns}
                 options={HORN_SHAPES}
                 onChange={(value) => changeGene("horns", value)}
               />
               <GeneChoices
-                label="Tail"
+                label={t("creator.tail")}
                 value={draft.tail}
                 options={TAIL_SHAPES}
                 onChange={(value) => changeGene("tail", value)}
               />
               <GeneChoices
-                label="Special adaptation"
+                label={t("creator.adaptation")}
                 value={draft.adaptation}
                 options={ADAPTATIONS}
                 onChange={(value) => changeGene("adaptation", value)}
               />
               <ColorChoices
-                label="Body color"
+                label={t("creator.bodyColor")}
                 value={draft.color}
                 options={MONSTER_COLORS}
                 onChange={(value) =>
@@ -457,7 +427,7 @@ export function MonsterCreator({
                 }
               />
               <ColorChoices
-                label="Accent color"
+                label={t("creator.accentColor")}
                 value={draft.accent}
                 options={ACCENT_COLORS}
                 onChange={(value) =>
@@ -468,7 +438,7 @@ export function MonsterCreator({
 
             <label className={`dna-tape${dnaError ? " invalid" : ""}`}>
               <span>
-                <Dna size={14} /> DIRECT DNA EDITOR
+                <Dna size={14} /> {t("creator.directDna")}
               </span>
               <textarea
                 value={dnaText}
@@ -478,18 +448,17 @@ export function MonsterCreator({
                 onChange={(event) => editDna(event.target.value)}
               />
               <small>
-                {dnaError ??
-                  "M4 stores all 15 genes. Old M1–M3 codes still work and are upgraded automatically."}
+                {dnaError ?? t("creator.dnaHelp")}
               </small>
             </label>
           </div>
         </div>
 
         <footer className="creator-footer">
-          <span>15 genes · anatomy + breathing + social behavior</span>
+          <span>{t("creator.footer")}</span>
           <div>
             <button type="button" className="creator-cancel" onClick={onClose}>
-              Keep current monster
+              {t("creator.keep")}
             </button>
             <button
               type="button"
@@ -497,7 +466,7 @@ export function MonsterCreator({
               disabled={Boolean(dnaError) || !draftName.trim()}
               onClick={() => onApply(draft, draftName.trim())}
             >
-              <Check size={17} /> Play as this monster
+              <Check size={17} /> {t("creator.apply")}
             </button>
           </div>
         </footer>

@@ -1,46 +1,58 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowRight, Dna, Footprints, Sprout } from "lucide-react";
+import {
+  LanguageSwitcher,
+  useI18n,
+  useLocalizedTitle,
+} from "@/components/i18n";
 import { MonsterMark } from "@/components/monster-mark";
 
 export default function Home() {
+  const { t } = useI18n();
+  useLocalizedTitle("meta.homeTitle");
+
   return (
     <div className="landing-shell">
       <header className="site-header">
-        <Link href="/" className="brand" aria-label="Monsters home">
+        <Link href="/" className="brand" aria-label={t("landing.home")}>
           <MonsterMark className="brand-mark" />
           <span>MONSTERS</span>
         </Link>
-        <Link href="/game" className="header-play">
-          Enter the island <ArrowRight size={17} strokeWidth={2.5} />
-        </Link>
+        <div className="header-actions">
+          <LanguageSwitcher />
+          <Link
+            href="/game"
+            className="header-play"
+            data-short-label={t("landing.playShort")}
+          >
+            {t("landing.enter")} <ArrowRight size={17} strokeWidth={2.5} />
+          </Link>
+        </div>
       </header>
 
       <main>
         <section className="hero">
           <div className="hero-copy">
-            <p className="eyebrow">FIELD NOTES · DAY ONE</p>
+            <p className="eyebrow">{t("landing.eyebrow")}</p>
             <h1>
-              A small world.
+              {t("landing.titleOne")}
               <br />
-              <span>Infinite little weirdos.</span>
+              <span>{t("landing.titleTwo")}</span>
             </h1>
-            <p className="hero-lede">
-              Grow monsters from wild DNA, then watch them explore, adapt, make
-              friends—or decide that lunch has legs.
-            </p>
+            <p className="hero-lede">{t("landing.lede")}</p>
             <div className="hero-actions">
               <Link href="/game" className="primary-cta">
-                Play the prototype <ArrowRight size={20} strokeWidth={2.7} />
+                {t("landing.play")} <ArrowRight size={20} strokeWidth={2.7} />
               </Link>
-              <span className="prototype-note">
-                No account. No saving. Just play.
-              </span>
+              <span className="prototype-note">{t("landing.note")}</span>
             </div>
           </div>
 
           <div
             className="diorama-wrap"
-            aria-label="A tiny monster island illustration"
+            aria-label={t("landing.diorama")}
           >
             <div className="diorama-sun" />
             <div className="cloud cloud-one" />
@@ -62,41 +74,41 @@ export default function Home() {
               <MonsterMark className="diorama-monster" />
             </div>
             <div className="specimen-tag">
-              <span>SPECIMEN 001</span>
-              <strong>MOSS MUNCHER</strong>
-              <small>friendly · hungry · surprisingly fast</small>
+              <span>{t("landing.specimen")}</span>
+              <strong>{t("landing.specimenName")}</strong>
+              <small>{t("landing.specimenTraits")}</small>
             </div>
           </div>
         </section>
 
-        <section className="trait-strip" aria-label="Game features">
+        <section className="trait-strip" aria-label={t("landing.features")}>
           <article>
             <Dna size={24} />
             <div>
-              <strong>DNA makes the monster</strong>
-              <span>Eyes, legs, appetite, speed, instincts.</span>
+              <strong>{t("landing.dnaTitle")}</strong>
+              <span>{t("landing.dnaBody")}</span>
             </div>
           </article>
           <article>
             <Footprints size={24} />
             <div>
-              <strong>Every choice leaves tracks</strong>
-              <span>Hunt, graze, gather, wander, survive.</span>
+              <strong>{t("landing.tracksTitle")}</strong>
+              <span>{t("landing.tracksBody")}</span>
             </div>
           </article>
           <article>
             <Sprout size={24} />
             <div>
-              <strong>The world grows with them</strong>
-              <span>A living island we’ll build together.</span>
+              <strong>{t("landing.worldTitle")}</strong>
+              <span>{t("landing.worldBody")}</span>
             </div>
           </article>
         </section>
       </main>
 
       <footer className="site-footer">
-        <span>Built by a dad, his son, and a lot of curious creatures.</span>
-        <span>Prototype 0.1</span>
+        <span>{t("landing.footer")}</span>
+        <span>{t("landing.version")}</span>
       </footer>
     </div>
   );
