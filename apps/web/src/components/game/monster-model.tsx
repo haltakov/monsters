@@ -10,6 +10,7 @@ import {
 type MonsterVisualProps = {
   dna: MonsterDna;
   legRefs?: Array<RefObject<THREE.Group | null>>;
+  wingRefs?: Array<RefObject<THREE.Mesh | null>>;
   castShadow?: boolean;
 };
 
@@ -740,11 +741,13 @@ function Adaptation({
   profile,
   accent,
   castShadow,
+  wingRefs,
 }: {
   type: MonsterDna["adaptation"];
   profile: BodyProfile;
   accent: string;
   castShadow: boolean;
+  wingRefs?: Array<RefObject<THREE.Mesh | null>>;
 }) {
   if (type === "none") return null;
   const [cx, cy, cz] = profile.center;
@@ -775,9 +778,10 @@ function Adaptation({
   if (type === "wings") {
     return (
       <group>
-        {[-1, 1].map((side) => (
+        {[-1, 1].map((side, index) => (
           <mesh
             key={side}
+            ref={wingRefs?.[index]}
             position={[cx + side * sx * 0.92, cy + sy * 0.25, cz + 0.15]}
             rotation={[0.15, side * 0.18, side * -0.38]}
             scale={[0.85, 0.16, 0.72]}
@@ -909,6 +913,7 @@ function RespirationDetails({
 export function MonsterVisual({
   dna,
   legRefs,
+  wingRefs,
   castShadow = true,
 }: MonsterVisualProps) {
   const primary = getMonsterColor(dna.color);
@@ -946,6 +951,7 @@ export function MonsterVisual({
         profile={profile}
         accent={accent.hex}
         castShadow={castShadow}
+        wingRefs={wingRefs}
       />
       <DietMark diet={dna.diet} profile={profile} />
       <RespirationDetails

@@ -663,6 +663,35 @@ button {
   font-weight: 600;
   letter-spacing: 0.12em;
 }
+.locomotion-chip {
+  min-width: 142px;
+  min-height: 24px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1.5px solid var(--ink);
+  border-radius: 9px;
+  background: rgb(255 249 232 / 88%);
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+}
+.locomotion-chip > span {
+  color: #54746b;
+  letter-spacing: 0.08em;
+}
+.locomotion-chip > strong {
+  font-size: 8px;
+  text-transform: uppercase;
+}
+.locomotion-chip[data-mode="fly"] {
+  background: rgb(158 216 229 / 92%);
+}
+.locomotion-chip[data-mode="dive"] {
+  color: #fff9e8;
+  background: rgb(52 127 155 / 90%);
+}
 .status-bubble {
   position: absolute;
   top: 82px;
@@ -841,6 +870,54 @@ kbd {
   font-family: var(--font-mono), monospace;
   font-size: 7px;
   text-transform: uppercase;
+}
+.ability-controls {
+  position: absolute;
+  z-index: 2;
+  top: 164px;
+  right: 20px;
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+  pointer-events: auto;
+}
+.ability-button {
+  min-width: 108px;
+  height: 38px;
+  padding: 0 9px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+  border: 1.5px solid var(--ink);
+  border-radius: 12px;
+  background: rgb(255 249 232 / 90%);
+  box-shadow: 2px 2px 0 rgb(23 63 53 / 24%);
+  color: var(--ink);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+.ability-button.active {
+  background: #9ed8e5;
+  box-shadow: 2px 2px 0 #f4cf5a;
+}
+.ability-button > span {
+  font-family: var(--font-display), sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+}
+.ability-button > small {
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+  font-weight: 700;
+}
+.ability-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ability-button:focus-visible {
+  outline: 3px solid var(--sun);
+  outline-offset: 3px;
 }
 .water-rule {
   position: absolute;
@@ -1667,6 +1744,17 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
     font-size: 11px;
     min-width: 190px;
   }
+  .ability-controls {
+    top: 126px;
+    right: 12px;
+  }
+  .ability-button {
+    min-width: 96px;
+    height: 36px;
+  }
+  .locomotion-chip {
+    min-width: 132px;
+  }
 }
 
 @media (max-width: 620px) {
@@ -1838,6 +1926,13 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
     font-size: 9px;
     line-height: 1;
     white-space: nowrap;
+  }
+  .ability-button {
+    min-width: 90px;
+    padding-inline: 7px;
+  }
+  .ability-button > span {
+    font-size: 9px;
   }
 }
 

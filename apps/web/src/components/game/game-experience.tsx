@@ -12,6 +12,8 @@ import {
   MousePointer2,
   Plus,
   Swords,
+  Waves,
+  Wind,
 } from "lucide-react";
 import {
   useCallback,
@@ -61,6 +63,7 @@ const MonsterCreator = dynamic(
 type Action = "eat" | "attack" | null;
 type EdibleKind = "tree" | "bush";
 type SceneQuality = "mobile" | "desktop";
+type LocomotionMode = "land" | "swim" | "dive" | "fly";
 
 type MonsterProfile = {
   id: string;
@@ -122,7 +125,8 @@ type ControlState = {
   moving: boolean;
   sprinting: boolean;
   paused: boolean;
-  playerPosition: { x: number; z: number };
+  locomotionMode: LocomotionMode;
+  playerPosition: { x: number; y: number; z: number };
 };
 
 const WORLD_AREA_MULTIPLIER = 10;
@@ -132,6 +136,8 @@ const PLAYABLE_RADIUS = 38.2 * WORLD_SCALE;
 const BRIDGE_POSITIONS = [-96, -58, -20, 20, 58, 96] as const;
 const WALK_ENERGY_PER_SECOND = 1.2;
 const SPRINT_ENERGY_PER_SECOND = 3.8;
+const SWIM_ENERGY_PER_SECOND = 1.7;
+const FLY_ENERGY_PER_SECOND = 2.6;
 const ATTACK_ENERGY_COST = 7;
 const EAT_DISTANCE = 4.2;
 const HUNT_DISTANCE = 4.8;
@@ -298,6 +304,23 @@ function isBlockedByWater(x: number, z: number, canSwim: boolean) {
   return isWaterAt(x, z);
 }
 
+function isDeepWaterAt(x: number, z: number) {
+  return Math.hypot(x, z) > PLAYABLE_RADIUS + 1.2;
+}
+
+function getMonsterSpawn(dna: MonsterDna) {
+  if (canMonsterSwim(dna) && dna.adaptation !== "wings") {
+    const x = PLAYABLE_RADIUS + 4.5;
+    return { x, y: -0.9, z: 0, mode: "swim" as const };
+  }
+  return {
+    x: -8,
+    y: terrainHeight(-8, 8),
+    z: 8,
+    mode: "land" as const,
+  };
+}
+
 function createRandom(seed: number) {
   let value = seed >>> 0;
   return () => {
@@ -460,6 +483,7 @@ function Sea({ quality }: { quality: SceneQuality }) {
         color="#4AAFC5"
         roughness={0.32}
         metalness={0.05}
+        side={THREE.DoubleSide}
         transparent
         opacity={0.88}
       />
@@ -722,9 +746,50 @@ function SnackCritter({
   prey: Prey;
   quality: SceneQuality;
 }) {
+  const root = useRef<THREE.Group>(null);
   const y = terrainHeight(prey.x, prey.z);
+  const phase = Number(prey.id.split("-").at(-1) ?? 0) * 1.37;
+
+  useFrame(({ clock }, delta) => {
+    if (!root.current) return;
+    const time = clock.elapsedTime;
+    const x = prey.x + Math.sin(time * 0.65 + phase) * 1.15;
+    const z = prey.z + Math.cos(time * 0.52 + phase) * 0.9;
+    if (isWaterAt(x, z)) return;
+    const dx = x - root.current.position.x;
+    const dz = z - root.current.position.z;
+    root.current.position.x = THREE.MathUtils.damp(
+      root.current.position.x,
+      x,
+      5,
+      delta,
+    );
+    root.current.position.z = THREE.MathUtils.damp(
+      root.current.position.z,
+      z,
+      5,
+      delta,
+    );
+    root.current.position.y =
+      terrainHeight(root.current.position.x, root.current.position.z) +
+      0.38 +
+      Math.abs(Math.sin(time * 6.5 + phase)) * 0.06;
+    if (Math.hypot(dx, dz) > 0.002) {
+      root.current.rotation.y = dampAngle(
+        root.current.rotation.y,
+        Math.atan2(-dx, -dz),
+        6,
+        delta,
+      );
+    }
+  });
+
   return (
-    <group position={[prey.x, y + 0.38, prey.z]} rotation={[0, -0.4, 0]}>
+    <group
+      ref={root}
+      position={[prey.x, y + 0.38, prey.z]}
+      rotation={[0, -0.4, 0]}
+    >
       <mesh scale={[0.62, 0.48, 0.72]} castShadow={quality === "desktop"}>
         <sphereGeometry args={[0.58, 14, 10]} />
         <meshStandardMaterial color="#D8B07A" roughness={0.88} />
@@ -769,14 +834,113 @@ function FamilyMonster({
   index: number;
   quality: SceneQuality;
 }) {
-  const [x, z, scale] = FAMILY_POSITIONS[index % FAMILY_POSITIONS.length];
+  const root = useRef<THREE.Group>(null);
+  const visual = useRef<THREE.Group>(null);
+  const legs = [
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+  ];
+  const wings = [useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null)];
+  const target = useMemo(() => new THREE.Vector3(), []);
+  const [homeX, homeZ, scale] =
+    FAMILY_POSITIONS[index % FAMILY_POSITIONS.length];
+  const phase = index * 1.73 + 0.8;
+  const canFly = profile.dna.adaptation === "wings";
+  const livesInWater =
+    profile.dna.body === "aquatic" || profile.dna.breathing === "gills";
+  const startX = livesInWater ? riverX(homeZ) : homeX;
+  const startY = livesInWater
+    ? -0.72
+    : terrainHeight(startX, homeZ) + (canFly ? 4.4 : 0);
+
+  useFrame(({ clock }, delta) => {
+    if (!root.current || !visual.current) return;
+    const time = clock.elapsedTime;
+    const wanderSpeed = 0.22 + index * 0.018;
+    let x = homeX + Math.sin(time * wanderSpeed + phase) * (4.5 + index);
+    let z = homeZ + Math.cos(time * wanderSpeed * 0.78 + phase) * 4.2;
+    let y = terrainHeight(x, z);
+
+    if (livesInWater) {
+      z = homeZ + Math.sin(time * wanderSpeed + phase) * 9;
+      x = riverX(z) + Math.sin(time * 0.8 + phase) * 0.42;
+      y = -0.72 + Math.sin(time * 2.2 + phase) * 0.09;
+    } else if (canFly) {
+      y = terrainHeight(x, z) + 4.4 + Math.sin(time * 1.5 + phase) * 0.45;
+    } else if (isWaterAt(x, z)) {
+      x = homeX;
+      z = homeZ;
+      y = terrainHeight(x, z);
+    }
+
+    target.set(x, y, z);
+    const dx = target.x - root.current.position.x;
+    const dz = target.z - root.current.position.z;
+    root.current.position.lerp(target, 1 - Math.exp(-delta * 1.25));
+    if (Math.hypot(dx, dz) > 0.002) {
+      root.current.rotation.y = dampAngle(
+        root.current.rotation.y,
+        Math.atan2(-dx, -dz),
+        4.5,
+        delta,
+      );
+    }
+
+    const stride = Math.sin(time * (canFly ? 7 : 8.5) + phase);
+    legs.forEach((leg, legIndex) => {
+      if (leg.current) {
+        leg.current.rotation.x = THREE.MathUtils.damp(
+          leg.current.rotation.x,
+          canFly || livesInWater
+            ? stride * 0.12
+            : stride * (legIndex % 2 ? -0.38 : 0.38),
+          9,
+          delta,
+        );
+      }
+    });
+    wings.forEach((wing, wingIndex) => {
+      if (wing.current) {
+        const side = wingIndex === 0 ? -1 : 1;
+        wing.current.rotation.z =
+          side * -(0.38 + Math.abs(Math.sin(time * 8 + phase)) * 0.62);
+      }
+    });
+    visual.current.position.y = THREE.MathUtils.damp(
+      visual.current.position.y,
+      Math.abs(stride) * (canFly ? 0.11 : 0.045),
+      9,
+      delta,
+    );
+    visual.current.rotation.x = THREE.MathUtils.damp(
+      visual.current.rotation.x,
+      canFly ? -0.14 : livesInWater ? 0.08 : 0,
+      7,
+      delta,
+    );
+  });
+
   return (
     <group
-      position={[x, terrainHeight(x, z), z]}
+      ref={root}
+      position={[startX, startY, homeZ]}
       rotation={[0, 1.4 + index * 0.7, 0]}
       scale={scale}
     >
-      <MonsterVisual dna={profile.dna} castShadow={quality === "desktop"} />
+      <group ref={visual}>
+        <MonsterVisual
+          dna={profile.dna}
+          legRefs={legs}
+          wingRefs={wings}
+          castShadow={quality === "desktop"}
+        />
+      </group>
     </group>
   );
 }
@@ -790,9 +954,11 @@ function CuteMonster({
   dna: MonsterDna;
   onPlayerFrame: (
     x: number,
+    y: number,
     z: number,
     moving: boolean,
     sprinting: boolean,
+    mode: LocomotionMode,
   ) => void;
 }) {
   const root = useRef<THREE.Group>(null);
@@ -807,10 +973,13 @@ function CuteMonster({
     useRef<THREE.Group>(null),
     useRef<THREE.Group>(null),
   ];
+  const wings = [useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null)];
   const velocity = useMemo(() => new THREE.Vector3(), []);
   const cameraTarget = useMemo(() => new THREE.Vector3(), []);
   const desiredCamera = useMemo(() => new THREE.Vector3(), []);
   const canSwim = canMonsterSwim(dna);
+  const canFly = dna.adaptation === "wings";
+  const spawn = getMonsterSpawn(dna);
 
   useFrame(({ camera, clock }, delta) => {
     if (!root.current || !visual.current) return;
@@ -840,20 +1009,63 @@ function CuteMonster({
       velocity
         .set(xInput * cos - zInput * sin, 0, -xInput * sin - zInput * cos)
         .normalize();
-      const speed = sprinting ? 8.2 : 5.4;
+      const flying = state.locomotionMode === "fly" && canFly;
+      const speed = flying
+        ? sprinting
+          ? 13.2
+          : 9.2
+        : sprinting
+          ? 8.2
+          : 5.4;
       const nextX = root.current.position.x + velocity.x * speed * delta;
       const nextZ = root.current.position.z + velocity.z * speed * delta;
-      if (!isBlockedByWater(nextX, root.current.position.z, canSwim))
+      if (
+        flying ||
+        !isBlockedByWater(nextX, root.current.position.z, canSwim)
+      )
         root.current.position.x = nextX;
-      if (!isBlockedByWater(root.current.position.x, nextZ, canSwim))
+      if (
+        flying ||
+        !isBlockedByWater(root.current.position.x, nextZ, canSwim)
+      )
         root.current.position.z = nextZ;
     }
 
-    const swimming =
-      canSwim && isWaterAt(root.current.position.x, root.current.position.z);
-    const targetHeight = swimming
-      ? -1.5 + Math.sin(clock.elapsedTime * 2.4) * 0.08
-      : terrainHeight(root.current.position.x, root.current.position.z);
+    const overWater = isWaterAt(
+      root.current.position.x,
+      root.current.position.z,
+    );
+    let resolvedMode = state.locomotionMode;
+    if (resolvedMode === "fly" && !canFly) {
+      resolvedMode = overWater && canSwim ? "swim" : "land";
+    } else if (
+      resolvedMode === "dive" &&
+      (!canSwim ||
+        !isDeepWaterAt(root.current.position.x, root.current.position.z))
+    ) {
+      resolvedMode = overWater && canSwim ? "swim" : "land";
+    } else if (resolvedMode !== "fly") {
+      resolvedMode =
+        overWater && canSwim
+          ? resolvedMode === "dive"
+            ? "dive"
+            : "swim"
+          : "land";
+    }
+    const flying = resolvedMode === "fly";
+    const diving = resolvedMode === "dive";
+    const swimming = resolvedMode === "swim";
+    const targetHeight = flying
+      ? terrainHeight(root.current.position.x, root.current.position.z) +
+        7.4 +
+        Math.sin(clock.elapsedTime * 1.8) * 0.22
+      : diving
+        ? -3.55 + Math.sin(clock.elapsedTime * 2.1) * 0.16
+        : swimming
+          ? (isDeepWaterAt(root.current.position.x, root.current.position.z)
+              ? -1.05
+              : -0.72) + Math.sin(clock.elapsedTime * 2.4) * 0.08
+          : terrainHeight(root.current.position.x, root.current.position.z);
     root.current.position.y = THREE.MathUtils.damp(
       root.current.position.y,
       targetHeight,
@@ -870,9 +1082,11 @@ function CuteMonster({
       ) > 0.00001;
     onPlayerFrame(
       root.current.position.x,
+      root.current.position.y,
       root.current.position.z,
       moving,
       moving && sprinting,
+      resolvedMode,
     );
     const stride = moving ? Math.sin(clock.elapsedTime * 11) * 0.46 : 0;
     legs.forEach((leg, index) => {
@@ -883,9 +1097,24 @@ function CuteMonster({
           delta * 10,
         );
     });
+    wings.forEach((wing, index) => {
+      if (wing.current) {
+        const side = index === 0 ? -1 : 1;
+        const flap = flying
+          ? Math.abs(Math.sin(clock.elapsedTime * 10.5)) * 0.7
+          : 0.04;
+        wing.current.rotation.z = side * -(0.38 + flap);
+      }
+    });
 
     const actionAge = performance.now() - state.actionStarted;
-    let actionPitch = swimming ? Math.sin(clock.elapsedTime * 2.4) * 0.055 : 0;
+    let actionPitch = flying
+      ? -0.16 + Math.sin(clock.elapsedTime * 2.8) * 0.035
+      : diving
+        ? 0.08 + Math.sin(clock.elapsedTime * 2.4) * 0.07
+        : swimming
+          ? Math.sin(clock.elapsedTime * 2.4) * 0.055
+          : 0;
     let actionForward = 0;
     let actionDrop = 0;
     let scaleX = 1;
@@ -951,26 +1180,29 @@ function CuteMonster({
       delta,
     );
 
-    const distance = 9.4;
+    const distance = flying ? 12 : diving ? 7.2 : 9.4;
     const horizontalDistance = Math.cos(state.cameraPitch) * distance;
+    const cameraLift = flying ? 3.3 : diving ? 0.55 : 2.6;
     desiredCamera.set(
       root.current.position.x + Math.sin(state.cameraYaw) * horizontalDistance,
-      root.current.position.y + 2.6 + Math.sin(state.cameraPitch) * distance,
+      root.current.position.y +
+        cameraLift +
+        Math.sin(state.cameraPitch) * distance,
       root.current.position.z + Math.cos(state.cameraYaw) * horizontalDistance,
     );
     camera.position.lerp(desiredCamera, 1 - Math.exp(-delta * 6));
     cameraTarget.set(
       root.current.position.x,
-      root.current.position.y + 1.35,
+      root.current.position.y + (diving ? 0.9 : 1.35),
       root.current.position.z,
     );
     camera.lookAt(cameraTarget);
   });
 
   return (
-    <group ref={root} position={[-8, terrainHeight(-8, 8), 8]}>
+    <group ref={root} position={[spawn.x, spawn.y, spawn.z]}>
       <group ref={visual}>
-        <MonsterVisual dna={dna} legRefs={legs} />
+        <MonsterVisual dna={dna} legRefs={legs} wingRefs={wings} />
       </group>
     </group>
   );
@@ -1016,9 +1248,15 @@ function PackFollowers({
       const z =
         controls.current.playerPosition.z - lateral * sin + behind * cos;
       const swimming = canSwim && isWaterAt(x, z);
-      const y = swimming
-        ? -1.5 + Math.sin(clock.elapsedTime * 2.4 + index) * 0.08
-        : terrainHeight(x, z);
+      const mode = controls.current.locomotionMode;
+      const y =
+        mode === "fly" || mode === "dive"
+          ? controls.current.playerPosition.y +
+            Math.sin(clock.elapsedTime * 2.7 + index) * 0.18
+          : swimming
+            ? (isDeepWaterAt(x, z) ? -1.05 : -0.72) +
+              Math.sin(clock.elapsedTime * 2.4 + index) * 0.08
+            : terrainHeight(x, z);
       target.set(x, y, z);
       if (!follower.current.userData.ready) {
         follower.current.position.copy(target);
@@ -1030,6 +1268,19 @@ function PackFollowers({
         follower.current.rotation.y,
         yaw,
         8,
+        delta,
+      );
+      follower.current.rotation.x = THREE.MathUtils.damp(
+        follower.current.rotation.x,
+        mode === "fly" ? -0.14 : mode === "dive" ? 0.08 : 0,
+        7,
+        delta,
+      );
+      follower.current.rotation.z = THREE.MathUtils.damp(
+        follower.current.rotation.z,
+        Math.sin(clock.elapsedTime * 4 + index) *
+          (mode === "land" ? 0.025 : 0.065),
+        7,
         delta,
       );
     });
@@ -1065,9 +1316,11 @@ function World({
   quality: SceneQuality;
   onPlayerFrame: (
     x: number,
+    y: number,
     z: number,
     moving: boolean,
     sprinting: boolean,
+    mode: LocomotionMode,
   ) => void;
 }) {
   return (
@@ -1271,9 +1524,11 @@ export function GameExperience() {
     moving: false,
     sprinting: false,
     paused: false,
-    playerPosition: { x: -8, z: 8 },
+    locomotionMode: "land",
+    playerPosition: { x: -8, y: terrainHeight(-8, 8), z: 8 },
   });
   const displayedEnergy = useRef(100);
+  const displayedLocomotion = useRef<LocomotionMode>("land");
   const eatenIdsRef = useRef<Set<string>>(new Set());
   const huntedIdsRef = useRef<Set<string>>(new Set());
   const nextMonsterId = useRef(2);
@@ -1282,6 +1537,8 @@ export function GameExperience() {
     key: "game.welcome",
   });
   const [energy, setEnergy] = useState(100);
+  const [locomotionMode, setLocomotionMode] =
+    useState<LocomotionMode>("land");
   const [isDead, setIsDead] = useState(false);
   const [eatenIds, setEatenIds] = useState<Set<string>>(() => new Set());
   const [huntedIds, setHuntedIds] = useState<Set<string>>(() => new Set());
@@ -1301,12 +1558,44 @@ export function GameExperience() {
     getServerDeviceProfile,
   );
 
+  const setMovementMode = useCallback((mode: LocomotionMode) => {
+    controls.current.locomotionMode = mode;
+    displayedLocomotion.current = mode;
+    setLocomotionMode(mode);
+  }, []);
+
+  const resetMonsterMovement = useCallback(
+    (dna: MonsterDna) => {
+      const spawn = getMonsterSpawn(dna);
+      controls.current.playerPosition = {
+        x: spawn.x,
+        y: spawn.y,
+        z: spawn.z,
+      };
+      setMovementMode(spawn.mode);
+    },
+    [setMovementMode],
+  );
+
   const reportPlayerFrame = useCallback(
-    (x: number, z: number, moving: boolean, sprinting: boolean) => {
+    (
+      x: number,
+      y: number,
+      z: number,
+      moving: boolean,
+      sprinting: boolean,
+      mode: LocomotionMode,
+    ) => {
       controls.current.playerPosition.x = x;
+      controls.current.playerPosition.y = y;
       controls.current.playerPosition.z = z;
       controls.current.moving = moving;
       controls.current.sprinting = sprinting;
+      controls.current.locomotionMode = mode;
+      if (displayedLocomotion.current !== mode) {
+        displayedLocomotion.current = mode;
+        setLocomotionMode(mode);
+      }
     },
     [],
   );
@@ -1330,11 +1619,12 @@ export function GameExperience() {
     controls.current.action = null;
     controls.current.keys.clear();
     controls.current.move = { x: 0, y: 0 };
+    setMovementMode("land");
     setEnergyLevel(0);
     setIsDead(true);
     setStatus({ key: "game.ranOut", values: { name: activeMonster.name } });
     if (document.pointerLockElement) document.exitPointerLock();
-  }, [activeMonster.name, setEnergyLevel]);
+  }, [activeMonster.name, setEnergyLevel, setMovementMode]);
 
   const triggerAction = useCallback(
     (action: Exclude<Action, null>) => {
@@ -1461,7 +1751,7 @@ export function GameExperience() {
     controls.current.moving = false;
     controls.current.sprinting = false;
     controls.current.paused = false;
-    controls.current.playerPosition = { x: -8, z: 8 };
+    resetMonsterMovement(activeMonster.dna);
     eatenIdsRef.current = new Set();
     huntedIdsRef.current = new Set();
     setEatenIds(new Set());
@@ -1473,7 +1763,7 @@ export function GameExperience() {
       key: "game.ready",
       values: { name: activeMonster.name },
     });
-  }, [activeMonster.name, setEnergyLevel]);
+  }, [activeMonster.dna, activeMonster.name, resetMonsterMovement, setEnergyLevel]);
 
   const openCreator = useCallback(() => {
     controls.current.paused = true;
@@ -1518,13 +1808,14 @@ export function GameExperience() {
     (nextDna: MonsterDna, name: string) => {
       controls.current.paused = false;
       controls.current.keys.clear();
+      resetMonsterMovement(nextDna);
+      setMonsterKey((current) => current + 1);
 
       if (creatorDraft?.mode === "new") {
         const id = `monster-${nextMonsterId.current}`;
         nextMonsterId.current += 1;
         setMonsterFamily((current) => [...current, { id, name, dna: nextDna }]);
         setActiveMonsterId(id);
-        setMonsterKey((current) => current + 1);
         setStatus({ key: "game.joined", values: { name } });
       } else {
         setMonsterFamily((current) =>
@@ -1538,7 +1829,7 @@ export function GameExperience() {
       }
       setCreatorDraft(null);
     },
-    [activeMonsterId, creatorDraft?.mode],
+    [activeMonsterId, creatorDraft?.mode, resetMonsterMovement],
   );
 
   const switchMonster = useCallback(
@@ -1549,7 +1840,7 @@ export function GameExperience() {
       controls.current.move = { x: 0, y: 0 };
       controls.current.action = null;
       controls.current.isDead = false;
-      controls.current.playerPosition = { x: -8, z: 8 };
+      resetMonsterMovement(nextMonster.dna);
       setActiveMonsterId(id);
       setMonsterKey((current) => current + 1);
       setEnergyLevel(100);
@@ -1559,8 +1850,57 @@ export function GameExperience() {
         values: { name: nextMonster.name },
       });
     },
-    [activeMonsterId, monsterFamily, setEnergyLevel],
+    [activeMonsterId, monsterFamily, resetMonsterMovement, setEnergyLevel],
   );
+
+  const toggleFlight = useCallback(() => {
+    if (
+      monsterDna.adaptation !== "wings" ||
+      controls.current.isDead ||
+      controls.current.paused
+    )
+      return;
+    if (controls.current.locomotionMode === "fly") {
+      const overWater = isWaterAt(
+        controls.current.playerPosition.x,
+        controls.current.playerPosition.z,
+      );
+      if (overWater && !canMonsterSwim(monsterDna)) {
+        setStatus({ key: "game.cannotLandWater" });
+        return;
+      }
+      setMovementMode(overWater ? "swim" : "land");
+      setStatus({ key: "game.landed" });
+      return;
+    }
+    setMovementMode("fly");
+    setStatus({ key: "game.tookOff" });
+  }, [monsterDna, setMovementMode]);
+
+  const toggleDive = useCallback(() => {
+    if (
+      !canMonsterSwim(monsterDna) ||
+      controls.current.isDead ||
+      controls.current.paused
+    )
+      return;
+    if (controls.current.locomotionMode === "dive") {
+      setMovementMode("swim");
+      setStatus({ key: "game.surfaced" });
+      return;
+    }
+    if (
+      !isDeepWaterAt(
+        controls.current.playerPosition.x,
+        controls.current.playerPosition.z,
+      )
+    ) {
+      setStatus({ key: "game.findDeepWater" });
+      return;
+    }
+    setMovementMode("dive");
+    setStatus({ key: "game.dived" });
+  }, [monsterDna, setMovementMode]);
 
   useEffect(() => {
     let animationFrame = 0;
@@ -1624,9 +1964,17 @@ export function GameExperience() {
         !controls.current.paused &&
         controls.current.moving
       ) {
-        const energyRate = controls.current.sprinting
-          ? SPRINT_ENERGY_PER_SECOND
-          : WALK_ENERGY_PER_SECOND;
+        const energyRate =
+          controls.current.locomotionMode === "fly"
+            ? FLY_ENERGY_PER_SECOND *
+              (controls.current.sprinting ? 1.75 : 1)
+            : controls.current.locomotionMode === "swim" ||
+                controls.current.locomotionMode === "dive"
+              ? SWIM_ENERGY_PER_SECOND *
+                (controls.current.sprinting ? 1.6 : 1)
+              : controls.current.sprinting
+                ? SPRINT_ENERGY_PER_SECOND
+                : WALK_ENERGY_PER_SECOND;
         const remainingEnergy = setEnergyLevel(
           controls.current.energy - energyRate * delta,
         );
@@ -1645,6 +1993,8 @@ export function GameExperience() {
         event.preventDefault();
       if (!event.repeat && event.code === "Space") triggerAction("attack");
       if (!event.repeat && event.code === "KeyE") triggerAction("eat");
+      if (!event.repeat && event.code === "KeyF") toggleFlight();
+      if (!event.repeat && event.code === "KeyC") toggleDive();
       if (!event.repeat && event.code === "KeyR" && controls.current.isDead)
         resetGame();
     };
@@ -1680,7 +2030,14 @@ export function GameExperience() {
       document.removeEventListener("pointerlockchange", onPointerLock);
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [killMonster, resetGame, setEnergyLevel, triggerAction]);
+  }, [
+    killMonster,
+    resetGame,
+    setEnergyLevel,
+    toggleDive,
+    toggleFlight,
+    triggerAction,
+  ]);
 
   return (
     <main className="game-shell">
@@ -1789,6 +2146,12 @@ export function GameExperience() {
             <span>
               {t("game.energy")} {energy}
             </span>
+          </div>
+          <div className="locomotion-chip" data-mode={locomotionMode}>
+            <span>{t("game.movementMode")}</span>
+            <strong>
+              {t(`game.mode.${locomotionMode}` as TranslationKey)}
+            </strong>
           </div>
         </div>
         <div className="status-bubble">{t(status.key, status.values)}</div>
@@ -1899,6 +2262,50 @@ export function GameExperience() {
             <small>{t("game.space")}</small>
           </button>
         </div>
+
+        {(monsterDna.adaptation === "wings" ||
+          canMonsterSwim(monsterDna)) && (
+          <div className="ability-controls">
+            {monsterDna.adaptation === "wings" && (
+              <button
+                type="button"
+                className={`ability-button${locomotionMode === "fly" ? " active" : ""}`}
+                disabled={isDead}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  toggleFlight();
+                }}
+              >
+                <Wind size={18} />
+                <span>
+                  {locomotionMode === "fly"
+                    ? t("game.landButton")
+                    : t("game.flyButton")}
+                </span>
+                <small>F</small>
+              </button>
+            )}
+            {canMonsterSwim(monsterDna) && (
+              <button
+                type="button"
+                className={`ability-button${locomotionMode === "dive" ? " active" : ""}`}
+                disabled={isDead}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  toggleDive();
+                }}
+              >
+                <Waves size={18} />
+                <span>
+                  {locomotionMode === "dive"
+                    ? t("game.surfaceButton")
+                    : t("game.diveButton")}
+                </span>
+                <small>C</small>
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="water-rule">
           <Crosshair size={14} />
