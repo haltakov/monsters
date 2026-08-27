@@ -178,9 +178,13 @@ function legPositions(count: MonsterDna["legs"], profile: BodyProfile) {
   if (count === 0) return [];
   const rowCount = count / 2;
   const densityMultiplier = count === 8 ? 1.65 : count === 6 ? 1.25 : 1;
+  const isDenseBiped = profile === BODY_PROFILES.biped && count >= 6;
+  const denseBipedSpan = isDenseBiped
+    ? profile.scale[2] * (count === 8 ? 1.45 : 1.25)
+    : 0;
   const legSpan = Math.min(
-    profile.legSpan * densityMultiplier,
-    profile.scale[2] * 1.05,
+    Math.max(profile.legSpan * densityMultiplier, denseBipedSpan),
+    profile.scale[2] * (isDenseBiped ? 1.6 : 1.05),
   );
   const rows = Array.from({ length: rowCount }, (_, index) =>
     rowCount === 1
@@ -953,62 +957,145 @@ function addSmoothBall(
   );
 }
 
-function carveSmoothArch(
-  field: MarchingCubes,
-  center: [number, number],
-  radius: [number, number],
-  ceilingY: number,
-  archAxis: "radial" | "x" | "z" = "radial",
-) {
-  const [centerX, centerZ] = center;
-  const [radiusX, radiusZ] = radius;
+function smoothScalarMin(first: number, second: number, smoothing: number) {
+  const blend = THREE.MathUtils.clamp(
+    0.5 + (0.5 * (second - first)) / smoothing,
+    0,
+    1,
+  );
+  return (
+    THREE.MathUtils.lerp(second, first, blend) -
+    smoothing * blend * (1 - blend)
+  );
+}
+
+function smoothScalarMax(first: number, second: number, smoothing: number) {
+  return -smoothScalarMin(-first, -second, smoothing);
+}
+
+function closeSmoothFieldBoundary(field: MarchingCubes) {
   const size = field.size;
-  const worldToGridX = (value: number) =>
-    (0.5 + value / (SMOOTH_FIELD_SCALE * 2)) * size;
-  const worldToGridY = (value: number) =>
-    (0.5 +
-      (value - SMOOTH_FIELD_ORIGIN_Y) / (SMOOTH_FIELD_SCALE * 2)) *
-    size;
-  const clampGrid = (value: number) =>
-    THREE.MathUtils.clamp(value, 1, size - 2);
-  const minX = Math.floor(clampGrid(worldToGridX(centerX - radiusX)));
-  const maxX = Math.ceil(clampGrid(worldToGridX(centerX + radiusX)));
-  const minZ = Math.floor(clampGrid(worldToGridX(centerZ - radiusZ)));
-  const maxZ = Math.ceil(clampGrid(worldToGridX(centerZ + radiusZ)));
+  const cellSize = (SMOOTH_FIELD_SCALE * 2) / size;
+  const sealedShellCells = 2;
+  const fadeWidth = Math.max(0.24, cellSize * 4);
 
-  for (let z = minZ; z <= maxZ; z += 1) {
-    const worldZ = (z / size - 0.5) * SMOOTH_FIELD_SCALE * 2;
-    const normalizedZ = (worldZ - centerZ) / radiusZ;
-    for (let x = minX; x <= maxX; x += 1) {
-      const worldX = (x / size - 0.5) * SMOOTH_FIELD_SCALE * 2;
-      const normalizedX = (worldX - centerX) / radiusX;
-      if (Math.abs(normalizedX) >= 1 || Math.abs(normalizedZ) >= 1) continue;
-      const footprint =
-        archAxis === "x"
-          ? normalizedX * normalizedX
-          : archAxis === "z"
-            ? normalizedZ * normalizedZ
-            : normalizedX * normalizedX + normalizedZ * normalizedZ;
-      if (footprint >= 1) continue;
-
-      // A rounded ceiling with a channel that stays open all the way through
-      // the bottom of the scalar grid. Clamping below the isovalue guarantees
-      // a real topological opening regardless of overlapping metaball strength.
-      const dome = Math.sqrt(1 - footprint);
-      const columnCeilingY = 0.04 + (ceilingY - 0.04) * dome;
-      const maxY = Math.floor(clampGrid(worldToGridY(columnCeilingY)));
-      for (let y = 1; y <= maxY; y += 1) {
-        const fieldIndex = z * field.size2 + y * size + x;
-        field.field[fieldIndex] = Math.min(
-          field.field[fieldIndex],
-          field.isolation - 24,
+  for (let z = 0; z < size; z += 1) {
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        const distanceInCells = Math.min(
+          x,
+          y,
+          z,
+          size - 1 - x,
+          size - 1 - y,
+          size - 1 - z,
         );
+        const fieldIndex = z * field.size2 + y * size + x;
+        if (distanceInCells <= sealedShellCells) {
+          field.field[fieldIndex] = 0;
+          continue;
+        }
+        const normalizedDistance = THREE.MathUtils.clamp(
+          ((distanceInCells - sealedShellCells) * cellSize) / fadeWidth,
+          0,
+          1,
+        );
+        // Quintic smoothstep reaches zero with a flat derivative. Any DNA
+        // feature that reaches the finite MarchingCubes volume therefore
+        // tapers closed before the edge instead of exposing an open cap.
+        const fade =
+          normalizedDistance *
+          normalizedDistance *
+          normalizedDistance *
+          (normalizedDistance * (normalizedDistance * 6 - 15) + 10);
+        field.field[fieldIndex] *= fade;
       }
     }
   }
 }
 
-function relaxSmoothGeometry(geometry: THREE.BufferGeometry, iterations = 4) {
+function carveSmoothArch(
+  field: MarchingCubes,
+  center: [number, number],
+  radius: [number, number],
+  baseY: number,
+  topY: number,
+  archAxis: "x" | "z",
+) {
+  const [centerX, centerZ] = center;
+  const [radiusX, radiusZ] = radius;
+  const size = field.size;
+  const fieldCellSize = (SMOOTH_FIELD_SCALE * 2) / size;
+  const csgSmoothing = fieldCellSize * 0.5;
+  const boundsPadding = fieldCellSize * 2;
+  const worldToGridX = (value: number) =>
+    (0.5 + value / (SMOOTH_FIELD_SCALE * 2)) * size;
+  const clampGrid = (value: number) =>
+    THREE.MathUtils.clamp(value, 1, size - 2);
+  const minX = Math.floor(
+    clampGrid(worldToGridX(centerX - radiusX - boundsPadding)),
+  );
+  const maxX = Math.ceil(
+    clampGrid(worldToGridX(centerX + radiusX + boundsPadding)),
+  );
+  const minZ = Math.floor(
+    clampGrid(worldToGridX(centerZ - radiusZ - boundsPadding)),
+  );
+  const maxZ = Math.ceil(
+    clampGrid(worldToGridX(centerZ + radiusZ + boundsPadding)),
+  );
+
+  for (let z = minZ; z <= maxZ; z += 1) {
+    const worldZ = (z / size - 0.5) * SMOOTH_FIELD_SCALE * 2;
+    for (let x = minX; x <= maxX; x += 1) {
+      const worldX = (x / size - 0.5) * SMOOTH_FIELD_SCALE * 2;
+      const narrowCoordinate = archAxis === "x" ? worldX : worldZ;
+      const narrowCenter = archAxis === "x" ? centerX : centerZ;
+      const narrowRadius = archAxis === "x" ? radiusX : radiusZ;
+      const acrossCoordinate = archAxis === "x" ? worldZ : worldX;
+      const acrossCenter = archAxis === "x" ? centerZ : centerX;
+      const acrossRadius = archAxis === "x" ? radiusZ : radiusX;
+      const normalizedNarrow =
+        Math.abs(narrowCoordinate - narrowCenter) / narrowRadius;
+      const domeInput = THREE.MathUtils.clamp(
+        1 - normalizedNarrow * normalizedNarrow,
+        0,
+        1,
+      );
+      const dome = domeInput * domeInput * (3 - 2 * domeInput);
+      const roofY = THREE.MathUtils.lerp(baseY, topY, dome);
+      const distanceNarrow = (normalizedNarrow - 1) * narrowRadius;
+      const distanceAcross =
+        Math.abs(acrossCoordinate - acrossCenter) - acrossRadius;
+
+      for (let y = 1; y < size - 1; y += 1) {
+        const worldY =
+          (y / size - 0.5) * SMOOTH_FIELD_SCALE * 2 +
+          SMOOTH_FIELD_ORIGIN_Y;
+        const distanceRoof = worldY - roofY;
+        const voidDistance = smoothScalarMax(
+          smoothScalarMax(distanceNarrow, distanceRoof, csgSmoothing),
+          distanceAcross,
+          csgSmoothing,
+        );
+        const limiter =
+          field.isolation + (24 / fieldCellSize) * voidDistance;
+        const fieldIndex = z * field.size2 + y * size + x;
+        let nextValue = smoothScalarMin(
+          field.field[fieldIndex],
+          limiter,
+          8,
+        );
+        if (voidDistance <= -fieldCellSize * 1.5) {
+          nextValue = Math.min(nextValue, field.isolation - 32);
+        }
+        field.field[fieldIndex] = nextValue;
+      }
+    }
+  }
+}
+
+function relaxSmoothGeometry(geometry: THREE.BufferGeometry, iterations = 2) {
   const index = geometry.getIndex();
   const position = geometry.getAttribute("position");
   if (!index || !position || position.count === 0) return;
@@ -1090,7 +1177,7 @@ function buildSmoothGeometry(
   bodyColor: string,
   accentColor: string,
 ) {
-  const cacheKey = `hard-arch-gait-v3:${JSON.stringify(dna)}`;
+  const cacheKey = `smooth-csg-arch-v5:${JSON.stringify(dna)}`;
   const cached = smoothGeometryCache.get(cacheKey);
   if (cached) return cached;
 
@@ -1125,9 +1212,9 @@ function buildSmoothGeometry(
     addSmoothBall(field, 0, faceY - 0.12, faceZ - 0.26, 0.56, 9.2);
   }
 
+  const legFootY = dna.legShape === "springy" ? 0.08 : 0.14;
   const legHips = legPositions(dna.legs, profile).map(([x, , z], index) => {
     const hipY = cy - sy * 0.52;
-    const footY = dna.legShape === "springy" ? 0.08 : 0.14;
     const outward = dna.legShape === "springy" ? (x < 0 ? -0.16 : 0.16) : 0;
     const footX = x + outward;
     const legDensityScale = dna.legs === 8 ? 0.72 : dna.legs === 6 ? 0.84 : 1;
@@ -1144,7 +1231,7 @@ function buildSmoothGeometry(
       addSmoothBall(
         field,
         THREE.MathUtils.lerp(x, footX, progress),
-        THREE.MathUtils.lerp(hipY, footY, progress),
+        THREE.MathUtils.lerp(hipY, legFootY, progress),
         z - Math.sin(progress * Math.PI) * kneePush,
         legStrength * (1 - progress * 0.16),
         10.8,
@@ -1153,18 +1240,19 @@ function buildSmoothGeometry(
     addSmoothBall(
       field,
       footX,
-      footY,
+      legFootY,
       z - (dna.legShape === "clawed" ? 0.12 : 0),
       (dna.legShape === "hoof" || dna.legShape === "flippers" ? 0.34 : 0.25) *
         legDensityScale,
       10.8,
     );
     if (dna.legShape === "flippers") {
+      const flipperReach = dna.legs >= 6 ? 0.18 : 0.32;
       addSmoothBall(
         field,
         footX,
-        footY,
-        z - 0.32,
+        legFootY,
+        z - flipperReach,
         0.34 * legDensityScale,
         10.4,
       );
@@ -1200,11 +1288,16 @@ function buildSmoothGeometry(
   // lighting; the second, lighter pass preserves small features.
   field.blur(0.9);
   field.blur(0.55);
+  closeSmoothFieldBoundary(field);
 
   if (legRows.length > 0) {
     const fieldCellSize = (SMOOTH_FIELD_SCALE * 2) / field.size;
     const hipY = cy - sy * 0.52;
-    const archCeilingY = hipY + Math.min(0.32, sy * 0.3);
+    const archBaseY = legFootY - Math.max(0.42, fieldCellSize * 6);
+    const archTopY = Math.max(
+      hipY - Math.max(0.1, fieldCellSize * 2),
+      legFootY + fieldCellSize * 4,
+    );
 
     // One front-to-back tunnel separates the left and right columns without
     // leaving deeper body rows projected into the gap.
@@ -1215,9 +1308,10 @@ function buildSmoothGeometry(
       [0, (firstLegRow + lastLegRow) / 2],
       [
         Math.max(profile.legX * 0.72, fieldCellSize * 3),
-        (lastLegRow - firstLegRow) / 2 + Math.max(0.36, fieldCellSize * 3),
+        SMOOTH_FIELD_SCALE * 1.05,
       ],
-      archCeilingY,
+      archBaseY,
+      archTopY,
       "x",
     );
 
@@ -1239,10 +1333,11 @@ function buildSmoothGeometry(
         field,
         [0, gapZ],
         [
-          Math.max(profile.scale[0] * 1.25, profile.legX + 0.58),
+          SMOOTH_FIELD_SCALE * 1.05,
           gapRadiusZ,
         ],
-        archCeilingY,
+        archBaseY,
+        archTopY,
         "z",
       );
     }
