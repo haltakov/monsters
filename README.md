@@ -25,7 +25,9 @@ Open [http://localhost:3100](http://localhost:3100). The API health check lives 
 
 ## Controls
 
-- `WASD` or arrow keys — move
+- `WASD` — move and strafe without changing facing
+- `←` / `→` — turn the monster and camera
+- `↑` / `↓` — tilt the camera
 - Hold `Shift` — sprint
 - Move the mouse after clicking the game — look around
 - `E` — eat

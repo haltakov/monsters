@@ -27,6 +27,10 @@ type ControlState = {
   actionStarted: number;
 };
 
+const WORLD_RADIUS = 40;
+const PLAYABLE_RADIUS = 38.2;
+const BRIDGE_POSITIONS = [-12, 12] as const;
+
 const TREES: Array<[number, number, number]> = [
   [-18, -13, 0.9],
   [-14, 14, 1.15],
@@ -40,6 +44,16 @@ const TREES: Array<[number, number, number]> = [
   [8, -9, 0.8],
   [20, 2, 0.72],
   [-4, -20, 0.95],
+  [-31, -16, 1.1],
+  [-29, 10, 0.94],
+  [-24, 25, 1.18],
+  [-12, 31, 0.86],
+  [5, 33, 1.08],
+  [23, 27, 0.96],
+  [31, 14, 1.16],
+  [32, -11, 0.88],
+  [24, -28, 1.06],
+  [-19, -29, 0.92],
 ];
 
 const BUSHES: Array<[number, number, number]> = [
@@ -51,6 +65,14 @@ const BUSHES: Array<[number, number, number]> = [
   [18, -13, 0.8],
   [7, -18, 0.65],
   [-20, -5, 0.75],
+  [-31, 2, 0.86],
+  [-26, -24, 0.72],
+  [-18, 29, 0.82],
+  [1, 29, 0.76],
+  [18, 28, 0.9],
+  [30, 5, 0.78],
+  [28, -22, 0.84],
+  [8, -32, 0.7],
 ];
 
 const ROCKS: Array<[number, number, number, number]> = [
@@ -60,6 +82,12 @@ const ROCKS: Array<[number, number, number, number]> = [
   [10, 11, 0.9, 0.6],
   [17, -2, 1.2, -0.2],
   [4, -14, 0.7, 0.35],
+  [-30, -8, 1.1, 0.2],
+  [-25, 22, 0.82, -0.45],
+  [-6, 31, 1.28, 0.1],
+  [21, 26, 0.92, 0.52],
+  [31, -14, 1.16, -0.18],
+  [17, -30, 0.88, 0.36],
 ];
 
 const PLANTS: Array<[number, number]> = [
@@ -71,19 +99,28 @@ const PLANTS: Array<[number, number]> = [
   [16, -10],
   [4, -19],
   [-2, 19],
+  [-29, 7],
+  [-25, -21],
+  [-16, 30],
+  [0, 33],
+  [20, 29],
+  [30, 9],
+  [27, -23],
+  [-3, -32],
 ];
 
 function riverX(z: number) {
-  return 3.3 + Math.sin(z * 0.16) * 2.2;
+  return 3.8 + Math.sin(z * 0.12) * 2.7;
 }
 
 function terrainHeight(x: number, z: number) {
   const radius = Math.hypot(x, z);
-  const edge = THREE.MathUtils.smoothstep(27 - radius, 0, 5);
-  const hillA = Math.exp(-((x + 12) ** 2 + (z - 8) ** 2) / 70) * 2.7;
-  const hillB = Math.exp(-((x - 13) ** 2 + (z + 10) ** 2) / 95) * 2.1;
-  const hillC = Math.exp(-((x - 15) ** 2 + (z - 15) ** 2) / 85) * 1.65;
-  const ripple = (Math.sin(x * 0.36) + Math.cos(z * 0.31)) * 0.08;
+  const edge = THREE.MathUtils.smoothstep(WORLD_RADIUS - radius, 0, 7);
+  const hillA = Math.exp(-((x + 19) ** 2 + (z - 12) ** 2) / 130) * 3.1;
+  const hillB = Math.exp(-((x - 20) ** 2 + (z + 15) ** 2) / 155) * 2.75;
+  const hillC = Math.exp(-((x - 23) ** 2 + (z - 23) ** 2) / 145) * 2.2;
+  const hillD = Math.exp(-((x + 15) ** 2 + (z + 24) ** 2) / 175) * 1.8;
+  const ripple = (Math.sin(x * 0.25) + Math.cos(z * 0.23)) * 0.07;
   const riverFlatten = THREE.MathUtils.smoothstep(
     Math.abs(x - riverX(z)),
     0.7,
@@ -91,20 +128,22 @@ function terrainHeight(x: number, z: number) {
   );
   return Math.max(
     -0.12,
-    (0.12 + (hillA + hillB + hillC + ripple) * riverFlatten) * edge,
+    (0.12 + (hillA + hillB + hillC + hillD + ripple) * riverFlatten) * edge,
   );
 }
 
 function isBlockedByWater(x: number, z: number) {
-  if (Math.hypot(x, z) > 25.4) return true;
-  const bridge = Math.abs(z - 8) < 1.25 || Math.abs(z + 8) < 1.25;
+  if (Math.hypot(x, z) > PLAYABLE_RADIUS) return true;
+  const bridge = BRIDGE_POSITIONS.some(
+    (bridgeZ) => Math.abs(z - bridgeZ) < 1.45,
+  );
   return Math.abs(x - riverX(z)) < 1.48 && !bridge;
 }
 
 function Terrain() {
   const geometry = useMemo(() => {
-    const size = 54;
-    const segments = 58;
+    const size = 82;
+    const segments = 88;
     const vertices: number[] = [];
     const indices: number[] = [];
 
@@ -120,7 +159,7 @@ function Terrain() {
       for (let xIndex = 0; xIndex < segments; xIndex += 1) {
         const x = ((xIndex + 0.5) / segments - 0.5) * size;
         const z = ((zIndex + 0.5) / segments - 0.5) * size;
-        if (Math.hypot(x, z) > 26.65) continue;
+        if (Math.hypot(x, z) > WORLD_RADIUS - 0.3) continue;
         const a = zIndex * (segments + 1) + xIndex;
         const b = a + 1;
         const c = a + segments + 1;
@@ -142,10 +181,10 @@ function Terrain() {
   return (
     <>
       <mesh geometry={geometry} receiveShadow>
-        <meshStandardMaterial color="#72B95A" roughness={0.95} flatShading />
+        <meshStandardMaterial color="#72B95A" roughness={0.92} />
       </mesh>
-      <mesh position={[0, -0.42, 0]} receiveShadow>
-        <cylinderGeometry args={[27, 25.8, 0.9, 64]} />
+      <mesh position={[0, -0.5, 0]} receiveShadow>
+        <cylinderGeometry args={[WORLD_RADIUS, 38.6, 1.08, 128]} />
         <meshStandardMaterial color="#E4C16E" roughness={1} />
       </mesh>
     </>
@@ -167,7 +206,7 @@ function Sea() {
       rotation={[-Math.PI / 2, 0, 0]}
       receiveShadow
     >
-      <circleGeometry args={[115, 96]} />
+      <circleGeometry args={[165, 128]} />
       <meshStandardMaterial
         color="#4AAFC5"
         roughness={0.32}
@@ -182,9 +221,9 @@ function Sea() {
 function River() {
   const segments = useMemo(
     () =>
-      Array.from({ length: 30 }, (_, index) => {
-        const z = -25 + index * (50 / 29);
-        const nextZ = Math.min(25, z + 50 / 29);
+      Array.from({ length: 46 }, (_, index) => {
+        const z = -38.5 + index * (77 / 45);
+        const nextZ = Math.min(38.5, z + 77 / 45);
         const x = riverX(z);
         const nextX = riverX(nextZ);
         return {
@@ -205,7 +244,7 @@ function River() {
           rotation={[0, segment.angle, 0]}
           receiveShadow
         >
-          <boxGeometry args={[2.75, 0.09, 2.15]} />
+          <boxGeometry args={[2.85, 0.09, 2.05]} />
           <meshStandardMaterial
             color="#55B8CE"
             roughness={0.2}
@@ -213,8 +252,9 @@ function River() {
           />
         </mesh>
       ))}
-      <Bridge z={-8} />
-      <Bridge z={8} />
+      {BRIDGE_POSITIONS.map((z) => (
+        <Bridge key={z} z={z} />
+      ))}
     </group>
   );
 }
@@ -253,20 +293,20 @@ function Tree({ x, z, scale }: { x: number; z: number; scale: number }) {
   return (
     <group position={[x, terrainHeight(x, z), z]} scale={scale}>
       <mesh position={[0, 1.25, 0]} castShadow>
-        <cylinderGeometry args={[0.28, 0.42, 2.5, 7]} />
+        <cylinderGeometry args={[0.28, 0.42, 2.5, 18]} />
         <meshStandardMaterial color="#855333" roughness={1} />
       </mesh>
-      <mesh position={[0, 3.15, 0]} castShadow>
-        <icosahedronGeometry args={[1.45, 1]} />
-        <meshStandardMaterial color="#2F7D4A" roughness={0.95} flatShading />
+      <mesh position={[0, 3.15, 0]} scale={[1, 1.05, 0.96]} castShadow>
+        <sphereGeometry args={[1.45, 24, 18]} />
+        <meshStandardMaterial color="#2F7D4A" roughness={0.95} />
       </mesh>
       <mesh position={[-0.8, 2.75, 0.3]} castShadow>
-        <icosahedronGeometry args={[0.9, 1]} />
-        <meshStandardMaterial color="#3E9152" roughness={1} flatShading />
+        <sphereGeometry args={[0.9, 22, 16]} />
+        <meshStandardMaterial color="#3E9152" roughness={1} />
       </mesh>
       <mesh position={[0.78, 2.75, 0.2]} castShadow>
-        <icosahedronGeometry args={[0.85, 1]} />
-        <meshStandardMaterial color="#4BA15A" roughness={1} flatShading />
+        <sphereGeometry args={[0.85, 22, 16]} />
+        <meshStandardMaterial color="#4BA15A" roughness={1} />
       </mesh>
     </group>
   );
@@ -275,17 +315,17 @@ function Tree({ x, z, scale }: { x: number; z: number; scale: number }) {
 function Bush({ x, z, scale }: { x: number; z: number; scale: number }) {
   return (
     <group position={[x, terrainHeight(x, z) + 0.48 * scale, z]} scale={scale}>
-      <mesh position={[-0.48, 0, 0]} castShadow>
-        <dodecahedronGeometry args={[0.7, 0]} />
-        <meshStandardMaterial color="#3F9850" flatShading />
+      <mesh position={[-0.48, 0, 0]} scale={[1, 0.9, 1.05]} castShadow>
+        <sphereGeometry args={[0.7, 20, 14]} />
+        <meshStandardMaterial color="#3F9850" roughness={0.92} />
       </mesh>
-      <mesh position={[0.42, 0.05, 0]} castShadow>
-        <dodecahedronGeometry args={[0.78, 0]} />
-        <meshStandardMaterial color="#54AA57" flatShading />
+      <mesh position={[0.42, 0.05, 0]} scale={[1.05, 0.92, 1]} castShadow>
+        <sphereGeometry args={[0.78, 20, 14]} />
+        <meshStandardMaterial color="#54AA57" roughness={0.92} />
       </mesh>
       <mesh position={[0, 0.38, 0.12]} castShadow>
-        <dodecahedronGeometry args={[0.72, 0]} />
-        <meshStandardMaterial color="#68B95C" flatShading />
+        <sphereGeometry args={[0.72, 20, 14]} />
+        <meshStandardMaterial color="#68B95C" roughness={0.92} />
       </mesh>
       <mesh position={[0.55, 0.28, -0.45]}>
         <sphereGeometry args={[0.1, 8, 8]} />
@@ -318,8 +358,8 @@ function Rock({
       castShadow
       receiveShadow
     >
-      <dodecahedronGeometry args={[0.9, 0]} />
-      <meshStandardMaterial color="#718A7D" roughness={0.9} flatShading />
+      <sphereGeometry args={[0.9, 22, 15]} />
+      <meshStandardMaterial color="#718A7D" roughness={0.9} />
     </mesh>
   );
 }
@@ -352,7 +392,7 @@ function CuteMonster({
   controls: React.RefObject<ControlState>;
 }) {
   const root = useRef<THREE.Group>(null);
-  const body = useRef<THREE.Group>(null);
+  const visual = useRef<THREE.Group>(null);
   const legs = [
     useRef<THREE.Group>(null),
     useRef<THREE.Group>(null),
@@ -364,17 +404,13 @@ function CuteMonster({
   const desiredCamera = useMemo(() => new THREE.Vector3(), []);
 
   useFrame(({ camera, clock }, delta) => {
-    if (!root.current || !body.current) return;
+    if (!root.current || !visual.current) return;
     const state = controls.current;
     const keys = state.keys;
     const horizontal =
-      (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) -
-      (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) +
-      state.move.x;
+      (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + state.move.x;
     const forward =
-      (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
-      (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) +
-      state.move.y;
+      (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0) + state.move.y;
 
     velocity.set(0, 0, 0);
     if (Math.abs(horizontal) + Math.abs(forward) > 0.06) {
@@ -393,17 +429,13 @@ function CuteMonster({
         root.current.position.x = nextX;
       if (!isBlockedByWater(root.current.position.x, nextZ))
         root.current.position.z = nextZ;
-      root.current.rotation.y = THREE.MathUtils.lerp(
-        root.current.rotation.y,
-        Math.atan2(-velocity.x, -velocity.z),
-        Math.min(1, delta * 10),
-      );
     }
 
     root.current.position.y = terrainHeight(
       root.current.position.x,
       root.current.position.z,
     );
+    root.current.rotation.y = state.cameraYaw;
     const moving = velocity.lengthSq() > 0.1;
     const stride = moving ? Math.sin(clock.elapsedTime * 11) * 0.46 : 0;
     legs.forEach((leg, index) => {
@@ -416,35 +448,71 @@ function CuteMonster({
     });
 
     const actionAge = performance.now() - state.actionStarted;
-    if (state.action === "attack" && actionAge < 520) {
-      body.current.rotation.x = -Math.sin((actionAge / 520) * Math.PI) * 0.48;
-      body.current.position.z = -Math.sin((actionAge / 520) * Math.PI) * 0.35;
-    } else if (state.action === "eat" && actionAge < 700) {
-      body.current.rotation.x = Math.sin((actionAge / 700) * Math.PI) * 0.58;
-      body.current.scale.y = 1 - Math.sin((actionAge / 700) * Math.PI) * 0.12;
-    } else {
-      body.current.rotation.x = THREE.MathUtils.lerp(
-        body.current.rotation.x,
-        0,
-        delta * 10,
-      );
-      body.current.position.z = THREE.MathUtils.lerp(
-        body.current.position.z,
-        0,
-        delta * 10,
-      );
-      body.current.scale.y = THREE.MathUtils.lerp(
-        body.current.scale.y,
-        1,
-        delta * 10,
-      );
+    let actionPitch = 0;
+    let actionForward = 0;
+    let actionDrop = 0;
+    let scaleX = 1;
+    let scaleY = 1;
+    let scaleZ = 1;
+    if (state.action === "attack" && actionAge < 680) {
+      const pulse = Math.sin((actionAge / 680) * Math.PI);
+      actionPitch = -pulse * 0.34;
+      actionForward = -pulse * 0.52;
+      scaleX = 1 + pulse * 0.055;
+      scaleY = 1 - pulse * 0.045;
+    } else if (state.action === "eat" && actionAge < 920) {
+      const pulse = Math.sin((actionAge / 920) * Math.PI);
+      actionPitch = pulse * 0.42;
+      actionDrop = -pulse * 0.12;
+      scaleX = 1 + pulse * 0.045;
+      scaleY = 1 - pulse * 0.075;
+      scaleZ = 1 + pulse * 0.035;
     }
+    const walkBob = moving
+      ? Math.abs(Math.sin(clock.elapsedTime * 11)) * 0.055
+      : 0;
+    visual.current.rotation.x = THREE.MathUtils.damp(
+      visual.current.rotation.x,
+      actionPitch,
+      13,
+      delta,
+    );
+    visual.current.position.z = THREE.MathUtils.damp(
+      visual.current.position.z,
+      actionForward,
+      14,
+      delta,
+    );
+    visual.current.position.y = THREE.MathUtils.damp(
+      visual.current.position.y,
+      walkBob + actionDrop,
+      14,
+      delta,
+    );
+    visual.current.scale.x = THREE.MathUtils.damp(
+      visual.current.scale.x,
+      scaleX,
+      14,
+      delta,
+    );
+    visual.current.scale.y = THREE.MathUtils.damp(
+      visual.current.scale.y,
+      scaleY,
+      14,
+      delta,
+    );
+    visual.current.scale.z = THREE.MathUtils.damp(
+      visual.current.scale.z,
+      scaleZ,
+      14,
+      delta,
+    );
 
-    const distance = 8.2;
+    const distance = 9.4;
     const horizontalDistance = Math.cos(state.cameraPitch) * distance;
     desiredCamera.set(
       root.current.position.x + Math.sin(state.cameraYaw) * horizontalDistance,
-      root.current.position.y + 2.4 + Math.sin(state.cameraPitch) * distance,
+      root.current.position.y + 2.6 + Math.sin(state.cameraPitch) * distance,
       root.current.position.z + Math.cos(state.cameraYaw) * horizontalDistance,
     );
     camera.position.lerp(desiredCamera, 1 - Math.exp(-delta * 6));
@@ -457,86 +525,96 @@ function CuteMonster({
   });
 
   return (
-    <group ref={root} position={[-6, terrainHeight(-6, 5), 5]}>
-      <group ref={body}>
-        <mesh position={[0, 1.22, 0]} scale={[1.05, 0.95, 1.22]} castShadow>
-          <sphereGeometry args={[0.92, 20, 16]} />
-          <meshStandardMaterial color="#8FCB69" roughness={0.72} />
-        </mesh>
-        <mesh position={[0, 1.02, -0.83]} scale={[0.66, 0.55, 0.18]} castShadow>
-          <sphereGeometry args={[0.78, 18, 14]} />
-          <meshStandardMaterial color="#B7DF85" roughness={0.8} />
-        </mesh>
-        <mesh position={[-0.39, 1.55, -0.86]}>
-          <sphereGeometry args={[0.29, 16, 12]} />
-          <meshStandardMaterial color="#FFF8D9" />
-        </mesh>
-        <mesh position={[0.39, 1.55, -0.86]}>
-          <sphereGeometry args={[0.29, 16, 12]} />
-          <meshStandardMaterial color="#FFF8D9" />
-        </mesh>
-        <mesh position={[-0.4, 1.56, -1.12]}>
-          <sphereGeometry args={[0.105, 12, 10]} />
-          <meshStandardMaterial color="#173F35" />
-        </mesh>
-        <mesh position={[0.38, 1.56, -1.12]}>
-          <sphereGeometry args={[0.105, 12, 10]} />
-          <meshStandardMaterial color="#173F35" />
-        </mesh>
-        <mesh position={[0, 1.98, -0.58]} scale={[0.72, 0.72, 0.35]}>
-          <sphereGeometry args={[0.25, 14, 12]} />
-          <meshStandardMaterial color="#FFF8D9" />
-        </mesh>
-        <mesh position={[0, 2, -0.79]}>
-          <sphereGeometry args={[0.075, 10, 8]} />
-          <meshStandardMaterial color="#173F35" />
-        </mesh>
-        <mesh
-          position={[-0.57, 2.05, -0.12]}
-          rotation={[0, 0, -0.34]}
-          castShadow
-        >
-          <coneGeometry args={[0.2, 0.62, 8]} />
-          <meshStandardMaterial color="#FF8D6B" />
-        </mesh>
-        <mesh position={[0.57, 2.05, -0.12]} rotation={[0, 0, 0.34]} castShadow>
-          <coneGeometry args={[0.2, 0.62, 8]} />
-          <meshStandardMaterial color="#FF8D6B" />
-        </mesh>
-        <mesh position={[0, 0.96, -1.02]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.19, 0.035, 8, 18, Math.PI]} />
-          <meshStandardMaterial color="#173F35" />
-        </mesh>
-        <mesh position={[0, 1.12, 1.1]} rotation={[-0.75, 0, 0]} castShadow>
-          <coneGeometry args={[0.24, 1.25, 10]} />
-          <meshStandardMaterial color="#79B957" />
-        </mesh>
-      </group>
-      {[
-        [-0.56, 0.58, -0.52],
-        [0.56, 0.58, -0.52],
-        [-0.56, 0.58, 0.56],
-        [0.56, 0.58, 0.56],
-      ].map((position, index) => (
-        <group
-          key={index}
-          ref={legs[index]}
-          position={position as [number, number, number]}
-        >
-          <mesh position={[0, -0.25, 0]} castShadow>
-            <capsuleGeometry args={[0.17, 0.42, 5, 8]} />
-            <meshStandardMaterial color="#679D4D" />
+    <group ref={root} position={[-8, terrainHeight(-8, 8), 8]}>
+      <group ref={visual}>
+        <group>
+          <mesh position={[0, 1.22, 0]} scale={[1.05, 0.95, 1.22]} castShadow>
+            <sphereGeometry args={[0.92, 32, 24]} />
+            <meshStandardMaterial color="#8FCB69" roughness={0.72} />
           </mesh>
           <mesh
-            position={[0, -0.52, -0.09]}
-            scale={[1.3, 0.65, 1.5]}
+            position={[0, 1.02, -0.83]}
+            scale={[0.66, 0.55, 0.18]}
             castShadow
           >
-            <sphereGeometry args={[0.22, 12, 8]} />
-            <meshStandardMaterial color="#FFB66E" />
+            <sphereGeometry args={[0.78, 28, 20]} />
+            <meshStandardMaterial color="#B7DF85" roughness={0.8} />
+          </mesh>
+          <mesh position={[-0.39, 1.55, -0.86]}>
+            <sphereGeometry args={[0.29, 24, 18]} />
+            <meshStandardMaterial color="#FFF8D9" />
+          </mesh>
+          <mesh position={[0.39, 1.55, -0.86]}>
+            <sphereGeometry args={[0.29, 24, 18]} />
+            <meshStandardMaterial color="#FFF8D9" />
+          </mesh>
+          <mesh position={[-0.4, 1.56, -1.12]}>
+            <sphereGeometry args={[0.105, 18, 14]} />
+            <meshStandardMaterial color="#173F35" />
+          </mesh>
+          <mesh position={[0.38, 1.56, -1.12]}>
+            <sphereGeometry args={[0.105, 18, 14]} />
+            <meshStandardMaterial color="#173F35" />
+          </mesh>
+          <mesh position={[0, 1.98, -0.58]} scale={[0.72, 0.72, 0.35]}>
+            <sphereGeometry args={[0.25, 22, 16]} />
+            <meshStandardMaterial color="#FFF8D9" />
+          </mesh>
+          <mesh position={[0, 2, -0.79]}>
+            <sphereGeometry args={[0.075, 16, 12]} />
+            <meshStandardMaterial color="#173F35" />
+          </mesh>
+          <mesh
+            position={[-0.57, 2.05, -0.12]}
+            rotation={[0, 0, -0.34]}
+            castShadow
+          >
+            <coneGeometry args={[0.2, 0.62, 18]} />
+            <meshStandardMaterial color="#FF8D6B" />
+          </mesh>
+          <mesh
+            position={[0.57, 2.05, -0.12]}
+            rotation={[0, 0, 0.34]}
+            castShadow
+          >
+            <coneGeometry args={[0.2, 0.62, 18]} />
+            <meshStandardMaterial color="#FF8D6B" />
+          </mesh>
+          <mesh position={[0, 0.96, -1.02]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.19, 0.035, 12, 28, Math.PI]} />
+            <meshStandardMaterial color="#173F35" />
+          </mesh>
+          <mesh position={[0, 1.12, 1.1]} rotation={[-0.75, 0, 0]} castShadow>
+            <coneGeometry args={[0.24, 1.25, 18]} />
+            <meshStandardMaterial color="#79B957" />
           </mesh>
         </group>
-      ))}
+        {[
+          [-0.56, 0.58, -0.52],
+          [0.56, 0.58, -0.52],
+          [-0.56, 0.58, 0.56],
+          [0.56, 0.58, 0.56],
+        ].map((position, index) => (
+          <group
+            key={index}
+            ref={legs[index]}
+            position={position as [number, number, number]}
+          >
+            <mesh position={[0, -0.25, 0]} castShadow>
+              <capsuleGeometry args={[0.17, 0.42, 8, 14]} />
+              <meshStandardMaterial color="#679D4D" roughness={0.78} />
+            </mesh>
+            <mesh
+              position={[0, -0.52, -0.09]}
+              scale={[1.3, 0.65, 1.5]}
+              castShadow
+            >
+              <sphereGeometry args={[0.22, 20, 14]} />
+              <meshStandardMaterial color="#FFB66E" roughness={0.72} />
+            </mesh>
+          </group>
+        ))}
+      </group>
     </group>
   );
 }
@@ -545,7 +623,7 @@ function World({ controls }: { controls: React.RefObject<ControlState> }) {
   return (
     <>
       <color attach="background" args={["#9CDCE5"]} />
-      <fog attach="fog" args={["#9CDCE5", 38, 95]} />
+      <fog attach="fog" args={["#9CDCE5", 58, 140]} />
       <Sky
         distance={450000}
         sunPosition={[30, 24, -18]}
@@ -559,10 +637,10 @@ function World({ controls }: { controls: React.RefObject<ControlState> }) {
         color="#FFF4D5"
         castShadow
         shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-34}
-        shadow-camera-right={34}
-        shadow-camera-top={34}
-        shadow-camera-bottom={-34}
+        shadow-camera-left={-50}
+        shadow-camera-right={50}
+        shadow-camera-top={50}
+        shadow-camera-bottom={-50}
       />
       <Sea />
       <Terrain />
@@ -583,7 +661,7 @@ function World({ controls }: { controls: React.RefObject<ControlState> }) {
         speed={1.2}
         rotationIntensity={0.04}
         floatIntensity={0.45}
-        position={[-12, 11, -18]}
+        position={[-20, 12, -28]}
       >
         <group scale={1.2}>
           {[-1.4, 0, 1.3].map((x, index) => (
@@ -595,8 +673,8 @@ function World({ controls }: { controls: React.RefObject<ControlState> }) {
         </group>
       </Float>
       <Sparkles
-        count={42}
-        scale={[48, 8, 48]}
+        count={64}
+        scale={[74, 9, 74]}
         position={[0, 4, 0]}
         size={1.6}
         speed={0.24}
@@ -691,16 +769,28 @@ export function GameExperience() {
   useEffect(() => {
     let animationFrame = 0;
     let previousTime = performance.now();
-    const updateTouchLook = (time: number) => {
+    const updateLook = (time: number) => {
       const delta = Math.min(0.05, (time - previousTime) / 1000);
       previousTime = time;
-      controls.current.cameraYaw -= controls.current.look.x * delta * 1.9;
+      const turn =
+        (controls.current.keys.has("ArrowLeft") ? 1 : 0) -
+        (controls.current.keys.has("ArrowRight") ? 1 : 0);
+      const tilt =
+        (controls.current.keys.has("ArrowDown") ? 1 : 0) -
+        (controls.current.keys.has("ArrowUp") ? 1 : 0);
+      controls.current.cameraYaw +=
+        (turn * 1.75 - controls.current.look.x * 1.9) * delta;
+      controls.current.cameraYaw = Math.atan2(
+        Math.sin(controls.current.cameraYaw),
+        Math.cos(controls.current.cameraYaw),
+      );
       controls.current.cameraPitch = THREE.MathUtils.clamp(
-        controls.current.cameraPitch + controls.current.look.y * delta * 1.25,
+        controls.current.cameraPitch +
+          (tilt * 0.82 + controls.current.look.y * 1.25) * delta,
         0.12,
         0.72,
       );
-      animationFrame = window.requestAnimationFrame(updateTouchLook);
+      animationFrame = window.requestAnimationFrame(updateLook);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       controls.current.keys.add(event.code);
@@ -718,6 +808,10 @@ export function GameExperience() {
     const onMouseMove = (event: MouseEvent) => {
       if (!document.pointerLockElement) return;
       controls.current.cameraYaw -= event.movementX * 0.0024;
+      controls.current.cameraYaw = Math.atan2(
+        Math.sin(controls.current.cameraYaw),
+        Math.cos(controls.current.cameraYaw),
+      );
       controls.current.cameraPitch = THREE.MathUtils.clamp(
         controls.current.cameraPitch + event.movementY * 0.0018,
         0.12,
@@ -732,7 +826,7 @@ export function GameExperience() {
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("blur", onBlur);
     document.addEventListener("pointerlockchange", onPointerLock);
-    animationFrame = window.requestAnimationFrame(updateTouchLook);
+    animationFrame = window.requestAnimationFrame(updateLook);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
@@ -748,7 +842,7 @@ export function GameExperience() {
       <Canvas
         shadows
         dpr={[1, 1.6]}
-        camera={{ fov: 48, near: 0.1, far: 180, position: [8, 8, 12] }}
+        camera={{ fov: 48, near: 0.1, far: 240, position: [8, 8, 12] }}
         gl={{ antialias: true, powerPreference: "high-performance" }}
         onPointerDown={(event) => {
           if (
@@ -806,6 +900,16 @@ export function GameExperience() {
           <div>
             <MousePointer2 size={16} />
             <span>look</span>
+          </div>
+          <div>
+            <kbd>←</kbd>
+            <kbd>→</kbd>
+            <span>turn</span>
+          </div>
+          <div>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd>
+            <span>camera</span>
           </div>
           <div>
             <kbd>E</kbd>
