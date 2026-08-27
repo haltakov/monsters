@@ -177,10 +177,15 @@ function eyeOffsets(count: MonsterDna["eyes"]) {
 function legPositions(count: MonsterDna["legs"], profile: BodyProfile) {
   if (count === 0) return [];
   const rowCount = count / 2;
+  const densityMultiplier = count === 8 ? 1.65 : count === 6 ? 1.25 : 1;
+  const legSpan = Math.min(
+    profile.legSpan * densityMultiplier,
+    profile.scale[2] * 1.05,
+  );
   const rows = Array.from({ length: rowCount }, (_, index) =>
     rowCount === 1
       ? 0
-      : -profile.legSpan / 2 + (index / (rowCount - 1)) * profile.legSpan,
+      : -legSpan / 2 + (index / (rowCount - 1)) * legSpan,
   );
   return rows.flatMap((z) => [
     [-profile.legX, profile.legY, z] as [number, number, number],
@@ -948,6 +953,57 @@ function addSmoothBall(
   );
 }
 
+function subtractSmoothEllipsoid(
+  field: MarchingCubes,
+  center: [number, number, number],
+  radius: [number, number, number],
+  depth = 220,
+) {
+  const [centerX, centerY, centerZ] = center;
+  const [radiusX, radiusY, radiusZ] = radius;
+  const size = field.size;
+  const worldToGridX = (value: number) =>
+    (0.5 + value / (SMOOTH_FIELD_SCALE * 2)) * size;
+  const worldToGridY = (value: number) =>
+    (0.5 +
+      (value - SMOOTH_FIELD_ORIGIN_Y) / (SMOOTH_FIELD_SCALE * 2)) *
+    size;
+  const clampGrid = (value: number) =>
+    THREE.MathUtils.clamp(value, 1, size - 2);
+  const minX = Math.floor(clampGrid(worldToGridX(centerX - radiusX)));
+  const maxX = Math.ceil(clampGrid(worldToGridX(centerX + radiusX)));
+  const minY = Math.floor(clampGrid(worldToGridY(centerY - radiusY)));
+  const maxY = Math.ceil(clampGrid(worldToGridY(centerY + radiusY)));
+  const minZ = Math.floor(clampGrid(worldToGridX(centerZ - radiusZ)));
+  const maxZ = Math.ceil(clampGrid(worldToGridX(centerZ + radiusZ)));
+
+  for (let z = minZ; z <= maxZ; z += 1) {
+    const worldZ = (z / size - 0.5) * SMOOTH_FIELD_SCALE * 2;
+    const normalizedZ = (worldZ - centerZ) / radiusZ;
+    for (let y = minY; y <= maxY; y += 1) {
+      const worldY =
+        (y / size - 0.5) * SMOOTH_FIELD_SCALE * 2 +
+        SMOOTH_FIELD_ORIGIN_Y;
+      const normalizedY = (worldY - centerY) / radiusY;
+      for (let x = minX; x <= maxX; x += 1) {
+        const worldX = (x / size - 0.5) * SMOOTH_FIELD_SCALE * 2;
+        const normalizedX = (worldX - centerX) / radiusX;
+        const distanceSquared =
+          normalizedX * normalizedX +
+          normalizedY * normalizedY +
+          normalizedZ * normalizedZ;
+        if (distanceSquared >= 1) continue;
+        const distance = Math.sqrt(distanceSquared);
+        const inverseDistance = 1 - distance;
+        const falloff =
+          inverseDistance * inverseDistance * (3 - 2 * inverseDistance);
+        const fieldIndex = z * field.size2 + y * size + x;
+        field.field[fieldIndex] -= depth * falloff;
+      }
+    }
+  }
+}
+
 function relaxSmoothGeometry(geometry: THREE.BufferGeometry, iterations = 4) {
   const index = geometry.getIndex();
   const position = geometry.getAttribute("position");
@@ -1030,7 +1086,7 @@ function buildSmoothGeometry(
   bodyColor: string,
   accentColor: string,
 ) {
-  const cacheKey = `relaxed-gap-v1:${JSON.stringify(dna)}`;
+  const cacheKey = `relaxed-grid-gap-v2:${JSON.stringify(dna)}`;
   const cached = smoothGeometryCache.get(cacheKey);
   if (cached) return cached;
 
@@ -1062,7 +1118,9 @@ function buildSmoothGeometry(
     const footY = dna.legShape === "springy" ? 0.08 : 0.14;
     const outward = dna.legShape === "springy" ? (x < 0 ? -0.16 : 0.16) : 0;
     const footX = x + outward;
-    const legStrength = dna.legShape === "stubby" ? 0.3 : 0.24;
+    const legDensityScale = dna.legs === 8 ? 0.72 : dna.legs === 6 ? 0.84 : 1;
+    const legStrength =
+      (dna.legShape === "stubby" ? 0.3 : 0.24) * legDensityScale;
     const kneePush =
       dna.legShape === "springy"
         ? 0.22
@@ -1085,24 +1143,26 @@ function buildSmoothGeometry(
       footX,
       footY,
       z - (dna.legShape === "clawed" ? 0.12 : 0),
-      dna.legShape === "hoof" || dna.legShape === "flippers" ? 0.34 : 0.25,
+      (dna.legShape === "hoof" || dna.legShape === "flippers" ? 0.34 : 0.25) *
+        legDensityScale,
       10.8,
     );
     if (dna.legShape === "flippers") {
-      addSmoothBall(field, footX, footY, z - 0.32, 0.34, 10.4);
+      addSmoothBall(
+        field,
+        footX,
+        footY,
+        z - 0.32,
+        0.34 * legDensityScale,
+        10.4,
+      );
     }
     return { x, y: hipY, z, index };
   });
 
-  // Metaballs naturally blend the left and right legs into a solid skirt.
-  // Negative balls make an actual arch between every pair, open all the way
-  // to the ground, while leaving the upper belly intact.
-  const legRows = [...new Set(legHips.map((hip) => hip.z))];
-  legRows.forEach((z) => {
-    addSmoothBall(field, 0, 0.08, z, -0.38, 9.8);
-    addSmoothBall(field, 0, 0.36, z, -0.34, 9.8);
-    addSmoothBall(field, 0, 0.62, z, -0.24, 10.2);
-  });
+  const legRows = [...new Set(legHips.map((hip) => hip.z))].sort(
+    (first, second) => first - second,
+  );
 
   const [tailY, tailZ] = profile.tail;
   if (dna.tail !== "none") {
@@ -1128,6 +1188,42 @@ function buildSmoothGeometry(
   // lighting; the second, lighter pass preserves small features.
   field.blur(0.9);
   field.blur(0.55);
+
+  if (legRows.length > 0) {
+    const rowSpacing =
+      legRows.length > 1 ? legRows[1] - legRows[0] : profile.legSpan;
+
+    // Transverse arches separate the left and right leg in every row.
+    legRows.forEach((z) => {
+      subtractSmoothEllipsoid(
+        field,
+        [0, 0.34, z],
+        [profile.legX * 0.72, 0.67, Math.max(0.17, rowSpacing * 0.3)],
+      );
+    });
+
+    // Longitudinal arches separate front/rear legs on each side. Without
+    // these, the side view still reads as one solid wall even if every row
+    // has a left/right opening.
+    for (let row = 0; row < legRows.length - 1; row += 1) {
+      const firstRow = legRows[row];
+      const secondRow = legRows[row + 1];
+      const gapZ = (firstRow + secondRow) / 2;
+      const gapRadiusZ = THREE.MathUtils.clamp(
+        (secondRow - firstRow) * 0.32,
+        0.11,
+        0.24,
+      );
+      [-1, 1].forEach((side) => {
+        subtractSmoothEllipsoid(
+          field,
+          [profile.legX * side, 0.34, gapZ],
+          [Math.max(0.22, profile.legX * 0.45), 0.73, gapRadiusZ],
+          340,
+        );
+      });
+    }
+  }
   field.update();
   const sourcePosition = field.geometry.getAttribute("position");
   const sourceVertexCount = field.geometry.drawRange.count;
@@ -1244,7 +1340,9 @@ function createSmoothRig(
   });
   const mesh = new THREE.SkinnedMesh(geometry, material);
   mesh.castShadow = castShadow;
-  mesh.receiveShadow = true;
+  // Dense procedural surfaces show shadow-map contour bands when receiving
+  // their own shadow. It still casts a full world/contact shadow.
+  mesh.receiveShadow = false;
   const rootBone = new THREE.Bone();
   const [cx, cy] = profile.center;
   const [, sy] = profile.scale;
