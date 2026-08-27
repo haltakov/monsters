@@ -33,7 +33,10 @@ import {
   getMonsterFollowerCount,
   type MonsterDna,
 } from "@/components/game/monster-dna";
-import { MonsterVisual } from "@/components/game/monster-model";
+import {
+  MonsterVisual,
+  type MonsterMotionState,
+} from "@/components/game/monster-model";
 import {
   LanguageSwitcher,
   useI18n,
@@ -847,6 +850,11 @@ function FamilyMonster({
     useRef<THREE.Group>(null),
   ];
   const wings = [useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null)];
+  const smoothMotion = useRef<MonsterMotionState>({
+    stride: 0,
+    intensity: 0,
+    gait: "idle",
+  });
   const target = useMemo(() => new THREE.Vector3(), []);
   const [homeX, homeZ, scale] =
     FAMILY_POSITIONS[index % FAMILY_POSITIONS.length];
@@ -893,6 +901,10 @@ function FamilyMonster({
     }
 
     const stride = Math.sin(time * (canFly ? 7 : 8.5) + phase);
+    smoothMotion.current.stride =
+      stride * (canFly ? 0.16 : livesInWater ? 0.3 : 0.46);
+    smoothMotion.current.intensity = 1;
+    smoothMotion.current.gait = canFly ? "fly" : livesInWater ? "swim" : "walk";
     legs.forEach((leg, legIndex) => {
       if (leg.current) {
         leg.current.rotation.x = THREE.MathUtils.damp(
@@ -924,6 +936,12 @@ function FamilyMonster({
       7,
       delta,
     );
+    visual.current.rotation.z = THREE.MathUtils.damp(
+      visual.current.rotation.z,
+      stride * (canFly || livesInWater ? 0.035 : 0.065),
+      8,
+      delta,
+    );
   });
 
   return (
@@ -938,6 +956,7 @@ function FamilyMonster({
           dna={profile.dna}
           legRefs={legs}
           wingRefs={wings}
+          motionRef={smoothMotion}
           castShadow={quality === "desktop"}
         />
       </group>
@@ -974,6 +993,11 @@ function CuteMonster({
     useRef<THREE.Group>(null),
   ];
   const wings = [useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null)];
+  const smoothMotion = useRef<MonsterMotionState>({
+    stride: 0,
+    intensity: 0,
+    gait: "idle",
+  });
   const velocity = useMemo(() => new THREE.Vector3(), []);
   const cameraTarget = useMemo(() => new THREE.Vector3(), []);
   const desiredCamera = useMemo(() => new THREE.Vector3(), []);
@@ -1010,24 +1034,12 @@ function CuteMonster({
         .set(xInput * cos - zInput * sin, 0, -xInput * sin - zInput * cos)
         .normalize();
       const flying = state.locomotionMode === "fly" && canFly;
-      const speed = flying
-        ? sprinting
-          ? 13.2
-          : 9.2
-        : sprinting
-          ? 8.2
-          : 5.4;
+      const speed = flying ? (sprinting ? 13.2 : 9.2) : sprinting ? 8.2 : 5.4;
       const nextX = root.current.position.x + velocity.x * speed * delta;
       const nextZ = root.current.position.z + velocity.z * speed * delta;
-      if (
-        flying ||
-        !isBlockedByWater(nextX, root.current.position.z, canSwim)
-      )
+      if (flying || !isBlockedByWater(nextX, root.current.position.z, canSwim))
         root.current.position.x = nextX;
-      if (
-        flying ||
-        !isBlockedByWater(root.current.position.x, nextZ, canSwim)
-      )
+      if (flying || !isBlockedByWater(root.current.position.x, nextZ, canSwim))
         root.current.position.z = nextZ;
     }
 
@@ -1064,7 +1076,8 @@ function CuteMonster({
         : swimming
           ? (isDeepWaterAt(root.current.position.x, root.current.position.z)
               ? -1.05
-              : -0.72) + Math.sin(clock.elapsedTime * 2.4) * 0.08
+              : -0.72) +
+            Math.sin(clock.elapsedTime * 2.4) * 0.08
           : terrainHeight(root.current.position.x, root.current.position.z);
     root.current.position.y = THREE.MathUtils.damp(
       root.current.position.y,
@@ -1088,7 +1101,34 @@ function CuteMonster({
       moving && sprinting,
       resolvedMode,
     );
-    const stride = moving ? Math.sin(clock.elapsedTime * 11) * 0.46 : 0;
+    const cadence = flying
+      ? 6.2
+      : swimming || diving
+        ? 7.4
+        : sprinting
+          ? 15
+          : 10.5;
+    const strideAmount = flying
+      ? 0.16
+      : swimming || diving
+        ? 0.34
+        : sprinting
+          ? 0.68
+          : 0.5;
+    const stride = moving
+      ? Math.sin(clock.elapsedTime * cadence) * strideAmount
+      : 0;
+    smoothMotion.current.stride = stride;
+    smoothMotion.current.intensity = moving ? (sprinting ? 1 : 0.78) : 0;
+    smoothMotion.current.gait = flying
+      ? "fly"
+      : swimming || diving
+        ? "swim"
+        : sprinting && moving
+          ? "sprint"
+          : moving
+            ? "walk"
+            : "idle";
     legs.forEach((leg, index) => {
       if (leg.current)
         leg.current.rotation.x = THREE.MathUtils.lerp(
@@ -1135,7 +1175,8 @@ function CuteMonster({
       scaleZ = 1 + pulse * 0.035;
     }
     const walkBob = moving
-      ? Math.abs(Math.sin(clock.elapsedTime * 11)) * 0.055
+      ? Math.abs(Math.sin(clock.elapsedTime * cadence)) *
+        (sprinting ? 0.09 : swimming || diving || flying ? 0.035 : 0.06)
       : 0;
     visual.current.rotation.x = THREE.MathUtils.damp(
       visual.current.rotation.x,
@@ -1145,7 +1186,11 @@ function CuteMonster({
     );
     visual.current.rotation.z = THREE.MathUtils.damp(
       visual.current.rotation.z,
-      state.isDead ? -Math.PI * 0.47 : 0,
+      state.isDead
+        ? -Math.PI * 0.47
+        : moving
+          ? stride * (sprinting ? 0.12 : 0.075)
+          : 0,
       5.5,
       delta,
     );
@@ -1202,7 +1247,12 @@ function CuteMonster({
   return (
     <group ref={root} position={[spawn.x, spawn.y, spawn.z]}>
       <group ref={visual}>
-        <MonsterVisual dna={dna} legRefs={legs} wingRefs={wings} />
+        <MonsterVisual
+          dna={dna}
+          legRefs={legs}
+          wingRefs={wings}
+          motionRef={smoothMotion}
+        />
       </group>
     </group>
   );
@@ -1232,6 +1282,13 @@ function PackFollowers({
     useRef<THREE.Group>(null),
     useRef<THREE.Group>(null),
   ];
+  const smoothMotions = [
+    useRef<MonsterMotionState>({ stride: 0, intensity: 0, gait: "idle" }),
+    useRef<MonsterMotionState>({ stride: 0, intensity: 0, gait: "idle" }),
+    useRef<MonsterMotionState>({ stride: 0, intensity: 0, gait: "idle" }),
+    useRef<MonsterMotionState>({ stride: 0, intensity: 0, gait: "idle" }),
+    useRef<MonsterMotionState>({ stride: 0, intensity: 0, gait: "idle" }),
+  ];
   const target = useMemo(() => new THREE.Vector3(), []);
   const count = getMonsterFollowerCount(dna);
   const canSwim = canMonsterSwim(dna);
@@ -1249,6 +1306,43 @@ function PackFollowers({
         controls.current.playerPosition.z - lateral * sin + behind * cos;
       const swimming = canSwim && isWaterAt(x, z);
       const mode = controls.current.locomotionMode;
+      const moving = controls.current.moving;
+      const sprinting = controls.current.sprinting;
+      const gait: MonsterMotionState["gait"] =
+        mode === "fly"
+          ? "fly"
+          : mode === "swim" || mode === "dive" || swimming
+            ? "swim"
+            : sprinting && moving
+              ? "sprint"
+              : moving
+                ? "walk"
+                : "idle";
+      const cadence =
+        gait === "sprint"
+          ? 15
+          : gait === "swim"
+            ? 7.4
+            : gait === "fly"
+              ? 6.2
+              : 10.5;
+      const amount =
+        gait === "sprint"
+          ? 0.64
+          : gait === "swim"
+            ? 0.32
+            : gait === "fly"
+              ? 0.15
+              : 0.46;
+      smoothMotions[index].current.stride = moving
+        ? Math.sin(clock.elapsedTime * cadence + index * 0.72) * amount
+        : 0;
+      smoothMotions[index].current.intensity = moving
+        ? sprinting
+          ? 1
+          : 0.76
+        : 0;
+      smoothMotions[index].current.gait = gait;
       const y =
         mode === "fly" || mode === "dive"
           ? controls.current.playerPosition.y +
@@ -1290,7 +1384,11 @@ function PackFollowers({
     <group>
       {PACK_FORMATION.slice(0, count).map((_, index) => (
         <group key={index} ref={followers[index]} scale={0.76}>
-          <MonsterVisual dna={dna} castShadow={quality === "desktop"} />
+          <MonsterVisual
+            dna={dna}
+            motionRef={smoothMotions[index]}
+            castShadow={quality === "desktop"}
+          />
         </group>
       ))}
     </group>
@@ -1537,8 +1635,7 @@ export function GameExperience() {
     key: "game.welcome",
   });
   const [energy, setEnergy] = useState(100);
-  const [locomotionMode, setLocomotionMode] =
-    useState<LocomotionMode>("land");
+  const [locomotionMode, setLocomotionMode] = useState<LocomotionMode>("land");
   const [isDead, setIsDead] = useState(false);
   const [eatenIds, setEatenIds] = useState<Set<string>>(() => new Set());
   const [huntedIds, setHuntedIds] = useState<Set<string>>(() => new Set());
@@ -1723,10 +1820,7 @@ export function GameExperience() {
         );
         setEnergyLevel(controls.current.energy + restoredEnergy);
         setStatus({
-          key:
-            nearest.kind === "bush"
-              ? "game.crunchyBush"
-              : "game.tastyTree",
+          key: nearest.kind === "bush" ? "game.crunchyBush" : "game.tastyTree",
           values: { energy: Math.ceil(restoredEnergy) },
         });
       }
@@ -1763,7 +1857,12 @@ export function GameExperience() {
       key: "game.ready",
       values: { name: activeMonster.name },
     });
-  }, [activeMonster.dna, activeMonster.name, resetMonsterMovement, setEnergyLevel]);
+  }, [
+    activeMonster.dna,
+    activeMonster.name,
+    resetMonsterMovement,
+    setEnergyLevel,
+  ]);
 
   const openCreator = useCallback(() => {
     controls.current.paused = true;
@@ -1966,12 +2065,10 @@ export function GameExperience() {
       ) {
         const energyRate =
           controls.current.locomotionMode === "fly"
-            ? FLY_ENERGY_PER_SECOND *
-              (controls.current.sprinting ? 1.75 : 1)
+            ? FLY_ENERGY_PER_SECOND * (controls.current.sprinting ? 1.75 : 1)
             : controls.current.locomotionMode === "swim" ||
                 controls.current.locomotionMode === "dive"
-              ? SWIM_ENERGY_PER_SECOND *
-                (controls.current.sprinting ? 1.6 : 1)
+              ? SWIM_ENERGY_PER_SECOND * (controls.current.sprinting ? 1.6 : 1)
               : controls.current.sprinting
                 ? SPRINT_ENERGY_PER_SECOND
                 : WALK_ENERGY_PER_SECOND;
@@ -2101,10 +2198,8 @@ export function GameExperience() {
               <Dna size={16} />
               <span>
                 {monsterDna.eyes}{" "}
-                {monsterDna.eyes === 1
-                  ? t("creator.eye")
-                  : t("creator.eyes")}{" "}
-                · {option(monsterDna.diet)} · {option(monsterDna.social)}
+                {monsterDna.eyes === 1 ? t("creator.eye") : t("creator.eyes")} ·{" "}
+                {option(monsterDna.diet)} · {option(monsterDna.social)}
                 {getMonsterFollowerCount(monsterDna)
                   ? ` +${getMonsterFollowerCount(monsterDna)}`
                   : ""}
@@ -2159,9 +2254,7 @@ export function GameExperience() {
         {isDead && (
           <div className="death-card" role="dialog" aria-modal="true">
             <span>{t("game.outOfEnergy")}</span>
-            <strong>
-              {t("game.collapsed", { name: activeMonster.name })}
-            </strong>
+            <strong>{t("game.collapsed", { name: activeMonster.name })}</strong>
             <p>{t("game.deathHint")}</p>
             <button type="button" onClick={resetGame}>
               {t("game.tryAgain")} <kbd>R</kbd>
@@ -2263,8 +2356,7 @@ export function GameExperience() {
           </button>
         </div>
 
-        {(monsterDna.adaptation === "wings" ||
-          canMonsterSwim(monsterDna)) && (
+        {(monsterDna.adaptation === "wings" || canMonsterSwim(monsterDna)) && (
           <div className="ability-controls">
             {monsterDna.adaptation === "wings" && (
               <button

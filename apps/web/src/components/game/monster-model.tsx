@@ -13,7 +13,14 @@ type MonsterVisualProps = {
   dna: MonsterDna;
   legRefs?: Array<RefObject<THREE.Group | null>>;
   wingRefs?: Array<RefObject<THREE.Mesh | null>>;
+  motionRef?: RefObject<MonsterMotionState>;
   castShadow?: boolean;
+};
+
+export type MonsterMotionState = {
+  stride: number;
+  intensity: number;
+  gait: "idle" | "walk" | "sprint" | "swim" | "fly";
 };
 
 type BodyProfile = {
@@ -940,19 +947,13 @@ function addSmoothBall(
   );
 }
 
-function smoothPatternMix(
-  dna: MonsterDna,
-  x: number,
-  y: number,
-  z: number,
-) {
+function smoothPatternMix(dna: MonsterDna, x: number, y: number, z: number) {
   if (dna.pattern === "plain") return 0;
   if (dna.pattern === "stripes") {
     return Math.sin((z + y * 0.34) * 8.5) > 0.25 ? 0.72 : 0;
   }
   if (dna.pattern === "spots") {
-    const spots =
-      Math.sin(x * 8.1 + z * 2.3) * Math.cos(y * 7.4 - z * 3.1);
+    const spots = Math.sin(x * 8.1 + z * 2.3) * Math.cos(y * 7.4 - z * 3.1);
     return spots > 0.48 ? 0.82 : 0;
   }
   if (dna.pattern === "patches") {
@@ -974,13 +975,7 @@ function buildSmoothGeometry(
   if (cached) return cached;
 
   const temporaryMaterial = new THREE.MeshStandardMaterial();
-  const field = new MarchingCubes(
-    38,
-    temporaryMaterial,
-    false,
-    false,
-    70_000,
-  );
+  const field = new MarchingCubes(56, temporaryMaterial, false, false, 140_000);
   const [cx, cy, cz] = profile.center;
   const [sx, sy, sz] = profile.scale;
 
@@ -1007,24 +1002,31 @@ function buildSmoothGeometry(
     const footY = dna.legShape === "springy" ? 0.08 : 0.14;
     const outward = dna.legShape === "springy" ? (x < 0 ? -0.16 : 0.16) : 0;
     const footX = x + outward;
-    const midX = THREE.MathUtils.lerp(x, footX, 0.52);
-    const legStrength = dna.legShape === "stubby" ? 0.46 : 0.34;
-    addSmoothBall(field, x, hipY, z, legStrength, 9.8);
-    addSmoothBall(
-      field,
-      midX,
-      THREE.MathUtils.lerp(hipY, footY, 0.48),
-      z,
-      legStrength * 0.9,
-      10,
-    );
+    const legStrength = dna.legShape === "stubby" ? 0.3 : 0.24;
+    const kneePush =
+      dna.legShape === "springy"
+        ? 0.22
+        : dna.legShape === "clawed"
+          ? 0.11
+          : 0.05;
+    for (let step = 0; step < 5; step += 1) {
+      const progress = step / 4;
+      addSmoothBall(
+        field,
+        THREE.MathUtils.lerp(x, footX, progress),
+        THREE.MathUtils.lerp(hipY, footY, progress),
+        z - Math.sin(progress * Math.PI) * kneePush,
+        legStrength * (1 - progress * 0.16),
+        10.8,
+      );
+    }
     addSmoothBall(
       field,
       footX,
       footY,
       z - (dna.legShape === "clawed" ? 0.12 : 0),
-      dna.legShape === "hoof" || dna.legShape === "flippers" ? 0.42 : 0.31,
-      10,
+      dna.legShape === "hoof" || dna.legShape === "flippers" ? 0.34 : 0.25,
+      10.8,
     );
     if (dna.legShape === "flippers") {
       addSmoothBall(field, footX, footY, z - 0.32, 0.34, 10.4);
@@ -1199,18 +1201,26 @@ function createSmoothRig(
   return { mesh, legBones, tailBone, material };
 }
 
+function legGaitDirection(index: number, count: number) {
+  if (count === 4) return [1, -1, -1, 1][index] ?? 1;
+  if (count >= 6) return [1, -1, -1, 1, 1, -1, -1, 1][index] ?? 1;
+  return index % 2 === 0 ? 1 : -1;
+}
+
 function SmoothMonsterCore({
   dna,
   profile,
   bodyColor,
   accentColor,
   castShadow,
+  motionRef,
 }: {
   dna: MonsterDna;
   profile: BodyProfile;
   bodyColor: string;
   accentColor: string;
   castShadow: boolean;
+  motionRef?: RefObject<MonsterMotionState>;
 }) {
   const [rig] = useState(() =>
     createSmoothRig(dna, profile, bodyColor, accentColor, castShadow),
@@ -1225,27 +1235,57 @@ function SmoothMonsterCore({
     return () => rig.material.dispose();
   }, [rig]);
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
     const time = clock.elapsedTime;
+    const fallbackStride = Math.sin(time * 5.2) * 0.72;
+    const motion = motionRef?.current;
+    const gait = motion?.gait ?? "walk";
+    const stride = motion?.stride ?? fallbackStride;
+    const intensity = motion?.intensity ?? 0.78;
     legBonesRef.current.forEach((bone, index) => {
-      bone.rotation.x = Math.sin(time * 2.2 + (index % 2) * Math.PI) * 0.1;
-      bone.rotation.z = Math.sin(time * 1.4 + index * 0.7) * 0.025;
+      const direction = legGaitDirection(index, legBonesRef.current.length);
+      const foldedPose = gait === "fly" ? 0.48 : gait === "swim" ? 0.2 : 0;
+      const gaitScale = gait === "fly" ? 0.28 : gait === "swim" ? 0.62 : 1;
+      bone.rotation.x = THREE.MathUtils.damp(
+        bone.rotation.x,
+        foldedPose + stride * direction * gaitScale,
+        gait === "sprint" ? 16 : 12,
+        delta,
+      );
+      const outward = index % 2 === 0 ? -1 : 1;
+      bone.rotation.z = THREE.MathUtils.damp(
+        bone.rotation.z,
+        outward * intensity * (gait === "swim" ? 0.13 : 0.035),
+        10,
+        delta,
+      );
     });
     if (tailBoneRef.current) {
-      tailBoneRef.current.rotation.y = Math.sin(time * 1.7) * 0.14;
-      tailBoneRef.current.rotation.x = Math.sin(time * 1.1) * 0.04;
+      const tailSpeed = gait === "sprint" ? 7 : gait === "swim" ? 5.4 : 2.4;
+      const tailAmount = gait === "swim" ? 0.3 : 0.12 + intensity * 0.08;
+      tailBoneRef.current.rotation.y = THREE.MathUtils.damp(
+        tailBoneRef.current.rotation.y,
+        Math.sin(time * tailSpeed) * tailAmount,
+        10,
+        delta,
+      );
+      tailBoneRef.current.rotation.x = THREE.MathUtils.damp(
+        tailBoneRef.current.rotation.x,
+        gait === "fly" ? -0.12 : Math.sin(time * 1.1) * 0.035,
+        8,
+        delta,
+      );
     }
     if (meshRef.current) {
-      meshRef.current.scale.y = 1 + Math.sin(time * 1.9) * 0.012;
-      meshRef.current.scale.x = 1 - Math.sin(time * 1.9) * 0.006;
+      const breath = Math.sin(time * 1.9) * 0.008;
+      const movementCompression = Math.abs(stride) * intensity * 0.025;
+      meshRef.current.scale.y = 1 + breath - movementCompression;
+      meshRef.current.scale.x = 1 - breath * 0.5 + movementCompression * 0.45;
     }
   });
 
   return (
-    <group
-      position={[0, SMOOTH_FIELD_ORIGIN_Y, 0]}
-      scale={SMOOTH_FIELD_SCALE}
-    >
+    <group position={[0, SMOOTH_FIELD_ORIGIN_Y, 0]} scale={SMOOTH_FIELD_SCALE}>
       <primitive ref={meshRef} object={rig.mesh} />
     </group>
   );
@@ -1254,6 +1294,7 @@ function SmoothMonsterCore({
 function SmoothMonsterVisual({
   dna,
   wingRefs,
+  motionRef,
   castShadow,
 }: MonsterVisualProps & { castShadow: boolean }) {
   const primary = getMonsterColor(dna.color);
@@ -1270,6 +1311,7 @@ function SmoothMonsterVisual({
         bodyColor={primary.hex}
         accentColor={accent.hex}
         castShadow={castShadow}
+        motionRef={motionRef}
       />
       <group position={[0, 0, -0.2]}>
         <Face dna={dna} profile={profile} accent={accent.hex} />
@@ -1301,6 +1343,7 @@ export function MonsterVisual({
   dna,
   legRefs,
   wingRefs,
+  motionRef,
   castShadow = true,
 }: MonsterVisualProps) {
   if (dna.mesh === "smooth") {
@@ -1308,6 +1351,7 @@ export function MonsterVisual({
       <SmoothMonsterVisual
         dna={dna}
         wingRefs={wingRefs}
+        motionRef={motionRef}
         castShadow={castShadow}
       />
     );
