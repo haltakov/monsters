@@ -22,6 +22,7 @@ type ControlState = {
   move: { x: number; y: number };
   look: { x: number; y: number };
   cameraYaw: number;
+  characterYaw: number;
   cameraPitch: number;
   action: Action;
   actionStarted: number;
@@ -30,6 +31,22 @@ type ControlState = {
 const WORLD_RADIUS = 40;
 const PLAYABLE_RADIUS = 38.2;
 const BRIDGE_POSITIONS = [-12, 12] as const;
+
+function normalizeAngle(angle: number) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+function dampAngle(
+  current: number,
+  target: number,
+  smoothing: number,
+  delta: number,
+) {
+  const difference = normalizeAngle(target - current);
+  return normalizeAngle(
+    current + difference * (1 - Math.exp(-smoothing * delta)),
+  );
+}
 
 const TREES: Array<[number, number, number]> = [
   [-18, -13, 0.9],
@@ -410,7 +427,9 @@ function CuteMonster({
     const horizontal =
       (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + state.move.x;
     const forward =
-      (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0) + state.move.y;
+      (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
+      (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) +
+      state.move.y;
 
     velocity.set(0, 0, 0);
     if (Math.abs(horizontal) + Math.abs(forward) > 0.06) {
@@ -435,7 +454,7 @@ function CuteMonster({
       root.current.position.x,
       root.current.position.z,
     );
-    root.current.rotation.y = state.cameraYaw;
+    root.current.rotation.y = state.characterYaw;
     const moving = velocity.lengthSq() > 0.1;
     const stride = moving ? Math.sin(clock.elapsedTime * 11) * 0.46 : 0;
     legs.forEach((leg, index) => {
@@ -750,6 +769,7 @@ export function GameExperience() {
     move: { x: 0, y: 0 },
     look: { x: 0, y: 0 },
     cameraYaw: 0.35,
+    characterYaw: 0.35,
     cameraPitch: 0.38,
     action: null,
     actionStarted: 0,
@@ -775,18 +795,44 @@ export function GameExperience() {
       const turn =
         (controls.current.keys.has("ArrowLeft") ? 1 : 0) -
         (controls.current.keys.has("ArrowRight") ? 1 : 0);
-      const tilt =
-        (controls.current.keys.has("ArrowDown") ? 1 : 0) -
-        (controls.current.keys.has("ArrowUp") ? 1 : 0);
-      controls.current.cameraYaw +=
-        (turn * 1.75 - controls.current.look.x * 1.9) * delta;
-      controls.current.cameraYaw = Math.atan2(
-        Math.sin(controls.current.cameraYaw),
-        Math.cos(controls.current.cameraYaw),
+      const turnDelta = turn * 1.75 * delta;
+      controls.current.cameraYaw = normalizeAngle(
+        controls.current.cameraYaw +
+          turnDelta -
+          controls.current.look.x * 1.9 * delta,
       );
+      controls.current.characterYaw = normalizeAngle(
+        controls.current.characterYaw + turnDelta,
+      );
+
+      const horizontal =
+        (controls.current.keys.has("KeyD") ? 1 : 0) -
+        (controls.current.keys.has("KeyA") ? 1 : 0) +
+        controls.current.move.x;
+      const forward =
+        (controls.current.keys.has("KeyW") ||
+        controls.current.keys.has("ArrowUp")
+          ? 1
+          : 0) -
+        (controls.current.keys.has("KeyS") ||
+        controls.current.keys.has("ArrowDown")
+          ? 1
+          : 0) +
+        controls.current.move.y;
+      if (Math.abs(horizontal) + Math.abs(forward) > 0.06) {
+        const targetYaw =
+          Math.abs(horizontal) > 0.06
+            ? controls.current.cameraYaw - Math.sign(horizontal) * Math.PI * 0.5
+            : controls.current.cameraYaw;
+        controls.current.characterYaw = dampAngle(
+          controls.current.characterYaw,
+          targetYaw,
+          15,
+          delta,
+        );
+      }
       controls.current.cameraPitch = THREE.MathUtils.clamp(
-        controls.current.cameraPitch +
-          (tilt * 0.82 + controls.current.look.y * 1.25) * delta,
+        controls.current.cameraPitch + controls.current.look.y * 1.25 * delta,
         0.12,
         0.72,
       );
@@ -892,24 +938,27 @@ export function GameExperience() {
         <div className="desktop-controls">
           <div>
             <kbd>W</kbd>
-            <kbd>A</kbd>
             <kbd>S</kbd>
+            <span>forward / back</span>
+          </div>
+          <div>
+            <kbd>A</kbd>
             <kbd>D</kbd>
-            <span>move</span>
+            <span>face + move sideways</span>
           </div>
           <div>
             <MousePointer2 size={16} />
-            <span>look</span>
+            <span>camera</span>
           </div>
           <div>
             <kbd>←</kbd>
             <kbd>→</kbd>
-            <span>turn</span>
+            <span>turn + camera</span>
           </div>
           <div>
             <kbd>↑</kbd>
             <kbd>↓</kbd>
-            <span>camera</span>
+            <span>forward / back</span>
           </div>
           <div>
             <kbd>E</kbd>

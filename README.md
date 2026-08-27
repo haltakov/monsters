@@ -25,11 +25,11 @@ Open [http://localhost:3100](http://localhost:3100). The API health check lives 
 
 ## Controls
 
-- `WASD` — move and strafe without changing facing
-- `←` / `→` — turn the monster and camera
-- `↑` / `↓` — tilt the camera
+- `W` / `↑` — walk forward; `S` / `↓` — walk backward
+- `A` / `D` — face and move 90° left or right without rotating the camera
+- `←` / `→` — turn the monster and camera together
 - Hold `Shift` — sprint
-- Move the mouse after clicking the game — look around
+- Move the mouse after clicking the game — rotate only the camera; the monster aligns with it once movement starts
 - `E` — eat
 - `Space` — attack
 - `Esc` — release the mouse
