@@ -609,18 +609,23 @@ function Horns({
   profile,
   accent,
   castShadow,
+  surfaceInset = 0,
 }: {
   shape: MonsterDna["horns"];
   profile: BodyProfile;
   accent: string;
   castShadow: boolean;
+  surfaceInset?: number;
 }) {
   if (shape === "none") return null;
   const [y, z, spread] = profile.horn;
 
   if (shape === "rhino") {
     return (
-      <mesh position={[0, y - 0.05, z - 0.28]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh
+        position={[0, y - 0.05, z - 0.28 + surfaceInset * 0.7]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
         <coneGeometry args={[0.16, 0.68, 18]} />
         <meshStandardMaterial color={accent} roughness={0.7} />
       </mesh>
@@ -631,7 +636,11 @@ function Horns({
     return (
       <group>
         {[-spread, spread].map((x) => (
-          <mesh key={x} position={[x, y, z]} castShadow={castShadow}>
+          <mesh
+            key={x}
+            position={[x, y - surfaceInset, z]}
+            castShadow={castShadow}
+          >
             <sphereGeometry args={[0.21, 18, 14]} />
             <meshStandardMaterial color={accent} roughness={0.76} />
           </mesh>
@@ -644,7 +653,10 @@ function Horns({
     return (
       <group>
         {[-1, 1].map((side) => (
-          <group key={side} position={[side * spread, y + 0.15, z]}>
+          <group
+            key={side}
+            position={[side * spread, y + 0.15 - surfaceInset, z]}
+          >
             <mesh rotation={[0, 0, side * -0.28]}>
               <cylinderGeometry args={[0.055, 0.09, 0.74, 10]} />
               <meshStandardMaterial color={accent} roughness={0.85} />
@@ -670,7 +682,7 @@ function Horns({
       {[-spread, spread].map((x) => (
         <mesh
           key={x}
-          position={[x, y + 0.08, z]}
+          position={[x, y + 0.08 - surfaceInset, z]}
           rotation={[0, 0, x < 0 ? -0.34 : 0.34]}
           castShadow={castShadow}
         >
@@ -761,12 +773,14 @@ function Adaptation({
   accent,
   castShadow,
   wingRefs,
+  surfaceInset = 0,
 }: {
   type: MonsterDna["adaptation"];
   profile: BodyProfile;
   accent: string;
   castShadow: boolean;
   wingRefs?: Array<RefObject<THREE.Mesh | null>>;
+  surfaceInset?: number;
 }) {
   if (type === "none") return null;
   const [cx, cy, cz] = profile.center;
@@ -778,7 +792,11 @@ function Adaptation({
         {[-1, 1].map((side) => (
           <mesh
             key={side}
-            position={[cx + side * sx * 0.92, cy, cz - 0.05]}
+            position={[
+              cx + side * Math.max(sx * 0.68, sx * 0.92 - surfaceInset),
+              cy,
+              cz - 0.05,
+            ]}
             rotation={[0, 0, side * -0.9]}
             scale={[0.9, 0.22, 0.62]}
           >
@@ -801,7 +819,11 @@ function Adaptation({
           <mesh
             key={side}
             ref={wingRefs?.[index]}
-            position={[cx + side * sx * 0.92, cy + sy * 0.25, cz + 0.15]}
+            position={[
+              cx + side * Math.max(sx * 0.68, sx * 0.92 - surfaceInset),
+              cy + sy * 0.25,
+              cz + 0.15,
+            ]}
             rotation={[0.15, side * 0.18, side * -0.38]}
             scale={[0.85, 0.16, 0.72]}
             castShadow={castShadow}
@@ -817,7 +839,11 @@ function Adaptation({
   if (type === "shell") {
     return (
       <mesh
-        position={[cx, cy + sy * 0.22, cz + sz * 0.45]}
+        position={[
+          cx,
+          cy + sy * 0.22 - surfaceInset * 0.6,
+          cz + sz * 0.45 - surfaceInset * 0.4,
+        ]}
         scale={[sx * 0.88, sy * 0.78, sz * 0.48]}
         castShadow={castShadow}
       >
@@ -834,7 +860,7 @@ function Adaptation({
           key={index}
           position={[
             0,
-            cy + sy * 0.78,
+            cy + sy * 0.78 - surfaceInset,
             cz - sz * 0.62 + index * ((sz * 1.2) / 5),
           ]}
           rotation={[0.06, 0, 0]}
@@ -849,79 +875,42 @@ function Adaptation({
   );
 }
 
-function DietMark({
-  diet,
-  profile,
-}: {
-  diet: MonsterDna["diet"];
-  profile: BodyProfile;
-}) {
-  const [cx, cy, cz] = profile.center;
-  const [sx, , sz] = profile.scale;
-  const showLeaf = diet === "herbivore" || diet === "omnivore";
-  const showFang = diet === "carnivore" || diet === "omnivore";
-
-  return (
-    <group
-      position={[cx - sx * 0.58, cy + 0.04, cz - sz * 0.72]}
-      rotation={[0, -0.42, 0]}
-      scale={diet === "omnivore" ? 0.86 : 1}
-    >
-      <mesh scale={[0.32, 0.32, 0.055]}>
-        <sphereGeometry args={[1, 20, 14]} />
-        <meshStandardMaterial color="#173F35" roughness={0.82} />
-      </mesh>
-      {showLeaf && (
-        <mesh
-          position={[showFang ? -0.09 : 0, 0, -0.07]}
-          rotation={[0, 0, -0.62]}
-          scale={[0.11, 0.2, 0.035]}
-        >
-          <sphereGeometry args={[1, 14, 10]} />
-          <meshStandardMaterial color="#A9E0B1" roughness={0.72} />
-        </mesh>
-      )}
-      {showFang && (
-        <mesh
-          position={[showLeaf ? 0.11 : 0, -0.01, -0.08]}
-          rotation={[0, 0, Math.PI]}
-        >
-          <coneGeometry args={[0.075, 0.28, 12]} />
-          <meshStandardMaterial color="#FFF3D4" roughness={0.65} />
-        </mesh>
-      )}
-    </group>
-  );
-}
-
 function RespirationDetails({
   breathing,
   profile,
-  castShadow,
+  grooveColor,
+  surfaceInset = 0,
 }: {
   breathing: MonsterDna["breathing"];
   profile: BodyProfile;
-  castShadow: boolean;
+  grooveColor: string;
+  surfaceInset?: number;
 }) {
   if (breathing === "lungs") return null;
-  const gillColor = breathing === "both" ? "#66D8CF" : "#E76363";
   const faceY = profile.face[0];
   const faceZ = profile.face[1];
-  const spread = Math.min(0.68, profile.scale[0] * 0.58);
+  const spread = Math.min(0.78, profile.scale[0] * 0.8);
 
   return (
     <group>
       {[-1, 1].flatMap((side) =>
-        [-0.16, 0, 0.16].map((offset) => (
+        [-0.14, 0, 0.14].map((depthOffset) => (
           <mesh
-            key={`${side}-${offset}`}
-            position={[side * spread, faceY - 0.2 + offset, faceZ + 0.34]}
-            rotation={[0.05, side * 0.34, side * -0.18]}
-            scale={[0.055, 0.16, 0.035]}
-            castShadow={castShadow}
+            key={`${side}-${depthOffset}`}
+            position={[
+              side * (spread - surfaceInset * 0.18),
+              faceY - 0.2 + depthOffset * 0.15,
+              faceZ + 0.38 + depthOffset,
+            ]}
+            rotation={[
+              0.04,
+              side * 0.12,
+              side * (-0.18 - depthOffset * 0.22),
+            ]}
+            scale={[0.034, 0.095, 0.018]}
           >
-            <capsuleGeometry args={[1, 0.55, 5, 9]} />
-            <meshStandardMaterial color={gillColor} roughness={0.68} />
+            <capsuleGeometry args={[1, 0.46, 6, 10]} />
+            <meshStandardMaterial color={grooveColor} roughness={1} />
           </mesh>
         )),
       )}
@@ -1623,6 +1612,7 @@ function SmoothMonsterVisual({
         profile={profile}
         accent={accent.hex}
         castShadow={castShadow}
+        surfaceInset={0.12}
       />
       <Adaptation
         type={dna.adaptation}
@@ -1630,12 +1620,13 @@ function SmoothMonsterVisual({
         accent={accent.hex}
         castShadow={castShadow}
         wingRefs={wingRefs}
+        surfaceInset={0.12}
       />
-      <DietMark diet={dna.diet} profile={profile} />
       <RespirationDetails
         breathing={dna.breathing}
         profile={profile}
-        castShadow={castShadow}
+        grooveColor={primary.dark}
+        surfaceInset={0.08}
       />
     </group>
   );
@@ -1695,11 +1686,10 @@ export function MonsterVisual({
         castShadow={castShadow}
         wingRefs={wingRefs}
       />
-      <DietMark diet={dna.diet} profile={profile} />
       <RespirationDetails
         breathing={dna.breathing}
         profile={profile}
-        castShadow={castShadow}
+        grooveColor={primary.dark}
       />
       {legPositions(dna.legs, profile).map((position, index) => (
         <group key={index} ref={legRefs?.[index]} position={position}>
