@@ -1,5 +1,7 @@
-import type { RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { MarchingCubes } from "three/addons/objects/MarchingCubes.js";
 import {
   getAccentColor,
   getMonsterColor,
@@ -910,12 +912,406 @@ function RespirationDetails({
   );
 }
 
+const SMOOTH_FIELD_SCALE = 2.15;
+const SMOOTH_FIELD_ORIGIN_Y = 1.35;
+const smoothGeometryCache = new Map<string, THREE.BufferGeometry>();
+
+type SmoothRig = {
+  mesh: THREE.SkinnedMesh;
+  legBones: THREE.Bone[];
+  tailBone?: THREE.Bone;
+  material: THREE.MeshStandardMaterial;
+};
+
+function addSmoothBall(
+  field: MarchingCubes,
+  x: number,
+  y: number,
+  z: number,
+  strength: number,
+  subtract = 9,
+) {
+  field.addBall(
+    0.5 + x / (SMOOTH_FIELD_SCALE * 2),
+    0.5 + (y - SMOOTH_FIELD_ORIGIN_Y) / (SMOOTH_FIELD_SCALE * 2),
+    0.5 + z / (SMOOTH_FIELD_SCALE * 2),
+    strength,
+    subtract,
+  );
+}
+
+function smoothPatternMix(
+  dna: MonsterDna,
+  x: number,
+  y: number,
+  z: number,
+) {
+  if (dna.pattern === "plain") return 0;
+  if (dna.pattern === "stripes") {
+    return Math.sin((z + y * 0.34) * 8.5) > 0.25 ? 0.72 : 0;
+  }
+  if (dna.pattern === "spots") {
+    const spots =
+      Math.sin(x * 8.1 + z * 2.3) * Math.cos(y * 7.4 - z * 3.1);
+    return spots > 0.48 ? 0.82 : 0;
+  }
+  if (dna.pattern === "patches") {
+    const patches = Math.sin(x * 3.2 + y * 2.1) + Math.cos(z * 3.7 - y);
+    return patches > 0.75 ? 0.68 : 0;
+  }
+  const scales = Math.sin((x + z) * 11) * Math.sin((y - z) * 10);
+  return scales > 0.28 ? 0.48 : 0.08;
+}
+
+function buildSmoothGeometry(
+  dna: MonsterDna,
+  profile: BodyProfile,
+  bodyColor: string,
+  accentColor: string,
+) {
+  const cacheKey = JSON.stringify(dna);
+  const cached = smoothGeometryCache.get(cacheKey);
+  if (cached) return cached;
+
+  const temporaryMaterial = new THREE.MeshStandardMaterial();
+  const field = new MarchingCubes(
+    38,
+    temporaryMaterial,
+    false,
+    false,
+    70_000,
+  );
+  const [cx, cy, cz] = profile.center;
+  const [sx, sy, sz] = profile.scale;
+
+  addSmoothBall(field, cx, cy, cz, 1.18, 7.5);
+  addSmoothBall(field, cx - sx * 0.4, cy, cz, 0.7, 8.5);
+  addSmoothBall(field, cx + sx * 0.4, cy, cz, 0.7, 8.5);
+  addSmoothBall(field, cx, cy - sy * 0.38, cz, 0.72, 8.5);
+  addSmoothBall(field, cx, cy + sy * 0.38, cz, 0.72, 8.5);
+  addSmoothBall(field, cx, cy, cz - sz * 0.42, 0.82, 8.2);
+  addSmoothBall(field, cx, cy, cz + sz * 0.42, 0.82, 8.2);
+
+  const [faceY, faceZ] = profile.face;
+  const headStrength = dna.body === "biped" ? 0.72 : 0.82;
+  addSmoothBall(field, 0, faceY - 0.08, faceZ + 0.2, headStrength, 8.4);
+  if (dna.body === "pig" || dna.body === "rhino") {
+    addSmoothBall(field, 0, faceY - 0.18, faceZ - 0.18, 0.5, 9.5);
+  }
+  if (dna.body === "saurian" || dna.body === "aquatic") {
+    addSmoothBall(field, 0, faceY - 0.12, faceZ - 0.26, 0.56, 9.2);
+  }
+
+  const legHips = legPositions(dna.legs, profile).map(([x, , z], index) => {
+    const hipY = cy - sy * 0.52;
+    const footY = dna.legShape === "springy" ? 0.08 : 0.14;
+    const outward = dna.legShape === "springy" ? (x < 0 ? -0.16 : 0.16) : 0;
+    const footX = x + outward;
+    const midX = THREE.MathUtils.lerp(x, footX, 0.52);
+    const legStrength = dna.legShape === "stubby" ? 0.46 : 0.34;
+    addSmoothBall(field, x, hipY, z, legStrength, 9.8);
+    addSmoothBall(
+      field,
+      midX,
+      THREE.MathUtils.lerp(hipY, footY, 0.48),
+      z,
+      legStrength * 0.9,
+      10,
+    );
+    addSmoothBall(
+      field,
+      footX,
+      footY,
+      z - (dna.legShape === "clawed" ? 0.12 : 0),
+      dna.legShape === "hoof" || dna.legShape === "flippers" ? 0.42 : 0.31,
+      10,
+    );
+    if (dna.legShape === "flippers") {
+      addSmoothBall(field, footX, footY, z - 0.32, 0.34, 10.4);
+    }
+    return { x, y: hipY, z, index };
+  });
+
+  const [tailY, tailZ] = profile.tail;
+  if (dna.tail !== "none") {
+    const curve = dna.tail === "curly" ? 0.42 : 0;
+    addSmoothBall(field, 0, tailY, tailZ - 0.2, 0.42, 9.5);
+    addSmoothBall(field, curve * 0.45, tailY + 0.08, tailZ + 0.22, 0.34, 10);
+    addSmoothBall(
+      field,
+      curve,
+      tailY + (dna.tail === "tuft" ? 0.22 : 0),
+      tailZ + 0.65,
+      dna.tail === "club" ? 0.52 : dna.tail === "fin" ? 0.4 : 0.32,
+      10,
+    );
+    if (dna.tail === "fin") {
+      addSmoothBall(field, 0, tailY + 0.34, tailZ + 0.72, 0.3, 10.5);
+      addSmoothBall(field, 0, tailY - 0.26, tailZ + 0.72, 0.3, 10.5);
+    }
+  }
+
+  field.update();
+  const sourcePosition = field.geometry.getAttribute("position");
+  const sourceNormal = field.geometry.getAttribute("normal");
+  const vertexCount = field.geometry.drawRange.count;
+  const positions = new Float32Array(vertexCount * 3);
+  const normals = new Float32Array(vertexCount * 3);
+  const colors = new Float32Array(vertexCount * 3);
+  const skinIndices = new Uint16Array(vertexCount * 4);
+  const skinWeights = new Float32Array(vertexCount * 4);
+  const primary = new THREE.Color(bodyColor);
+  const accent = new THREE.Color(accentColor);
+  const mixed = new THREE.Color();
+
+  for (let index = 0; index < vertexCount; index += 1) {
+    const px = sourcePosition.getX(index);
+    const py = sourcePosition.getY(index);
+    const pz = sourcePosition.getZ(index);
+    positions[index * 3] = px;
+    positions[index * 3 + 1] = py;
+    positions[index * 3 + 2] = pz;
+    normals[index * 3] = sourceNormal.getX(index);
+    normals[index * 3 + 1] = sourceNormal.getY(index);
+    normals[index * 3 + 2] = sourceNormal.getZ(index);
+
+    const localX = px * SMOOTH_FIELD_SCALE;
+    const localY = py * SMOOTH_FIELD_SCALE + SMOOTH_FIELD_ORIGIN_Y;
+    const localZ = pz * SMOOTH_FIELD_SCALE;
+    mixed
+      .copy(primary)
+      .lerp(accent, smoothPatternMix(dna, localX, localY, localZ));
+    colors[index * 3] = mixed.r;
+    colors[index * 3 + 1] = mixed.g;
+    colors[index * 3 + 2] = mixed.b;
+
+    const isTailVertex =
+      dna.tail !== "none" &&
+      localZ > tailZ - 0.06 &&
+      Math.abs(localX) < (dna.tail === "curly" ? 0.82 : 0.52);
+    if (isTailVertex) {
+      const tailInfluence = THREE.MathUtils.clamp(
+        (localZ - tailZ + 0.1) / 0.8,
+        0.16,
+        0.9,
+      );
+      skinIndices[index * 4] = legHips.length + 1;
+      skinIndices[index * 4 + 1] = 0;
+      skinWeights[index * 4] = tailInfluence;
+      skinWeights[index * 4 + 1] = 1 - tailInfluence;
+      continue;
+    }
+
+    let nearestLeg = -1;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    if (localY < cy - sy * 0.16) {
+      legHips.forEach((hip, legIndex) => {
+        const distance = Math.hypot(localX - hip.x, localZ - hip.z);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestLeg = legIndex;
+        }
+      });
+    }
+    if (nearestLeg >= 0 && nearestDistance < 0.56) {
+      const influence = THREE.MathUtils.clamp(
+        (cy - sy * 0.08 - localY) / Math.max(0.45, sy),
+        0.18,
+        0.92,
+      );
+      skinIndices[index * 4] = nearestLeg + 1;
+      skinIndices[index * 4 + 1] = 0;
+      skinWeights[index * 4] = influence;
+      skinWeights[index * 4 + 1] = 1 - influence;
+    } else {
+      skinIndices[index * 4] = 0;
+      skinWeights[index * 4] = 1;
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute(
+    "skinIndex",
+    new THREE.Uint16BufferAttribute(skinIndices, 4),
+  );
+  geometry.setAttribute(
+    "skinWeight",
+    new THREE.Float32BufferAttribute(skinWeights, 4),
+  );
+  geometry.computeBoundingSphere();
+  temporaryMaterial.dispose();
+  smoothGeometryCache.set(cacheKey, geometry);
+  return geometry;
+}
+
+function createSmoothRig(
+  dna: MonsterDna,
+  profile: BodyProfile,
+  bodyColor: string,
+  accentColor: string,
+  castShadow: boolean,
+): SmoothRig {
+  const geometry = buildSmoothGeometry(dna, profile, bodyColor, accentColor);
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.64,
+    metalness: 0.02,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.SkinnedMesh(geometry, material);
+  mesh.castShadow = castShadow;
+  mesh.receiveShadow = true;
+  const rootBone = new THREE.Bone();
+  const [cx, cy] = profile.center;
+  const [, sy] = profile.scale;
+  const legBones = legPositions(dna.legs, profile).map(([x, , z]) => {
+    const bone = new THREE.Bone();
+    bone.position.set(
+      x / SMOOTH_FIELD_SCALE,
+      (cy - sy * 0.52 - SMOOTH_FIELD_ORIGIN_Y) / SMOOTH_FIELD_SCALE,
+      z / SMOOTH_FIELD_SCALE,
+    );
+    rootBone.add(bone);
+    return bone;
+  });
+  let tailBone: THREE.Bone | undefined;
+  if (dna.tail !== "none") {
+    const [tailY, tailZ] = profile.tail;
+    tailBone = new THREE.Bone();
+    tailBone.position.set(
+      cx / SMOOTH_FIELD_SCALE,
+      (tailY - SMOOTH_FIELD_ORIGIN_Y) / SMOOTH_FIELD_SCALE,
+      (tailZ - 0.22) / SMOOTH_FIELD_SCALE,
+    );
+    rootBone.add(tailBone);
+  }
+  mesh.add(rootBone);
+  mesh.bind(
+    new THREE.Skeleton([
+      rootBone,
+      ...legBones,
+      ...(tailBone ? [tailBone] : []),
+    ]),
+  );
+  return { mesh, legBones, tailBone, material };
+}
+
+function SmoothMonsterCore({
+  dna,
+  profile,
+  bodyColor,
+  accentColor,
+  castShadow,
+}: {
+  dna: MonsterDna;
+  profile: BodyProfile;
+  bodyColor: string;
+  accentColor: string;
+  castShadow: boolean;
+}) {
+  const [rig] = useState(() =>
+    createSmoothRig(dna, profile, bodyColor, accentColor, castShadow),
+  );
+  const meshRef = useRef<THREE.SkinnedMesh>(null);
+  const legBonesRef = useRef<THREE.Bone[]>([]);
+  const tailBoneRef = useRef<THREE.Bone>(null);
+
+  useEffect(() => {
+    legBonesRef.current = rig.legBones;
+    tailBoneRef.current = rig.tailBone ?? null;
+    return () => rig.material.dispose();
+  }, [rig]);
+
+  useFrame(({ clock }) => {
+    const time = clock.elapsedTime;
+    legBonesRef.current.forEach((bone, index) => {
+      bone.rotation.x = Math.sin(time * 2.2 + (index % 2) * Math.PI) * 0.1;
+      bone.rotation.z = Math.sin(time * 1.4 + index * 0.7) * 0.025;
+    });
+    if (tailBoneRef.current) {
+      tailBoneRef.current.rotation.y = Math.sin(time * 1.7) * 0.14;
+      tailBoneRef.current.rotation.x = Math.sin(time * 1.1) * 0.04;
+    }
+    if (meshRef.current) {
+      meshRef.current.scale.y = 1 + Math.sin(time * 1.9) * 0.012;
+      meshRef.current.scale.x = 1 - Math.sin(time * 1.9) * 0.006;
+    }
+  });
+
+  return (
+    <group
+      position={[0, SMOOTH_FIELD_ORIGIN_Y, 0]}
+      scale={SMOOTH_FIELD_SCALE}
+    >
+      <primitive ref={meshRef} object={rig.mesh} />
+    </group>
+  );
+}
+
+function SmoothMonsterVisual({
+  dna,
+  wingRefs,
+  castShadow,
+}: MonsterVisualProps & { castShadow: boolean }) {
+  const primary = getMonsterColor(dna.color);
+  const accent = getAccentColor(dna.accent);
+  const profile = BODY_PROFILES[dna.body];
+  const sizeScale = getMonsterSizeScale(dna.size);
+
+  return (
+    <group scale={sizeScale}>
+      <SmoothMonsterCore
+        key={JSON.stringify(dna)}
+        dna={dna}
+        profile={profile}
+        bodyColor={primary.hex}
+        accentColor={accent.hex}
+        castShadow={castShadow}
+      />
+      <group position={[0, 0, -0.2]}>
+        <Face dna={dna} profile={profile} accent={accent.hex} />
+      </group>
+      <Horns
+        shape={dna.horns}
+        profile={profile}
+        accent={accent.hex}
+        castShadow={castShadow}
+      />
+      <Adaptation
+        type={dna.adaptation}
+        profile={profile}
+        accent={accent.hex}
+        castShadow={castShadow}
+        wingRefs={wingRefs}
+      />
+      <DietMark diet={dna.diet} profile={profile} />
+      <RespirationDetails
+        breathing={dna.breathing}
+        profile={profile}
+        castShadow={castShadow}
+      />
+    </group>
+  );
+}
+
 export function MonsterVisual({
   dna,
   legRefs,
   wingRefs,
   castShadow = true,
 }: MonsterVisualProps) {
+  if (dna.mesh === "smooth") {
+    return (
+      <SmoothMonsterVisual
+        dna={dna}
+        wingRefs={wingRefs}
+        castShadow={castShadow}
+      />
+    );
+  }
   const primary = getMonsterColor(dna.color);
   const accent = getAccentColor(dna.accent);
   const profile = BODY_PROFILES[dna.body];

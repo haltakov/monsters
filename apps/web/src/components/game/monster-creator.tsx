@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { ContactShadows, OrbitControls } from "@react-three/drei";
-import { Check, Dna, Rotate3D, Shuffle, X } from "lucide-react";
+import { Check, Dna, Rotate3D, Shuffle, Sparkles, X } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   ACCENT_COLORS,
@@ -16,6 +16,7 @@ import {
   HORN_SHAPES,
   LEG_COUNTS,
   LEG_SHAPES,
+  MESH_STYLES,
   MONSTER_COLORS,
   MONSTER_SIZES,
   MOUTH_SHAPES,
@@ -215,6 +216,7 @@ export function MonsterCreator({
       diet: randomOption(DIETS),
       breathing: randomOption(RESPIRATIONS),
       social: randomOption(SOCIAL_BEHAVIORS),
+      mesh: randomOption(MESH_STYLES),
     });
   };
 
@@ -253,6 +255,30 @@ export function MonsterCreator({
 
         <div className="creator-layout">
           <div className="creator-stage" data-live-label={t("creator.live")}>
+            <div className="mesh-mode-switch" aria-label={t("creator.meshMode")}>
+              <span>
+                <Sparkles size={12} /> {t("creator.meshExperiment")}
+              </span>
+              <div>
+                <button
+                  type="button"
+                  className={draft.mesh === "classic" ? "selected" : ""}
+                  aria-pressed={draft.mesh === "classic"}
+                  onClick={() => changeGene("mesh", "classic")}
+                >
+                  {t("creator.classicMesh")}
+                </button>
+                <button
+                  type="button"
+                  className={draft.mesh === "smooth" ? "selected" : ""}
+                  aria-pressed={draft.mesh === "smooth"}
+                  onClick={() => changeGene("mesh", "smooth")}
+                >
+                  {t("creator.smoothMesh")}
+                  <small>{t("creator.experimental")}</small>
+                </button>
+              </div>
+            </div>
             <div className="creator-canvas">
               <Canvas shadows camera={{ fov: 42, position: [4.2, 2.8, -5.2] }}>
                 <color attach="background" args={["#B9DFD8"]} />
@@ -308,6 +334,11 @@ export function MonsterCreator({
                 {followerCount
                   ? `${followerCount} ${t("creator.followers")}`
                   : t("creator.solo")}
+              </span>
+              <span>
+                {draft.mesh === "smooth"
+                  ? t("creator.smoothMesh")
+                  : t("creator.classicMesh")}
               </span>
             </div>
           </div>

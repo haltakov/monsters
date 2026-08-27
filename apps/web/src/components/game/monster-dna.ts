@@ -50,6 +50,7 @@ export const ADAPTATIONS = [
 export const DIETS = ["herbivore", "carnivore", "omnivore"] as const;
 export const RESPIRATIONS = ["lungs", "gills", "both"] as const;
 export const SOCIAL_BEHAVIORS = ["solitary", "pair", "pack", "army"] as const;
+export const MESH_STYLES = ["classic", "smooth"] as const;
 
 export const MONSTER_COLORS = [
   { id: "moss", label: "Moss", hex: "#8FCB69", dark: "#679D4D" },
@@ -92,6 +93,7 @@ export type Adaptation = (typeof ADAPTATIONS)[number];
 export type Diet = (typeof DIETS)[number];
 export type Respiration = (typeof RESPIRATIONS)[number];
 export type SocialBehavior = (typeof SOCIAL_BEHAVIORS)[number];
+export type MeshStyle = (typeof MESH_STYLES)[number];
 export type MonsterColor = (typeof MONSTER_COLORS)[number]["id"];
 export type AccentColor = (typeof ACCENT_COLORS)[number]["id"];
 
@@ -111,6 +113,7 @@ export type MonsterDna = {
   diet: Diet;
   breathing: Respiration;
   social: SocialBehavior;
+  mesh: MeshStyle;
 };
 
 export const DEFAULT_MONSTER_DNA: MonsterDna = {
@@ -129,11 +132,12 @@ export const DEFAULT_MONSTER_DNA: MonsterDna = {
   diet: "herbivore",
   breathing: "lungs",
   social: "solitary",
+  mesh: "classic",
 };
 
 export function encodeMonsterDna(dna: MonsterDna) {
   return [
-    "M4",
+    "M5",
     `body=${dna.body}`,
     `legs=${dna.legs}`,
     `leg=${dna.legShape}`,
@@ -149,6 +153,7 @@ export function encodeMonsterDna(dna: MonsterDna) {
     `diet=${dna.diet}`,
     `breathe=${dna.breathing}`,
     `social=${dna.social}`,
+    `mesh=${dna.mesh}`,
   ].join(";");
 }
 
@@ -164,7 +169,10 @@ function readOption<T extends string | number>(
   return match;
 }
 
-function readGenes(source: string, version: "M1" | "M2" | "M3" | "M4") {
+function readGenes(
+  source: string,
+  version: "M1" | "M2" | "M3" | "M4" | "M5",
+) {
   const parts = source.trim().split(";");
   const expectedKeys = [
     "body",
@@ -179,7 +187,10 @@ function readGenes(source: string, version: "M1" | "M2" | "M3" | "M4") {
     "horns",
     ...(version !== "M1" ? ["tail", "adapt"] : []),
     ...(version === "M3" ? ["diet"] : []),
-    ...(version === "M4" ? ["diet", "breathe", "social"] : []),
+    ...(version === "M4" || version === "M5"
+      ? ["diet", "breathe", "social"]
+      : []),
+    ...(version === "M5" ? ["mesh"] : []),
   ];
 
   if (parts.length !== expectedKeys.length + 1) {
@@ -203,9 +214,10 @@ export function decodeMonsterDna(source: string): MonsterDna {
     version !== "M1" &&
     version !== "M2" &&
     version !== "M3" &&
-    version !== "M4"
+    version !== "M4" &&
+    version !== "M5"
   ) {
-    throw new Error("DNA must begin with M4 (old M1–M3 codes also work)");
+    throw new Error("DNA must begin with M5 (old M1–M4 codes also work)");
   }
   const values = readGenes(source, version);
 
@@ -237,17 +249,21 @@ export function decodeMonsterDna(source: string): MonsterDna {
         ? readOption("adapt", values.get("adapt")!, ADAPTATIONS)
         : "none",
     diet:
-      version === "M3" || version === "M4"
+      version === "M3" || version === "M4" || version === "M5"
         ? readOption("diet", values.get("diet")!, DIETS)
         : "herbivore",
     breathing:
-      version === "M4"
+      version === "M4" || version === "M5"
         ? readOption("breathe", values.get("breathe")!, RESPIRATIONS)
         : "lungs",
     social:
-      version === "M4"
+      version === "M4" || version === "M5"
         ? readOption("social", values.get("social")!, SOCIAL_BEHAVIORS)
         : "solitary",
+    mesh:
+      version === "M5"
+        ? readOption("mesh", values.get("mesh")!, MESH_STYLES)
+        : "classic",
   };
 }
 

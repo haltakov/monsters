@@ -30,6 +30,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "omnivore",
       breathing: "lungs",
       social: "pair",
+      mesh: "classic",
     },
   },
   {
@@ -53,6 +54,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "carnivore",
       breathing: "gills",
       social: "solitary",
+      mesh: "classic",
     },
   },
   {
@@ -76,6 +78,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "omnivore",
       breathing: "lungs",
       social: "pack",
+      mesh: "classic",
     },
   },
   {
@@ -99,6 +102,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "herbivore",
       breathing: "lungs",
       social: "solitary",
+      mesh: "classic",
     },
   },
   {
@@ -122,6 +126,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "carnivore",
       breathing: "lungs",
       social: "pack",
+      mesh: "classic",
     },
   },
   {
@@ -145,6 +150,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "carnivore",
       breathing: "lungs",
       social: "solitary",
+      mesh: "classic",
     },
   },
   {
@@ -168,6 +174,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "herbivore",
       breathing: "lungs",
       social: "army",
+      mesh: "classic",
     },
   },
   {
@@ -191,6 +198,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "omnivore",
       breathing: "gills",
       social: "solitary",
+      mesh: "classic",
     },
   },
   {
@@ -214,6 +222,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "omnivore",
       breathing: "both",
       social: "pack",
+      mesh: "classic",
     },
   },
   {
@@ -237,6 +246,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
       diet: "omnivore",
       breathing: "lungs",
       social: "pair",
+      mesh: "classic",
     },
   },
 ];
