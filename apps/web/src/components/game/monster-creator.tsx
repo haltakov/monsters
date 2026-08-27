@@ -12,6 +12,7 @@ import {
   DIETS,
   encodeMonsterDna,
   EYE_COUNTS,
+  getMonsterFollowerCount,
   HORN_SHAPES,
   LEG_COUNTS,
   LEG_SHAPES,
@@ -19,9 +20,12 @@ import {
   MONSTER_SIZES,
   MOUTH_SHAPES,
   PATTERNS,
+  RESPIRATIONS,
+  SOCIAL_BEHAVIORS,
   TAIL_SHAPES,
   type MonsterDna,
 } from "@/components/game/monster-dna";
+import { MONSTER_ARCHETYPES } from "@/components/game/monster-archetypes";
 import { MonsterVisual } from "@/components/game/monster-model";
 
 type MonsterCreatorProps = {
@@ -73,6 +77,13 @@ const LABELS: Record<string, string> = {
   herbivore: "Herbivore",
   carnivore: "Carnivore",
   omnivore: "Omnivore",
+  lungs: "Lungs",
+  gills: "Gills",
+  both: "Lungs + gills",
+  solitary: "Solitary",
+  pair: "Pair",
+  pack: "Pack",
+  army: "Small army",
 };
 
 function GeneChoices<T extends string | number>({
@@ -148,6 +159,42 @@ function randomOption<T>(options: readonly T[]) {
   return options[Math.floor(Math.random() * options.length)];
 }
 
+function ArchetypeGuide({
+  activeId,
+  onChoose,
+}: {
+  activeId?: string;
+  onChoose: (dna: MonsterDna) => void;
+}) {
+  return (
+    <section className="archetype-guide" aria-labelledby="archetype-title">
+      <div className="archetype-guide-heading">
+        <span id="archetype-title">FIELD GUIDE · ANIMAL-LIKE STARTERS</span>
+        <small>Choose one, then change any gene.</small>
+      </div>
+      <div className="archetype-cards">
+        {MONSTER_ARCHETYPES.map((archetype) => (
+          <button
+            key={archetype.id}
+            type="button"
+            className={activeId === archetype.id ? "selected" : ""}
+            aria-pressed={activeId === archetype.id}
+            title={archetype.summary}
+            onClick={() => onChoose(archetype.dna)}
+          >
+            <i>{archetype.mark}</i>
+            <strong>{archetype.label}</strong>
+            <small>
+              {archetype.dna.size} · {archetype.dna.diet} ·{" "}
+              {archetype.dna.social}
+            </small>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function MonsterCreator({
   dna,
   name,
@@ -204,8 +251,15 @@ export function MonsterCreator({
       tail: randomOption(TAIL_SHAPES),
       adaptation: randomOption(ADAPTATIONS),
       diet: randomOption(DIETS),
+      breathing: randomOption(RESPIRATIONS),
+      social: randomOption(SOCIAL_BEHAVIORS),
     });
   };
+
+  const activeArchetype = MONSTER_ARCHETYPES.find(
+    (archetype) => encodeMonsterDna(archetype.dna) === encodeMonsterDna(draft),
+  )?.id;
+  const followerCount = getMonsterFollowerCount(draft);
 
   return (
     <div
@@ -282,7 +336,9 @@ export function MonsterCreator({
               </span>
               <span>{draft.legs} legs</span>
               <span>{LABELS[draft.body]}</span>
-              <span>{draft.diet}</span>
+              <span>
+                {followerCount ? `${followerCount} followers` : "solo"}
+              </span>
             </div>
           </div>
 
@@ -300,6 +356,8 @@ export function MonsterCreator({
                 <Shuffle size={14} /> Surprise me
               </button>
             </div>
+
+            <ArchetypeGuide activeId={activeArchetype} onChoose={updateDraft} />
 
             <div className="gene-grid">
               <label className="monster-name-field">
@@ -323,6 +381,18 @@ export function MonsterCreator({
                 value={draft.diet}
                 options={DIETS}
                 onChange={(value) => changeGene("diet", value)}
+              />
+              <GeneChoices
+                label="Breathing"
+                value={draft.breathing}
+                options={RESPIRATIONS}
+                onChange={(value) => changeGene("breathing", value)}
+              />
+              <GeneChoices
+                label="Social behavior"
+                value={draft.social}
+                options={SOCIAL_BEHAVIORS}
+                onChange={(value) => changeGene("social", value)}
               />
               <GeneChoices
                 label="Size"
@@ -409,14 +479,14 @@ export function MonsterCreator({
               />
               <small>
                 {dnaError ??
-                  "M3 stores all 13 genes. Old M1 and M2 codes still work and are upgraded automatically."}
+                  "M4 stores all 15 genes. Old M1–M3 codes still work and are upgraded automatically."}
               </small>
             </label>
           </div>
         </div>
 
         <footer className="creator-footer">
-          <span>13 genes · deterministic anatomy · diet changes survival</span>
+          <span>15 genes · anatomy + breathing + social behavior</span>
           <div>
             <button type="button" className="creator-cancel" onClick={onClose}>
               Keep current monster

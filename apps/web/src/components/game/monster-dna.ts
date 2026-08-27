@@ -48,6 +48,8 @@ export const ADAPTATIONS = [
   "plates",
 ] as const;
 export const DIETS = ["herbivore", "carnivore", "omnivore"] as const;
+export const RESPIRATIONS = ["lungs", "gills", "both"] as const;
+export const SOCIAL_BEHAVIORS = ["solitary", "pair", "pack", "army"] as const;
 
 export const MONSTER_COLORS = [
   { id: "moss", label: "Moss", hex: "#8FCB69", dark: "#679D4D" },
@@ -88,6 +90,8 @@ export type HornShape = (typeof HORN_SHAPES)[number];
 export type TailShape = (typeof TAIL_SHAPES)[number];
 export type Adaptation = (typeof ADAPTATIONS)[number];
 export type Diet = (typeof DIETS)[number];
+export type Respiration = (typeof RESPIRATIONS)[number];
+export type SocialBehavior = (typeof SOCIAL_BEHAVIORS)[number];
 export type MonsterColor = (typeof MONSTER_COLORS)[number]["id"];
 export type AccentColor = (typeof ACCENT_COLORS)[number]["id"];
 
@@ -105,6 +109,8 @@ export type MonsterDna = {
   tail: TailShape;
   adaptation: Adaptation;
   diet: Diet;
+  breathing: Respiration;
+  social: SocialBehavior;
 };
 
 export const DEFAULT_MONSTER_DNA: MonsterDna = {
@@ -121,11 +127,13 @@ export const DEFAULT_MONSTER_DNA: MonsterDna = {
   tail: "tuft",
   adaptation: "none",
   diet: "herbivore",
+  breathing: "lungs",
+  social: "solitary",
 };
 
 export function encodeMonsterDna(dna: MonsterDna) {
   return [
-    "M3",
+    "M4",
     `body=${dna.body}`,
     `legs=${dna.legs}`,
     `leg=${dna.legShape}`,
@@ -139,6 +147,8 @@ export function encodeMonsterDna(dna: MonsterDna) {
     `tail=${dna.tail}`,
     `adapt=${dna.adaptation}`,
     `diet=${dna.diet}`,
+    `breathe=${dna.breathing}`,
+    `social=${dna.social}`,
   ].join(";");
 }
 
@@ -154,7 +164,7 @@ function readOption<T extends string | number>(
   return match;
 }
 
-function readGenes(source: string, version: "M1" | "M2" | "M3") {
+function readGenes(source: string, version: "M1" | "M2" | "M3" | "M4") {
   const parts = source.trim().split(";");
   const expectedKeys = [
     "body",
@@ -169,6 +179,7 @@ function readGenes(source: string, version: "M1" | "M2" | "M3") {
     "horns",
     ...(version !== "M1" ? ["tail", "adapt"] : []),
     ...(version === "M3" ? ["diet"] : []),
+    ...(version === "M4" ? ["diet", "breathe", "social"] : []),
   ];
 
   if (parts.length !== expectedKeys.length + 1) {
@@ -188,8 +199,13 @@ function readGenes(source: string, version: "M1" | "M2" | "M3") {
 
 export function decodeMonsterDna(source: string): MonsterDna {
   const version = source.trim().split(";", 1)[0];
-  if (version !== "M1" && version !== "M2" && version !== "M3") {
-    throw new Error("DNA must begin with M3 (old M1 and M2 codes also work)");
+  if (
+    version !== "M1" &&
+    version !== "M2" &&
+    version !== "M3" &&
+    version !== "M4"
+  ) {
+    throw new Error("DNA must begin with M4 (old M1–M3 codes also work)");
   }
   const values = readGenes(source, version);
 
@@ -221,9 +237,17 @@ export function decodeMonsterDna(source: string): MonsterDna {
         ? readOption("adapt", values.get("adapt")!, ADAPTATIONS)
         : "none",
     diet:
-      version === "M3"
+      version === "M3" || version === "M4"
         ? readOption("diet", values.get("diet")!, DIETS)
         : "herbivore",
+    breathing:
+      version === "M4"
+        ? readOption("breathe", values.get("breathe")!, RESPIRATIONS)
+        : "lungs",
+    social:
+      version === "M4"
+        ? readOption("social", values.get("social")!, SOCIAL_BEHAVIORS)
+        : "solitary",
   };
 }
 
@@ -241,6 +265,8 @@ export function getMonsterSizeScale(size: MonsterSize) {
 
 export function canMonsterSwim(dna: MonsterDna) {
   return (
+    dna.breathing === "gills" ||
+    dna.breathing === "both" ||
     dna.body === "aquatic" ||
     dna.adaptation === "fins" ||
     dna.tail === "fin" ||
@@ -254,4 +280,14 @@ export function canMonsterEatPlants(dna: MonsterDna) {
 
 export function canMonsterHunt(dna: MonsterDna) {
   return dna.diet === "carnivore" || dna.diet === "omnivore";
+}
+
+export function getMonsterFollowerCount(dna: MonsterDna) {
+  if (dna.size === "large" && dna.diet === "carnivore") return 0;
+  if (dna.social === "solitary") return 0;
+  if (dna.social === "pair") return 1;
+  if (dna.social === "pack") {
+    return dna.size === "small" ? 3 : dna.size === "medium" ? 2 : 1;
+  }
+  return dna.size === "small" ? 5 : dna.size === "medium" ? 3 : 1;
 }

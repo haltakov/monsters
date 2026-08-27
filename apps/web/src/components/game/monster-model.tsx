@@ -871,6 +871,41 @@ function DietMark({
   );
 }
 
+function RespirationDetails({
+  breathing,
+  profile,
+  castShadow,
+}: {
+  breathing: MonsterDna["breathing"];
+  profile: BodyProfile;
+  castShadow: boolean;
+}) {
+  if (breathing === "lungs") return null;
+  const gillColor = breathing === "both" ? "#66D8CF" : "#E76363";
+  const faceY = profile.face[0];
+  const faceZ = profile.face[1];
+  const spread = Math.min(0.68, profile.scale[0] * 0.58);
+
+  return (
+    <group>
+      {[-1, 1].flatMap((side) =>
+        [-0.16, 0, 0.16].map((offset) => (
+          <mesh
+            key={`${side}-${offset}`}
+            position={[side * spread, faceY - 0.2 + offset, faceZ + 0.34]}
+            rotation={[0.05, side * 0.34, side * -0.18]}
+            scale={[0.055, 0.16, 0.035]}
+            castShadow={castShadow}
+          >
+            <capsuleGeometry args={[1, 0.55, 5, 9]} />
+            <meshStandardMaterial color={gillColor} roughness={0.68} />
+          </mesh>
+        )),
+      )}
+    </group>
+  );
+}
+
 export function MonsterVisual({
   dna,
   legRefs,
@@ -913,6 +948,11 @@ export function MonsterVisual({
         castShadow={castShadow}
       />
       <DietMark diet={dna.diet} profile={profile} />
+      <RespirationDetails
+        breathing={dna.breathing}
+        profile={profile}
+        castShadow={castShadow}
+      />
       {legPositions(dna.legs, profile).map((position, index) => (
         <group key={index} ref={legRefs?.[index]} position={position}>
           <Leg

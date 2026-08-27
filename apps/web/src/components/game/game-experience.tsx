@@ -28,6 +28,7 @@ import {
   canMonsterHunt,
   canMonsterSwim,
   DEFAULT_MONSTER_DNA,
+  getMonsterFollowerCount,
   type MonsterDna,
 } from "@/components/game/monster-dna";
 import { MonsterVisual } from "@/components/game/monster-model";
@@ -960,6 +961,76 @@ function CuteMonster({
   );
 }
 
+const PACK_FORMATION: Array<[number, number]> = [
+  [-1.7, 2.6],
+  [1.7, 2.6],
+  [-3.1, 4.6],
+  [3.1, 4.6],
+  [0, 5.8],
+];
+
+function PackFollowers({
+  controls,
+  dna,
+  quality,
+}: {
+  controls: React.RefObject<ControlState>;
+  dna: MonsterDna;
+  quality: SceneQuality;
+}) {
+  const followers = [
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+    useRef<THREE.Group>(null),
+  ];
+  const target = useMemo(() => new THREE.Vector3(), []);
+  const count = getMonsterFollowerCount(dna);
+  const canSwim = canMonsterSwim(dna);
+
+  useFrame(({ clock }, delta) => {
+    const yaw = controls.current.characterYaw;
+    const sin = Math.sin(yaw);
+    const cos = Math.cos(yaw);
+    followers.forEach((follower, index) => {
+      if (!follower.current || index >= count) return;
+      const [lateral, behind] = PACK_FORMATION[index];
+      const x =
+        controls.current.playerPosition.x + lateral * cos + behind * sin;
+      const z =
+        controls.current.playerPosition.z - lateral * sin + behind * cos;
+      const swimming = canSwim && isWaterAt(x, z);
+      const y = swimming
+        ? -1.5 + Math.sin(clock.elapsedTime * 2.4 + index) * 0.08
+        : terrainHeight(x, z);
+      target.set(x, y, z);
+      if (!follower.current.userData.ready) {
+        follower.current.position.copy(target);
+        follower.current.userData.ready = true;
+      } else {
+        follower.current.position.lerp(target, 1 - Math.exp(-delta * 3.2));
+      }
+      follower.current.rotation.y = dampAngle(
+        follower.current.rotation.y,
+        yaw,
+        8,
+        delta,
+      );
+    });
+  });
+
+  return (
+    <group>
+      {PACK_FORMATION.slice(0, count).map((_, index) => (
+        <group key={index} ref={followers[index]} scale={0.76}>
+          <MonsterVisual dna={dna} castShadow={quality === "desktop"} />
+        </group>
+      ))}
+    </group>
+  );
+}
+
 function World({
   controls,
   eatenIds,
@@ -1105,6 +1176,7 @@ function World({
         onPlayerFrame={onPlayerFrame}
         dna={dna}
       />
+      <PackFollowers controls={controls} dna={dna} quality={quality} />
     </>
   );
 }
@@ -1634,7 +1706,10 @@ export function GameExperience() {
               <Dna size={16} />
               <span>
                 {monsterDna.eyes} {monsterDna.eyes === 1 ? "eye" : "eyes"} ·{" "}
-                {monsterDna.legs} legs · {monsterDna.diet}
+                {monsterDna.diet} · {monsterDna.social}
+                {getMonsterFollowerCount(monsterDna)
+                  ? ` +${getMonsterFollowerCount(monsterDna)}`
+                  : ""}
               </span>
             </div>
             <label className="family-picker">
