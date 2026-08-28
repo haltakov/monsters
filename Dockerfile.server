@@ -17,12 +17,15 @@ WORKDIR /workspace
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/api/package.json apps/api/package.json
+COPY packages/game-core/package.json packages/game-core/package.json
 
 RUN pnpm install --frozen-lockfile --filter @monsters/api...
 
+COPY packages/game-core packages/game-core
 COPY apps/api apps/api
 
-RUN pnpm --filter @monsters/api build \
+RUN pnpm --filter @monsters/game-core build \
+  && pnpm --filter @monsters/api build \
   && pnpm --filter @monsters/api deploy --prod --legacy /opt/monsters-api
 
 FROM base AS runner

@@ -8,26 +8,104 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Anonymous device-bound identity. Only a hash of the bearer token is stored.
+model GuestPlayer {
+  id          String        @id @default(cuid())
+  tokenHash   String        @unique
+  displayName String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  lastSeenAt  DateTime      @default(now())
+  monsters    Monster[]
+  memberships WorldMember[]
+}
+
 model World {
-  id        String    @id @default(cuid())
-  name      String
-  seed      Int
-  monsters Monster[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id          String         @id @default(cuid())
+  /// Stable human key. The permanent public world uses "public".
+  slug        String         @unique
+  name        String
+  seed        Int
+  isPublic    Boolean        @default(true)
+  status      String         @default("active")
+  settings    Json           @default("{}")
+  /// Authoritative tick of the latest checkpoint.
+  currentTick Int            @default(0)
+  /// Wall-clock instant the latest checkpoint corresponds to.
+  simulatedAt DateTime       @default(now())
+  monsters    Monster[]
+  members     WorldMember[]
+  snapshot    WorldSnapshot?
+  events      WorldEvent[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model WorldMember {
+  id                String      @id @default(cuid())
+  world             World       @relation(fields: [worldId], references: [id], onDelete: Cascade)
+  worldId           String
+  guest             GuestPlayer @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  guestId           String
+  /// Owned monster the guest currently controls, if any.
+  selectedMonsterId String?
+  lastSeenAt        DateTime    @default(now())
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([worldId, guestId])
+  @@index([guestId])
 }
 
 model Monster {
-  id        String   @id @default(cuid())
-  name      String
-  species   String
-  dna       Json
-  position  Json?
-  energy    Int      @default(100)
-  world     World    @relation(fields: [worldId], references: [id], onDelete: Cascade)
-  worldId   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String       @id @default(cuid())
+  name        String
+  species     String
+  /// Versioned deterministic DNA document.
+  dna         Json
+  position    Json?
+  energy      Int          @default(100)
+  world       World        @relation(fields: [worldId], references: [id], onDelete: Cascade)
+  worldId     String
+  owner       GuestPlayer? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId     String?
+  generation  Int          @default(0)
+  parentAId   String?
+  parentBId   String?
+  mutations   Int          @default(0)
+  alive       Boolean      @default(true)
+  diedAt      DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([worldId])
+  @@index([ownerId])
+  @@index([worldId, alive])
+}
+
+/// Latest authoritative recovery snapshot for a world.
+model WorldSnapshot {
+  id          String   @id @default(cuid())
+  world       World    @relation(fields: [worldId], references: [id], onDelete: Cascade)
+  worldId     String   @unique
+  version     Int
+  tick        Int
+  simulatedAt DateTime
+  state       Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// Append-only semantic history for diagnostics and player-visible history.
+model WorldEvent {
+  id        String   @id @default(cuid())
+  world     World    @relation(fields: [worldId], references: [id], onDelete: Cascade)
+  worldId   String
+  tick      Int
+  type      String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([worldId, createdAt])
+  @@index([worldId, type])
 }

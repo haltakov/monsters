@@ -9,16 +9,20 @@
     "pnpm": ">=11.0.0"
   },
   "scripts": {
-    "dev": "concurrently -n WEB,API -c cyan,green \"pnpm dev:web\" \"pnpm dev:api\"",
+    "dev": "pnpm build:core && concurrently -n WEB,API -c cyan,green \"pnpm dev:web\" \"pnpm dev:api\"",
     "dev:web": "pnpm --filter @monsters/web dev",
     "dev:api": "pnpm --filter @monsters/api dev",
+    "build:core": "pnpm --filter @monsters/game-core build",
     "build": "pnpm -r build",
-    "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm build:core && pnpm -r lint",
+    "typecheck": "pnpm build:core && pnpm -r typecheck",
+    "test": "pnpm build:core && pnpm -r test",
     "format": "prettier --write .",
     "db:generate": "pnpm --filter @monsters/api prisma:generate",
     "db:migrate": "pnpm --filter @monsters/api prisma:migrate",
-    "db:studio": "pnpm --filter @monsters/api prisma:studio"
+    "db:deploy": "pnpm --filter @monsters/api prisma:deploy",
+    "db:studio": "pnpm --filter @monsters/api prisma:studio",
+    "loadtest": "pnpm --filter @monsters/api loadtest"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

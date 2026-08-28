@@ -41,6 +41,8 @@ type MonsterCreatorProps = {
   name: string;
   onApply: (dna: MonsterDna, name: string) => void;
   onClose: () => void;
+  /** Server-side validation or save failure, shown next to the apply button. */
+  error?: string | null;
 };
 
 function GeneChoices<T extends string | number>({
@@ -162,6 +164,7 @@ export function MonsterCreator({
   name,
   onApply,
   onClose,
+  error = null,
 }: MonsterCreatorProps) {
   const { t, option } = useI18n();
   const [draft, setDraft] = useState<MonsterDna>(dna);
@@ -503,7 +506,9 @@ export function MonsterCreator({
         </div>
 
         <footer className="creator-footer">
-          <span>{t("creator.footer")}</span>
+          <span className={error ? "creator-save-error" : undefined}>
+            {error ?? t("creator.footer")}
+          </span>
           <div>
             <button type="button" className="creator-cancel" onClick={onClose}>
               {t("creator.keep")}

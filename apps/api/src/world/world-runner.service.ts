@@ -1,0 +1,381 @@
+import {
+  Injectable,
+  Logger,
+  OnApplicationShutdown,
+  OnModuleInit,
+} from '@nestjs/common';
+import {
+  accumulate,
+  catchUpWorld,
+  createAccumulator,
+  isCriticalEvent,
+  MAX_TICKS_PER_UPDATE,
+  readPopulation,
+  stepWorld,
+  TICK_SECONDS,
+  type FixedStepAccumulator,
+  type SimCommand,
+  type SimEvent,
+  type WorldSimState,
+} from '@monsters/game-core';
+import {
+  CHECKPOINT_INTERVAL_MS,
+  isWorldRunnerDisabled,
+  LOCK_RETRY_MAX_MS,
+  LOCK_RETRY_MIN_MS,
+  PUBLIC_WORLD_SLUG,
+} from '../config/app-config';
+import { WorldLockService } from './world-lock.service';
+import {
+  WorldPersistenceService,
+  type WorldRecord,
+} from './world-persistence.service';
+
+export type RunnerMode =
+  'disabled' | 'starting' | 'standby' | 'running' | 'stopped';
+
+export type RunnerStatus = {
+  mode: RunnerMode;
+  ownsWorld: boolean;
+  worldId: string | null;
+  worldSlug: string;
+  tick: number;
+  simulatedSeconds: number;
+  lastTickAt: string | null;
+  lastCheckpointAt: string | null;
+  connections: number;
+  entities: number;
+  livingEntities: number;
+  eggs: number;
+  droppedTicks: number;
+  lastTickDurationMs: number;
+};
+
+export type WorldPublish = (payload: {
+  state: WorldSimState;
+  events: SimEvent[];
+  tick: number;
+}) => void;
+
+const TICK_INTERVAL_MS = Math.round(TICK_SECONDS * 1000);
+
+/**
+ * Owns the authoritative public world.
+ *
+ * Exactly one process may tick a world at a time; ownership is a PostgreSQL
+ * advisory lock. A process that cannot take the lock stays healthy (so a
+ * rolling deploy can be diagnosed) but never ticks or writes.
+ */
+@Injectable()
+export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
+  private readonly logger = new Logger(WorldRunnerService.name);
+  private world: WorldRecord | null = null;
+  private state: WorldSimState | null = null;
+  private timer: NodeJS.Timeout | null = null;
+  private lockRetryTimer: NodeJS.Timeout | null = null;
+  private lockRetryDelay = LOCK_RETRY_MIN_MS;
+  private accumulator: FixedStepAccumulator = createAccumulator(TICK_SECONDS);
+  private commands: SimCommand[] = [];
+  private lastRealTime = process.hrtime.bigint();
+  private lastTickAt: Date | null = null;
+  private lastCheckpointAt: Date | null = null;
+  private lastTickDurationMs = 0;
+  private publishers = new Set<WorldPublish>();
+  private connectionCount = 0;
+  private mode: RunnerMode = 'starting';
+  private stopping = false;
+
+  constructor(
+    private readonly persistence: WorldPersistenceService,
+    private readonly lock: WorldLockService,
+  ) {}
+
+  async onModuleInit() {
+    if (isWorldRunnerDisabled()) {
+      this.mode = 'disabled';
+      this.logger.warn('World runner disabled via WORLD_RUNNER_ENABLED=false');
+      return;
+    }
+    this.world = await this.persistence.ensurePublicWorld();
+    this.lock.onLost(() => this.handleLockLost());
+    await this.tryStart();
+  }
+
+  async onApplicationShutdown() {
+    await this.shutdown();
+  }
+
+  onPublish(publisher: WorldPublish) {
+    this.publishers.add(publisher);
+    return () => this.publishers.delete(publisher);
+  }
+
+  setConnectionCount(count: number) {
+    this.connectionCount = count;
+  }
+
+  get isRunning() {
+    return this.mode === 'running';
+  }
+
+  getState() {
+    return this.state;
+  }
+
+  getWorld() {
+    return this.world;
+  }
+
+  getStatus(): RunnerStatus {
+    const population = this.state
+      ? readPopulation(this.state)
+      : { living: 0, eggs: 0, births: 0, deaths: 0 };
+    return {
+      mode: this.mode,
+      ownsWorld: this.lock.isOwned && this.mode === 'running',
+      worldId: this.world?.id ?? null,
+      worldSlug: this.world?.slug ?? PUBLIC_WORLD_SLUG,
+      tick: this.state?.tick ?? 0,
+      simulatedSeconds: this.state ? Math.round(this.state.time) : 0,
+      lastTickAt: this.lastTickAt?.toISOString() ?? null,
+      lastCheckpointAt: this.lastCheckpointAt?.toISOString() ?? null,
+      connections: this.connectionCount,
+      entities: this.state?.entities.length ?? 0,
+      livingEntities: population.living,
+      eggs: population.eggs,
+      droppedTicks: this.accumulator.dropped,
+      lastTickDurationMs: Math.round(this.lastTickDurationMs * 100) / 100,
+    };
+  }
+
+  /** Queues a validated command for the next tick, preserving arrival order. */
+  enqueue(command: SimCommand) {
+    if (this.mode !== 'running') return false;
+    this.commands.push(command);
+    return true;
+  }
+
+  private scheduleLockRetry() {
+    if (this.stopping || this.lockRetryTimer) return;
+    this.mode = 'standby';
+    const delay = this.lockRetryDelay;
+    this.lockRetryDelay = Math.min(LOCK_RETRY_MAX_MS, this.lockRetryDelay * 2);
+    this.lockRetryTimer = setTimeout(() => {
+      this.lockRetryTimer = null;
+      void this.tryStart();
+    }, delay);
+    this.lockRetryTimer.unref?.();
+  }
+
+  private async tryStart() {
+    if (this.stopping || !this.world) return;
+    let acquired = false;
+    try {
+      acquired = await this.lock.acquire(this.world.slug);
+    } catch (error) {
+      this.logger.error(
+        `Could not reach PostgreSQL for the world lock: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      this.scheduleLockRetry();
+      return;
+    }
+    if (!acquired) {
+      this.logger.log(
+        `World "${this.world.slug}" is owned by another process; standing by.`,
+      );
+      this.scheduleLockRetry();
+      return;
+    }
+
+    this.lockRetryDelay = LOCK_RETRY_MIN_MS;
+    try {
+      await this.load();
+      this.start();
+    } catch (error) {
+      this.logger.error(
+        `Failed to start the world runner: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      await this.lock.release(this.world.slug);
+      this.scheduleLockRetry();
+    }
+  }
+
+  private async load() {
+    const world = this.world!;
+    const checkpoint = await this.persistence.loadCheckpoint(world.id);
+    if (!checkpoint) {
+      const created = await this.persistence.createInitialCheckpoint(
+        world,
+        `${world.slug}:`,
+      );
+      this.state = created.state;
+      this.lastCheckpointAt = created.simulatedAt;
+      this.logger.log(
+        `Seeded world "${world.slug}" with ${created.state.entities.length} wild monsters`,
+      );
+      return;
+    }
+
+    this.state = checkpoint.state;
+    this.lastCheckpointAt = checkpoint.simulatedAt;
+    const downtimeSeconds =
+      (Date.now() - checkpoint.simulatedAt.getTime()) / 1000;
+    if (downtimeSeconds > 1) {
+      const result = catchUpWorld(this.state, downtimeSeconds);
+      this.logger.log(
+        `Advanced world "${world.slug}" through ${Math.round(
+          downtimeSeconds,
+        )}s of downtime using ${result.steps} ${result.mode} steps` +
+          (result.truncated ? ' (truncated to the catch-up budget)' : ''),
+      );
+      if (result.events.length > 0) {
+        await this.persistence.commitCriticalEvents(
+          world,
+          this.state,
+          result.events,
+          new Date(),
+        );
+      }
+    }
+    await this.persistence.checkpoint(world, this.state, new Date());
+    this.lastCheckpointAt = new Date();
+  }
+
+  private start() {
+    this.mode = 'running';
+    this.accumulator = createAccumulator(TICK_SECONDS);
+    this.lastRealTime = process.hrtime.bigint();
+    this.timer = setInterval(() => this.onTimer(), TICK_INTERVAL_MS);
+    this.timer.unref?.();
+    this.logger.log(
+      `World runner owns "${this.world?.slug}" at tick ${this.state?.tick ?? 0}`,
+    );
+  }
+
+  private handleLockLost() {
+    if (this.mode !== 'running') return;
+    this.logger.error('World ownership lost; pausing the simulation');
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.state = null;
+    this.commands = [];
+    this.mode = 'standby';
+    this.scheduleLockRetry();
+  }
+
+  private onTimer() {
+    if (this.mode !== 'running' || !this.state || !this.world) return;
+    const startedAt = process.hrtime.bigint();
+    const elapsedSeconds = Number(startedAt - this.lastRealTime) / 1e9;
+    this.lastRealTime = startedAt;
+
+    const ticks = accumulate(
+      this.accumulator,
+      elapsedSeconds,
+      MAX_TICKS_PER_UPDATE,
+    );
+    if (ticks === 0) return;
+
+    const events: SimEvent[] = [];
+    for (let index = 0; index < ticks; index += 1) {
+      const commands = this.commands;
+      this.commands = [];
+      events.push(...stepWorld(this.state, TICK_SECONDS, commands));
+    }
+
+    this.lastTickAt = new Date();
+    this.lastTickDurationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+
+    for (const publish of this.publishers) {
+      try {
+        publish({ state: this.state, events, tick: this.state.tick });
+      } catch (error) {
+        this.logger.error(
+          `World publisher failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    const critical = events.filter(isCriticalEvent);
+    if (critical.length > 0) {
+      void this.commitCritical(critical);
+      return;
+    }
+
+    if (
+      Date.now() - (this.lastCheckpointAt?.getTime() ?? 0) >=
+      CHECKPOINT_INTERVAL_MS
+    ) {
+      void this.writeCheckpoint();
+    }
+  }
+
+  private async commitCritical(events: SimEvent[]) {
+    if (!this.world || !this.state) return;
+    const at = new Date();
+    try {
+      await this.persistence.commitCriticalEvents(
+        this.world,
+        this.state,
+        events,
+        at,
+      );
+      this.lastCheckpointAt = at;
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist a critical transition: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private async writeCheckpoint() {
+    if (!this.world || !this.state) return;
+    const at = new Date();
+    // Set optimistically so a slow write cannot queue a checkpoint per tick.
+    this.lastCheckpointAt = at;
+    try {
+      await this.persistence.checkpoint(this.world, this.state, at);
+      await this.persistence.pruneEvents(this.world.id);
+    } catch (error) {
+      this.logger.error(
+        `Checkpoint failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  /** Best-effort final checkpoint plus lock release. */
+  async shutdown() {
+    if (this.stopping) return;
+    this.stopping = true;
+    if (this.lockRetryTimer) clearTimeout(this.lockRetryTimer);
+    this.lockRetryTimer = null;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+
+    if (this.mode === 'running' && this.world && this.state) {
+      try {
+        await this.persistence.checkpoint(this.world, this.state, new Date());
+        this.logger.log('Wrote the final checkpoint before shutdown');
+      } catch (error) {
+        this.logger.error(
+          `Final checkpoint failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    await this.persistence.drain();
+    if (this.world) await this.lock.release(this.world.slug);
+    this.mode = 'stopped';
+  }
+}

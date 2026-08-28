@@ -8,5 +8,7 @@ export default defineConfig({
   },
   datasource: {
     url: env('DATABASE_URL'),
+    // Only used by `prisma migrate dev` / `prisma migrate diff` locally.
+    shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL,
   },
 });
