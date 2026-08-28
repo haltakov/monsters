@@ -31,10 +31,29 @@ import {
 import * as THREE from "three";
 import { MonsterMark } from "@/components/monster-mark";
 import {
+  ACCENT_COLORS,
+  ADAPTATIONS,
+  BODY_SHAPES,
   DEFAULT_MONSTER_DNA,
+  DIETS,
+  EDIBLES,
+  EAR_SHAPES,
+  EYE_COUNTS,
+  HORN_SHAPES,
+  LEG_COUNTS,
+  LEG_SHAPES,
   MATING_COOLDOWN_SECONDS,
+  MONSTER_BUILDS,
+  MONSTER_COLORS,
+  MONSTER_SIZES,
+  MOUTH_SHAPES,
   PAIR_REQUEST_TIMEOUT_SECONDS,
-  canMonsterEatPlants,
+  PATTERNS,
+  PLAYABLE_RADIUS,
+  PREY,
+  RESPIRATIONS,
+  SOCIAL_BEHAVIORS,
+  TAIL_SHAPES,
   canMonsterHunt,
   canMonsterSwim,
   decodeMonsterDna,
@@ -47,10 +66,7 @@ import {
   type SimEvent,
   type WorldPopulation,
 } from "@monsters/game-core";
-import {
-  Scenery,
-  type SceneQuality,
-} from "@/components/game/world-scenery";
+import { Scenery, type SceneQuality } from "@/components/game/world-scenery";
 import { NetworkPopulation } from "@/components/game/network-monsters";
 import { ConnectionBadge } from "@/components/game/connection-badge";
 import {
@@ -72,6 +88,15 @@ import {
   useI18n,
   type TranslationKey,
 } from "@/components/i18n";
+import {
+  EMPTY_AGENT_ARENA,
+  observeArena,
+  scoreAgentArena,
+  startAgentArena,
+  webMcpResult,
+  type AgentArenaState,
+} from "@/lib/agent/arena";
+import { registerWebMcpTools } from "@/lib/agent/webmcp";
 
 function CreatorLoading() {
   const { t } = useI18n();
@@ -331,6 +356,16 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     sprinting: false,
     locomotionMode: "land",
     playerPosition: { x: -8, y: 0, z: 8 },
+    agent: {
+      enabled: false,
+      commandId: 0,
+      forward: 0,
+      strafe: 0,
+      turn: 0,
+      sprint: false,
+      heading: null,
+      label: "idle",
+    },
   });
 
   const connection = useMemo(() => new WorldConnection(), []);
@@ -359,14 +394,30 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   const [ecosystemEvent, setEcosystemEvent] = useState<StatusMessage>({
     key: "game.simWatching",
   });
-  const [depletedResources, setDepletedResources] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const [depletedResources, setDepletedResources] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [pairing, setPairing] = useState<PairingPrompt | null>(null);
   const [pairingSeconds, setPairingSeconds] = useState(0);
   const [creatorDraft, setCreatorDraft] = useState<CreatorDraft | null>(null);
   const [creatorError, setCreatorError] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [agentScoreNow, setAgentScoreNow] = useState(0);
+  const [agentArena, setAgentArenaState] =
+    useState<AgentArenaState>(EMPTY_AGENT_ARENA);
+  const agentArenaRef = useRef<AgentArenaState>(EMPTY_AGENT_ARENA);
+
+  const updateAgentArena = useCallback(
+    (
+      update: AgentArenaState | ((current: AgentArenaState) => AgentArenaState),
+    ) => {
+      const next =
+        typeof update === "function" ? update(agentArenaRef.current) : update;
+      agentArenaRef.current = next;
+      setAgentArenaState(next);
+    },
+    [],
+  );
 
   const sceneQuality = useSyncExternalStore(
     subscribeToDeviceProfile,
@@ -501,6 +552,14 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       for (const event of events) {
         switch (event.type) {
           case "feed": {
+            if (agentArenaRef.current.lineageIds.includes(event.entityId)) {
+              updateAgentArena((current) => ({
+                ...current,
+                foodConsumed: current.foodConsumed + 1,
+                energyFromFood: current.energyFromFood + event.energy,
+                lastAction: `Ate ${event.kind} (+${Math.ceil(event.energy)} energy)`,
+              }));
+            }
             if (event.entityId !== selfId) break;
             const key: TranslationKey =
               event.kind === "prey"
@@ -526,6 +585,16 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             break;
           }
           case "attack": {
+            if (
+              event.defeated &&
+              agentArenaRef.current.lineageIds.includes(event.attackerId)
+            ) {
+              updateAgentArena((current) => ({
+                ...current,
+                fightsWon: current.fightsWon + 1,
+                lastAction: `Defeated ${event.targetName}`,
+              }));
+            }
             if (event.attackerId === selfId) {
               setStatus({
                 key: event.defeated
@@ -591,8 +660,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               setPairing({
                 requestId: event.requestId,
                 fromName: event.fromEntityName,
-                expiresAtMs:
-                  Date.now() + PAIR_REQUEST_TIMEOUT_SECONDS * 1000,
+                expiresAtMs: Date.now() + PAIR_REQUEST_TIMEOUT_SECONDS * 1000,
               });
             } else if (event.fromEntityId === selfId) {
               setStatus({
@@ -603,10 +671,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             break;
           }
           case "pairResolved": {
-            if (
-              event.fromEntityId !== selfId &&
-              event.toEntityId !== selfId
-            ) {
+            if (event.fromEntityId !== selfId && event.toEntityId !== selfId) {
               break;
             }
             setPairing(null);
@@ -618,6 +683,21 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             break;
           }
           case "egg": {
+            if (
+              event.parentIds.some((id) =>
+                agentArenaRef.current.lineageIds.includes(id),
+              )
+            ) {
+              updateAgentArena((current) => ({
+                ...current,
+                offspring: current.offspring + 1,
+                maxGeneration: Math.max(
+                  current.maxGeneration,
+                  event.generation,
+                ),
+                lastAction: `Created egg ${event.eggId}`,
+              }));
+            }
             const mine = selfId !== null && event.parentIds.includes(selfId);
             if (mine) {
               mateCooldownUntil.current =
@@ -642,6 +722,23 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             break;
           }
           case "birth": {
+            if (
+              event.parentIds.some((id) =>
+                agentArenaRef.current.lineageIds.includes(id),
+              )
+            ) {
+              updateAgentArena((current) => ({
+                ...current,
+                lineageIds: current.lineageIds.includes(event.entityId)
+                  ? current.lineageIds
+                  : [...current.lineageIds, event.entityId],
+                maxGeneration: Math.max(
+                  current.maxGeneration,
+                  event.generation,
+                ),
+                lastAction: `${event.name} hatched (generation ${event.generation})`,
+              }));
+            }
             setEcosystemEvent({
               key: "game.simBirth",
               values: { name: event.name, mutations: event.mutations },
@@ -649,6 +746,23 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             break;
           }
           case "death": {
+            if (agentArenaRef.current.lineageIds.includes(event.entityId)) {
+              updateAgentArena((current) => ({
+                ...current,
+                deadLineageIds: current.deadLineageIds.includes(event.entityId)
+                  ? current.deadLineageIds
+                  : [...current.deadLineageIds, event.entityId],
+              }));
+            }
+            if (event.entityId === agentArenaRef.current.rootEntityId) {
+              controls.current.agent.enabled = false;
+              updateAgentArena((current) => ({
+                ...current,
+                status: "dead",
+                endedAt: Date.now() / 1000,
+                lastAction: `${event.name} died from ${event.cause}`,
+              }));
+            }
             if (event.entityId === selfId) {
               controls.current.isDead = true;
               controls.current.keys.clear();
@@ -656,7 +770,8 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               setIsDead(true);
               setDeathReason(event.cause);
               setStatus({
-                key: event.cause === "energy" ? "game.ranOut" : "game.lostHealth",
+                key:
+                  event.cause === "energy" ? "game.ranOut" : "game.lostHealth",
                 values: { name: event.name },
               });
               session.markMonsterDead(event.entityId);
@@ -683,18 +798,19 @@ function ConnectedGame({ session }: { session: SessionApi }) {
         }
       }
     },
-    [activeMonster?.name, connection, monsterDna, session, t],
+    [activeMonster?.name, connection, monsterDna, session, t, updateAgentArena],
   );
 
-  useEffect(() => connection.on("events", handleEvents), [
-    connection,
-    handleEvents,
-  ]);
+  useEffect(
+    () => connection.on("events", handleEvents),
+    [connection, handleEvents],
+  );
 
   // --- local clocks ---------------------------------------------------------
 
   useEffect(() => {
     const timer = window.setInterval(() => {
+      setAgentScoreNow(Date.now() / 1000);
       const remaining = Math.max(
         0,
         Math.ceil((mateCooldownUntil.current - Date.now()) / 1000),
@@ -702,7 +818,9 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       setMatingCooldown(remaining);
       setPairing((current) => {
         if (!current) return current;
-        const secondsLeft = Math.ceil((current.expiresAtMs - Date.now()) / 1000);
+        const secondsLeft = Math.ceil(
+          (current.expiresAtMs - Date.now()) / 1000,
+        );
         setPairingSeconds(Math.max(0, secondsLeft));
         return secondsLeft <= 0 ? null : current;
       });
@@ -734,20 +852,18 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     (action: "eat" | "attack") => {
       if (controls.current.isDead || controls.current.paused) return;
       if (!connection.isController) return;
-      if (action === "eat" && !canMonsterEatPlants(monsterDna)) {
-        setStatus({ key: "game.noPlants" });
-        return;
-      }
       controls.current.action = action;
       controls.current.actionStarted = performance.now();
       connection.sendAction(action);
     },
-    [connection, monsterDna],
+    [connection],
   );
 
   const triggerMate = useCallback(() => {
     if (controls.current.isDead || controls.current.paused) return;
     if (!connection.isController) return;
+    controls.current.action = "mate";
+    controls.current.actionStarted = performance.now();
     connection.sendAction("pair");
   }, [connection]);
 
@@ -1004,9 +1120,665 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     return () => window.removeEventListener("keydown", onMenuKeyDown);
   }, [closeMobileMenu, mobileMenuOpen]);
 
+  // --- visiting agents / WebMCP -------------------------------------------
+
+  const ensureAgentArena = useCallback(() => {
+    const self = connection.self?.net;
+    if (!self) throw new Error("Join the world with a living monster first.");
+    if (!self.alive)
+      throw new Error("This monster is dead. Create another one.");
+    if (!connection.isController) {
+      throw new Error(
+        "This browser is observing; it does not control the monster.",
+      );
+    }
+    if (agentArenaRef.current.status === "idle") {
+      updateAgentArena(
+        startAgentArena(
+          self.id,
+          self.generation,
+          Date.now() / 1000,
+          agentArenaRef.current.coachNote,
+        ),
+      );
+    }
+    if (agentArenaRef.current.status === "paused") {
+      throw new Error(
+        "The human coach paused agent control. Observe the world and wait.",
+      );
+    }
+    if (
+      agentArenaRef.current.status === "dead" ||
+      agentArenaRef.current.status === "ended"
+    ) {
+      throw new Error(
+        "This arena run has ended. Create a new monster to start again.",
+      );
+    }
+    return self;
+  }, [connection, updateAgentArena]);
+
+  const readAgentObservation = useCallback(() => {
+    const self = connection.self;
+    if (!self) throw new Error("The world has not assigned a monster yet.");
+    return observeArena({
+      self: self.net,
+      selfDna: self.dna,
+      entities: connection.entities.values(),
+      depletedResources: connection.depletedResources,
+      population: connection.population,
+      eggs: connection.eggs.size,
+      worldName: connection.worldName,
+      worldTime: connection.estimateWorldTime(),
+      scoreTime: Date.now() / 1000,
+      arena: agentArenaRef.current,
+    });
+  }, [connection]);
+
+  const waitForAgentAction = useCallback(
+    (durationSeconds: number, signal: AbortSignal) =>
+      new Promise<void>((resolve, reject) => {
+        if (signal.aborted) {
+          reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+          return;
+        }
+        const timer = window.setTimeout(resolve, durationSeconds * 1000);
+        signal.addEventListener(
+          "abort",
+          () => {
+            window.clearTimeout(timer);
+            reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+          },
+          { once: true },
+        );
+      }),
+    [],
+  );
+
+  const runAgentMotion = useCallback(
+    async (
+      motion: {
+        label: string;
+        forward?: number;
+        strafe?: number;
+        turn?: number;
+        sprint?: boolean;
+        heading?: number | null;
+        duration?: number;
+      },
+      signal: AbortSignal,
+    ) => {
+      ensureAgentArena();
+      const duration = THREE.MathUtils.clamp(motion.duration ?? 1.5, 0.25, 8);
+      const commandId = controls.current.agent.commandId + 1;
+      const heading =
+        motion.heading === undefined
+          ? controls.current.cameraYaw
+          : motion.heading;
+      controls.current.agent = {
+        enabled: true,
+        commandId,
+        forward: THREE.MathUtils.clamp(motion.forward ?? 0, -1, 1),
+        strafe: THREE.MathUtils.clamp(motion.strafe ?? 0, -1, 1),
+        turn: THREE.MathUtils.clamp(motion.turn ?? 0, -1, 1),
+        sprint: Boolean(motion.sprint),
+        heading,
+        label: motion.label,
+      };
+      if (heading !== null)
+        controls.current.cameraYaw = normalizeAngle(heading);
+      updateAgentArena((current) => ({
+        ...current,
+        status: "active",
+        lastAction: motion.label,
+      }));
+      try {
+        await waitForAgentAction(duration, signal);
+      } finally {
+        if (controls.current.agent.commandId === commandId) {
+          controls.current.agent.enabled = false;
+          controls.current.agent.forward = 0;
+          controls.current.agent.strafe = 0;
+          controls.current.agent.turn = 0;
+          controls.current.agent.sprint = false;
+          controls.current.agent.label = "idle";
+        }
+      }
+      return readAgentObservation();
+    },
+    [
+      ensureAgentArena,
+      readAgentObservation,
+      updateAgentArena,
+      waitForAgentAction,
+    ],
+  );
+
+  const headingToward = useCallback((x: number, z: number) => {
+    const from = controls.current.playerPosition;
+    return Math.atan2(-(x - from.x), -(z - from.z));
+  }, []);
+
+  const approachPoint = useCallback(
+    async (
+      x: number,
+      z: number,
+      label: string,
+      signal: AbortSignal,
+      sprint = false,
+    ) => {
+      const from = controls.current.playerPosition;
+      const distance = Math.hypot(x - from.x, z - from.z);
+      if (distance <= 2.3) return;
+      await runAgentMotion(
+        {
+          label,
+          forward: 1,
+          sprint,
+          heading: headingToward(x, z),
+          duration: THREE.MathUtils.clamp(distance / (sprint ? 8 : 5), 0.35, 8),
+        },
+        signal,
+      );
+    },
+    [headingToward, runAgentMotion],
+  );
+
+  const createSessionMonster = session.createMonster;
+
+  useEffect(() => {
+    if (phase !== "connected") return;
+    const registration = new AbortController();
+    const numberEnum = (values: readonly number[]) => ({
+      type: "integer",
+      enum: [...values],
+    });
+    const stringEnum = (values: readonly string[]) => ({
+      type: "string",
+      enum: [...values],
+    });
+    const traitSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        body: stringEnum(BODY_SHAPES),
+        legs: numberEnum(LEG_COUNTS),
+        legShape: stringEnum(LEG_SHAPES),
+        eyes: numberEnum(EYE_COUNTS),
+        mouth: stringEnum(MOUTH_SHAPES),
+        size: stringEnum(MONSTER_SIZES),
+        build: stringEnum(MONSTER_BUILDS),
+        color: stringEnum(MONSTER_COLORS.map((color) => color.id)),
+        accent: stringEnum(ACCENT_COLORS.map((color) => color.id)),
+        pattern: stringEnum(PATTERNS),
+        horns: stringEnum(HORN_SHAPES),
+        ears: stringEnum(EAR_SHAPES),
+        tail: stringEnum(TAIL_SHAPES),
+        adaptation: stringEnum(ADAPTATIONS),
+        diet: stringEnum(DIETS),
+        breathing: stringEnum(RESPIRATIONS),
+        social: stringEnum(SOCIAL_BEHAVIORS),
+      },
+    };
+    const tools: WebMcpTool[] = [
+      {
+        name: "monsters.create_monster",
+        title: "Create a DNA monster",
+        description:
+          "Design and spawn your competing monster. Supply either a complete M6 DNA string or selected traits; omitted traits use a balanced smooth-mesh creature. This starts a fresh domination run and makes the creature visible in the shared 3D world.",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 32 },
+            dna: {
+              type: "string",
+              description: "Complete deterministic M6 DNA code.",
+            },
+            traits: traitSchema,
+          },
+        },
+        execute: async (input) => {
+          const name =
+            typeof input.name === "string" && input.name.trim()
+              ? input.name.trim().slice(0, 32)
+              : "Agent Monster";
+          let dna: MonsterDna;
+          if (typeof input.dna === "string") {
+            dna = decodeMonsterDna(input.dna);
+          } else {
+            const traits =
+              input.traits && typeof input.traits === "object"
+                ? (input.traits as Partial<MonsterDna>)
+                : {};
+            dna = decodeMonsterDna(
+              encodeMonsterDna({
+                ...DEFAULT_MONSTER_DNA,
+                ...traits,
+                mesh: "smooth",
+              } as MonsterDna),
+            );
+          }
+          const monster = await createSessionMonster({
+            name,
+            dna: encodeMonsterDna(dna),
+          });
+          controls.current.isDead = false;
+          controls.current.paused = false;
+          connection.join(monster.id);
+          updateAgentArena(
+            startAgentArena(
+              monster.id,
+              0,
+              Date.now() / 1000,
+              agentArenaRef.current.coachNote,
+            ),
+          );
+          return webMcpResult({
+            created: {
+              id: monster.id,
+              name,
+              dna: encodeMonsterDna(dna),
+              traits: dna,
+            },
+            next: "Wait for the world to assign control, then call monsters.observe_world.",
+          });
+        },
+      },
+      {
+        name: "monsters.observe_world",
+        title: "Observe Monster Island",
+        description:
+          "Read the controlled creature, nearby monsters and food, population, human coaching note, and live domination score. Call this before and after actions to choose the next strategy.",
+        inputSchema: { type: "object", additionalProperties: false },
+        annotations: { readOnlyHint: true },
+        execute: async () => webMcpResult(readAgentObservation()),
+      },
+      {
+        name: "monsters.move",
+        title: "Move visibly",
+        description:
+          "Walk in a camera-relative direction for a bounded duration. The monster and camera animate in real time; the human may override with their controls.",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["direction"],
+          properties: {
+            direction: stringEnum(["forward", "backward", "left", "right"]),
+            durationSeconds: {
+              type: "number",
+              minimum: 0.25,
+              maximum: 8,
+              default: 1.5,
+            },
+            sprint: { type: "boolean", default: false },
+          },
+        },
+        execute: async (input, context) => {
+          const direction = String(input.direction);
+          return webMcpResult(
+            await runAgentMotion(
+              {
+                label: `${input.sprint ? "Sprinting" : "Walking"} ${direction}`,
+                forward:
+                  direction === "forward"
+                    ? 1
+                    : direction === "backward"
+                      ? -1
+                      : 0,
+                strafe:
+                  direction === "right" ? 1 : direction === "left" ? -1 : 0,
+                sprint: Boolean(input.sprint),
+                duration:
+                  typeof input.durationSeconds === "number"
+                    ? input.durationSeconds
+                    : 1.5,
+              },
+              context.signal,
+            ),
+          );
+        },
+      },
+      {
+        name: "monsters.explore",
+        title: "Explore the island",
+        description:
+          "Travel visibly toward an island coordinate or a heading. Without a target, picks a new deterministic heading to scout unfamiliar ground.",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            targetX: {
+              type: "number",
+              minimum: -PLAYABLE_RADIUS,
+              maximum: PLAYABLE_RADIUS,
+            },
+            targetZ: {
+              type: "number",
+              minimum: -PLAYABLE_RADIUS,
+              maximum: PLAYABLE_RADIUS,
+            },
+            headingRadians: { type: "number", minimum: -6.284, maximum: 6.284 },
+            durationSeconds: {
+              type: "number",
+              minimum: 0.25,
+              maximum: 8,
+              default: 3,
+            },
+            sprint: { type: "boolean", default: false },
+          },
+        },
+        execute: async (input, context) => {
+          ensureAgentArena();
+          const hasTarget =
+            typeof input.targetX === "number" &&
+            typeof input.targetZ === "number";
+          const x = hasTarget
+            ? THREE.MathUtils.clamp(
+                input.targetX as number,
+                -PLAYABLE_RADIUS,
+                PLAYABLE_RADIUS,
+              )
+            : 0;
+          const z = hasTarget
+            ? THREE.MathUtils.clamp(
+                input.targetZ as number,
+                -PLAYABLE_RADIUS,
+                PLAYABLE_RADIUS,
+              )
+            : 0;
+          const heading = hasTarget
+            ? headingToward(x, z)
+            : typeof input.headingRadians === "number"
+              ? input.headingRadians
+              : normalizeAngle(connection.estimateWorldTime() * 0.37 + 1.2);
+          return webMcpResult(
+            await runAgentMotion(
+              {
+                label: hasTarget
+                  ? `Exploring toward (${x.toFixed(1)}, ${z.toFixed(1)})`
+                  : "Exploring a new direction",
+                forward: 1,
+                heading,
+                sprint: Boolean(input.sprint),
+                duration:
+                  typeof input.durationSeconds === "number"
+                    ? input.durationSeconds
+                    : 3,
+              },
+              context.signal,
+            ),
+          );
+        },
+      },
+      {
+        name: "monsters.eat",
+        title: "Find and eat food",
+        description:
+          "Approach a requested or nearby compatible food source, then perform the visible eating animation. Plants feed herbivores and omnivores; prey feeds carnivores and omnivores.",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            resourceId: {
+              type: "string",
+              description: "Food id from observe_world.",
+            },
+          },
+        },
+        execute: async (input, context) => {
+          const self = ensureAgentArena();
+          const dna = connection.self!.dna;
+          const candidates = [
+            ...(dna.diet !== "carnivore"
+              ? EDIBLES.filter(
+                  (food) => !connection.depletedResources.has(food.id),
+                )
+              : []),
+            ...(dna.diet !== "herbivore"
+              ? PREY.filter(
+                  (prey) => !connection.depletedResources.has(prey.id),
+                ).map((prey) => ({ ...prey, kind: "prey" as const, energy: 0 }))
+              : []),
+          ];
+          const requested =
+            typeof input.resourceId === "string"
+              ? candidates.find((food) => food.id === input.resourceId)
+              : undefined;
+          const food =
+            requested ??
+            candidates.sort(
+              (a, b) =>
+                Math.hypot(a.x - self.x, a.z - self.z) -
+                Math.hypot(b.x - self.x, b.z - self.z),
+            )[0];
+          if (!food)
+            throw new Error("No compatible food is currently available.");
+          await approachPoint(
+            food.x,
+            food.z,
+            `Approaching ${food.id}`,
+            context.signal,
+          );
+          updateAgentArena((current) => ({
+            ...current,
+            lastAction: `Eating ${food.id}`,
+          }));
+          triggerAction(
+            "kind" in food && food.kind === "prey" ? "attack" : "eat",
+          );
+          await waitForAgentAction(1, context.signal);
+          return webMcpResult(readAgentObservation());
+        },
+      },
+      {
+        name: "monsters.attack",
+        title: "Attack a monster",
+        description:
+          "Approach a requested or nearest rival, then perform the visible attack animation. Combat is resolved by the authoritative shared simulation.",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            targetId: {
+              type: "string",
+              description: "Monster id from observe_world.",
+            },
+          },
+        },
+        execute: async (input, context) => {
+          const self = ensureAgentArena();
+          const targets = [...connection.entities.values()]
+            .map((record) => record.net)
+            .filter((entity) => entity.alive && entity.id !== self.id)
+            .sort(
+              (a, b) =>
+                Math.hypot(a.x - self.x, a.z - self.z) -
+                Math.hypot(b.x - self.x, b.z - self.z),
+            );
+          const target =
+            (typeof input.targetId === "string"
+              ? targets.find((entity) => entity.id === input.targetId)
+              : undefined) ?? targets[0];
+          if (!target) throw new Error("No living target is visible.");
+          await approachPoint(
+            target.x,
+            target.z,
+            `Approaching ${target.name}`,
+            context.signal,
+            true,
+          );
+          updateAgentArena((current) => ({
+            ...current,
+            lastAction: `Attacking ${target.name}`,
+          }));
+          triggerAction("attack");
+          await waitForAgentAction(0.8, context.signal);
+          return webMcpResult(readAgentObservation());
+        },
+      },
+      {
+        name: "monsters.flee",
+        title: "Flee danger",
+        description:
+          "Sprint visibly away from a requested threat or the nearest carnivore, keeping the camera with the escaping monster.",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            threatId: {
+              type: "string",
+              description: "Threat id from observe_world.",
+            },
+            durationSeconds: {
+              type: "number",
+              minimum: 0.5,
+              maximum: 8,
+              default: 3,
+            },
+          },
+        },
+        execute: async (input, context) => {
+          const self = ensureAgentArena();
+          const nearby = [...connection.entities.values()]
+            .filter((record) => record.net.alive && record.net.id !== self.id)
+            .sort(
+              (a, b) =>
+                Math.hypot(a.net.x - self.x, a.net.z - self.z) -
+                Math.hypot(b.net.x - self.x, b.net.z - self.z),
+            );
+          const threat =
+            (typeof input.threatId === "string"
+              ? nearby.find((record) => record.net.id === input.threatId)
+              : undefined) ??
+            nearby.find((record) => record.dna.diet === "carnivore") ??
+            nearby[0];
+          if (!threat) throw new Error("No visible threat to flee from.");
+          const awayX = self.x - threat.net.x;
+          const awayZ = self.z - threat.net.z;
+          const heading = Math.atan2(-awayX, -awayZ);
+          return webMcpResult(
+            await runAgentMotion(
+              {
+                label: `Fleeing ${threat.net.name}`,
+                forward: 1,
+                heading,
+                sprint: true,
+                duration:
+                  typeof input.durationSeconds === "number"
+                    ? input.durationSeconds
+                    : 3,
+              },
+              context.signal,
+            ),
+          );
+        },
+      },
+      {
+        name: "monsters.rest",
+        title: "Rest and recover",
+        description:
+          "Stop moving and remain visibly idle for a bounded duration so health can recover while conserving energy.",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            durationSeconds: {
+              type: "number",
+              minimum: 0.5,
+              maximum: 8,
+              default: 3,
+            },
+          },
+        },
+        execute: async (input, context) => {
+          ensureAgentArena();
+          controls.current.agent.enabled = false;
+          updateAgentArena((current) => ({
+            ...current,
+            lastAction: "Resting",
+          }));
+          await waitForAgentAction(
+            typeof input.durationSeconds === "number"
+              ? input.durationSeconds
+              : 3,
+            context.signal,
+          );
+          return webMcpResult(readAgentObservation());
+        },
+      },
+      {
+        name: "monsters.breed",
+        title: "Find a mate and breed",
+        description:
+          "Approach a requested or nearby compatible monster and visibly initiate pairing. On success the simulation mixes both DNA strings with mutations, creates an egg, and later hatches a tracked descendant.",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            partnerId: {
+              type: "string",
+              description: "Partner id from observe_world.",
+            },
+          },
+        },
+        execute: async (input, context) => {
+          const self = ensureAgentArena();
+          const partners = [...connection.entities.values()]
+            .map((record) => record.net)
+            .filter((entity) => entity.alive && entity.id !== self.id)
+            .sort(
+              (a, b) =>
+                Math.hypot(a.x - self.x, a.z - self.z) -
+                Math.hypot(b.x - self.x, b.z - self.z),
+            );
+          const partner =
+            (typeof input.partnerId === "string"
+              ? partners.find((entity) => entity.id === input.partnerId)
+              : undefined) ?? partners[0];
+          if (!partner) throw new Error("No possible mate is visible.");
+          await approachPoint(
+            partner.x,
+            partner.z,
+            `Approaching ${partner.name} to breed`,
+            context.signal,
+          );
+          updateAgentArena((current) => ({
+            ...current,
+            lastAction: `Pairing with ${partner.name}`,
+          }));
+          triggerMate();
+          await waitForAgentAction(1, context.signal);
+          return webMcpResult(readAgentObservation());
+        },
+      },
+    ];
+
+    void registerWebMcpTools(tools, registration.signal);
+    return () => registration.abort();
+  }, [
+    approachPoint,
+    connection,
+    createSessionMonster,
+    ensureAgentArena,
+    headingToward,
+    phase,
+    readAgentObservation,
+    runAgentMotion,
+    triggerAction,
+    triggerMate,
+    updateAgentArena,
+    waitForAgentAction,
+  ]);
+
   const monsterName = activeMonster?.name ?? t("game.genericMonster");
   const canPlay = Boolean(selfEntityId) && isController && !isDead;
   const needsFirstMonster = session.monsters.length === 0 && !creatorDraft;
+  const dominationScore = scoreAgentArena(
+    agentArena,
+    agentScoreNow || agentArena.startedAt,
+    population,
+  );
 
   return (
     <main className="game-shell">
@@ -1189,6 +1961,106 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           <span>{t("game.eggs")}</span>
           <small>{t(ecosystemEvent.key, ecosystemEvent.values)}</small>
         </div>
+
+        <aside
+          className={`agent-arena-panel status-${agentArena.status}`}
+          aria-label="Visiting agent arena"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <header>
+            <div>
+              <span>WEBMCP AGENT ARENA</span>
+              <strong>
+                {agentArena.status === "idle"
+                  ? "Ready for an agent"
+                  : agentArena.status === "dead" ||
+                      agentArena.status === "ended"
+                    ? "Final domination score"
+                    : agentArena.status === "paused"
+                      ? "Coach has control"
+                      : "Agent is competing"}
+              </strong>
+            </div>
+            <b>{dominationScore.dominationScore}</b>
+          </header>
+          <p>{agentArena.lastAction}</p>
+          <div className="agent-score-grid">
+            <span>
+              <b>{dominationScore.survivalSeconds}s</b> survived
+            </span>
+            <span>
+              <b>{dominationScore.foodConsumed}</b> food
+            </span>
+            <span>
+              <b>{dominationScore.fightsWon}</b> wins
+            </span>
+            <span>
+              <b>{dominationScore.offspring}</b> offspring
+            </span>
+            <span>
+              <b>{dominationScore.generations}</b> generations
+            </span>
+            <span>
+              <b>{Math.round(dominationScore.populationShare * 100)}%</b> share
+            </span>
+          </div>
+          <label>
+            <span>Coach the visiting agent</span>
+            <input
+              value={agentArena.coachNote}
+              maxLength={180}
+              onChange={(event) =>
+                updateAgentArena((current) => ({
+                  ...current,
+                  coachNote: event.target.value,
+                }))
+              }
+              placeholder="Stay near water, avoid carnivores…"
+            />
+          </label>
+          <div className="agent-arena-actions">
+            <button
+              type="button"
+              disabled={
+                agentArena.status === "idle" ||
+                agentArena.status === "dead" ||
+                agentArena.status === "ended"
+              }
+              onClick={() => {
+                const pause = agentArenaRef.current.status !== "paused";
+                controls.current.agent.enabled = false;
+                updateAgentArena((current) => ({
+                  ...current,
+                  status: pause ? "paused" : "active",
+                  lastAction: pause
+                    ? "Human coach took control"
+                    : "Agent control resumed",
+                }));
+              }}
+            >
+              {agentArena.status === "paused" ? "Resume agent" : "Take control"}
+            </button>
+            <button
+              type="button"
+              disabled={
+                agentArena.status === "idle" ||
+                agentArena.status === "dead" ||
+                agentArena.status === "ended"
+              }
+              onClick={() => {
+                controls.current.agent.enabled = false;
+                updateAgentArena((current) => ({
+                  ...current,
+                  status: "ended",
+                  endedAt: Date.now() / 1000,
+                  lastAction: "Run ended by the human coach",
+                }));
+              }}
+            >
+              End run
+            </button>
+          </div>
+        </aside>
 
         {pairing && (
           <PairingRequestCard
@@ -1377,6 +2249,81 @@ function ConnectedGame({ session }: { session: SessionApi }) {
                 </p>
               </div>
 
+              <div className="mobile-menu-section mobile-agent-arena">
+                <span className="mobile-menu-label">WebMCP agent arena</span>
+                <div className="mobile-agent-score">
+                  <strong>{dominationScore.dominationScore}</strong>
+                  <span>{agentArena.lastAction}</span>
+                </div>
+                <div className="mobile-agent-metrics">
+                  <span>{dominationScore.survivalSeconds}s survived</span>
+                  <span>{dominationScore.foodConsumed} food</span>
+                  <span>{dominationScore.fightsWon} wins</span>
+                  <span>{dominationScore.offspring} offspring</span>
+                  <span>{dominationScore.generations} generations</span>
+                  <span>
+                    {Math.round(dominationScore.populationShare * 100)}% share
+                  </span>
+                </div>
+                <label className="mobile-agent-coach">
+                  <span>Strategy note for the agent</span>
+                  <input
+                    value={agentArena.coachNote}
+                    maxLength={180}
+                    onChange={(event) =>
+                      updateAgentArena((current) => ({
+                        ...current,
+                        coachNote: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <div className="agent-arena-actions">
+                  <button
+                    type="button"
+                    disabled={
+                      agentArena.status === "idle" ||
+                      agentArena.status === "dead" ||
+                      agentArena.status === "ended"
+                    }
+                    onClick={() => {
+                      const pause = agentArenaRef.current.status !== "paused";
+                      controls.current.agent.enabled = false;
+                      updateAgentArena((current) => ({
+                        ...current,
+                        status: pause ? "paused" : "active",
+                        lastAction: pause
+                          ? "Human coach took control"
+                          : "Agent control resumed",
+                      }));
+                    }}
+                  >
+                    {agentArena.status === "paused"
+                      ? "Resume agent"
+                      : "Take control"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      agentArena.status === "idle" ||
+                      agentArena.status === "dead" ||
+                      agentArena.status === "ended"
+                    }
+                    onClick={() => {
+                      controls.current.agent.enabled = false;
+                      updateAgentArena((current) => ({
+                        ...current,
+                        status: "ended",
+                        endedAt: Date.now() / 1000,
+                        lastAction: "Run ended by the human coach",
+                      }));
+                    }}
+                  >
+                    End run
+                  </button>
+                </div>
+              </div>
+
               <div className="mobile-menu-footer">
                 <Link href="/" className="mobile-menu-exit">
                   <ArrowLeft size={17} /> {t("game.exitIsland")}
@@ -1414,6 +2361,20 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             </span>
             <strong>{t("game.collapsed", { name: monsterName })}</strong>
             <p>{t("game.monsterDied", { name: monsterName })}</p>
+            {agentArena.rootEntityId === selfEntityId && (
+              <div className="death-scorecard">
+                <span>FINAL DOMINATION SCORE</span>
+                <strong>{dominationScore.dominationScore}</strong>
+                <small>
+                  {dominationScore.survivalSeconds}s ·{" "}
+                  {dominationScore.foodConsumed} food ·{" "}
+                  {dominationScore.fightsWon} wins · {dominationScore.offspring}{" "}
+                  offspring ·{" "}
+                  {Math.round(dominationScore.populationShare * 100)}%
+                  population
+                </small>
+              </div>
+            )}
             <div className="death-actions">
               {livingMonsters.length > 0 && (
                 <button

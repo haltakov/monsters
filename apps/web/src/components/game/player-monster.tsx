@@ -24,7 +24,7 @@ export type ControlState = {
   look: { x: number; y: number };
   cameraYaw: number;
   cameraPitch: number;
-  action: "eat" | "attack" | null;
+  action: "eat" | "attack" | "mate" | null;
   actionStarted: number;
   paused: boolean;
   /** Mirrors of the authoritative values, for HUD and gating only. */
@@ -35,6 +35,17 @@ export type ControlState = {
   sprinting: boolean;
   locomotionMode: LocomotionMode;
   playerPosition: { x: number; y: number; z: number };
+  /** High-level visiting-agent intent. Human input temporarily overrides it. */
+  agent: {
+    enabled: boolean;
+    commandId: number;
+    forward: number;
+    strafe: number;
+    turn: number;
+    sprint: boolean;
+    heading: number | null;
+    label: string;
+  };
 };
 
 /** How often normalized input is published to the server. */
@@ -76,26 +87,50 @@ function blankPredictedEntity(dna: MonsterDna): SimEntity {
   };
 }
 
-function readInput(state: ControlState): Omit<PlayerInput, "seq"> {
+export function readInput(state: ControlState): Omit<PlayerInput, "seq"> {
   const keys = state.keys;
   const blocked = state.paused || state.isDead;
+  const hasHumanMovement =
+    keys.has("KeyW") ||
+    keys.has("KeyS") ||
+    keys.has("KeyA") ||
+    keys.has("KeyD") ||
+    keys.has("ArrowUp") ||
+    keys.has("ArrowDown") ||
+    keys.has("ArrowLeft") ||
+    keys.has("ArrowRight") ||
+    Math.abs(state.move.x) > 0.05 ||
+    Math.abs(state.move.y) > 0.05;
+  const useAgent = !blocked && state.agent.enabled && !hasHumanMovement;
   const strafe = blocked
     ? 0
-    : (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + state.move.x;
+    : useAgent
+      ? state.agent.strafe
+      : (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0) + state.move.x;
   const forward = blocked
     ? 0
-    : (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
-      (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) +
-      state.move.y;
+    : useAgent
+      ? state.agent.forward
+      : (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
+        (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) +
+        state.move.y;
   const turn = blocked
     ? 0
-    : (keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0);
+    : useAgent
+      ? state.agent.turn
+      : (keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0);
   return {
     forward: THREE.MathUtils.clamp(forward, -1, 1),
     strafe: THREE.MathUtils.clamp(strafe, -1, 1),
     turn,
-    heading: state.cameraYaw,
-    sprint: !blocked && (keys.has("ShiftLeft") || keys.has("ShiftRight")),
+    heading: useAgent
+      ? (state.agent.heading ?? state.cameraYaw)
+      : state.cameraYaw,
+    sprint:
+      !blocked &&
+      (useAgent
+        ? state.agent.sprint
+        : keys.has("ShiftLeft") || keys.has("ShiftRight")),
   };
 }
 
@@ -227,7 +262,10 @@ export function PlayerMonster({
     if (sendAccumulator.current >= INPUT_SEND_INTERVAL) {
       sendAccumulator.current = 0;
       const changed = !lastSent.current || !sameInput(lastSent.current, raw);
-      if (canControl && (changed || heartbeat.current >= INPUT_HEARTBEAT_SECONDS)) {
+      if (
+        canControl &&
+        (changed || heartbeat.current >= INPUT_HEARTBEAT_SECONDS)
+      ) {
         sequence.current += 1;
         heartbeat.current = 0;
         lastSent.current = raw;
@@ -346,6 +384,14 @@ export function PlayerMonster({
       scaleX = 1 + pulse * 0.045;
       scaleY = 1 - pulse * 0.075;
       scaleZ = 1 + pulse * 0.035;
+    } else if (!state.isDead && state.action === "mate" && actionAge < 1050) {
+      const pulse = Math.sin((actionAge / 1050) * Math.PI);
+      const wiggle = Math.sin((actionAge / 1050) * Math.PI * 4) * pulse;
+      actionPitch = -pulse * 0.08;
+      actionForward = -pulse * 0.22;
+      scaleX = 1 + pulse * 0.07 + wiggle * 0.025;
+      scaleY = 1 + pulse * 0.1;
+      scaleZ = 1 - pulse * 0.04;
     }
     const walkBob = moving
       ? Math.abs(Math.sin(clock.elapsedTime * cadence)) *

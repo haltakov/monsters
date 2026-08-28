@@ -783,6 +783,133 @@ button {
   font-size: 8px;
   letter-spacing: 0;
 }
+.agent-arena-panel {
+  position: absolute;
+  top: 94px;
+  left: 20px;
+  width: 286px;
+  padding: 12px;
+  display: grid;
+  gap: 9px;
+  border: 1.5px solid rgb(23 63 53 / 48%);
+  border-radius: 16px;
+  background: rgb(255 249 232 / 90%);
+  box-shadow: 3px 3px 0 rgb(23 63 53 / 18%);
+  color: var(--ink);
+  pointer-events: auto;
+  backdrop-filter: blur(10px);
+}
+.agent-arena-panel.status-active {
+  border-color: #2b9b91;
+}
+.agent-arena-panel.status-dead,
+.agent-arena-panel.status-ended {
+  border-color: #e76f61;
+}
+.agent-arena-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.agent-arena-panel header > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.agent-arena-panel header span,
+.agent-arena-panel label > span {
+  color: #55776e;
+  font-family: var(--font-mono), monospace;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+}
+.agent-arena-panel header strong {
+  font-family: var(--font-display), sans-serif;
+  font-size: 13px;
+}
+.agent-arena-panel header > b {
+  min-width: 48px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: #9ed8e5;
+  font-family: var(--font-display), sans-serif;
+  font-size: 19px;
+  text-align: center;
+}
+.agent-arena-panel > p {
+  margin: 0;
+  padding: 6px 8px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgb(23 63 53 / 7%);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-score-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+.agent-score-grid span {
+  display: grid;
+  gap: 1px;
+  color: #55776e;
+  font-size: 7px;
+}
+.agent-score-grid b {
+  color: var(--ink);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+}
+.agent-arena-panel label {
+  display: grid;
+  gap: 4px;
+}
+.agent-arena-panel input,
+.mobile-agent-coach input {
+  min-width: 0;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid rgb(23 63 53 / 35%);
+  border-radius: 9px;
+  outline: 0;
+  background: white;
+  color: var(--ink);
+  font:
+    10px var(--font-body),
+    sans-serif;
+}
+.agent-arena-panel input:focus,
+.mobile-agent-coach input:focus {
+  border-color: #2b9b91;
+  box-shadow: 0 0 0 2px rgb(43 155 145 / 15%);
+}
+.agent-arena-actions {
+  display: flex;
+  gap: 6px;
+}
+.agent-arena-actions button {
+  min-height: 29px;
+  flex: 1;
+  border: 1px solid var(--ink);
+  border-radius: 9px;
+  background: #dcebbd;
+  color: var(--ink);
+  font:
+    700 9px var(--font-display),
+    sans-serif;
+  cursor: pointer;
+}
+.agent-arena-actions button:last-child {
+  background: #f1b3a5;
+}
+.agent-arena-actions button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
 @keyframes ecosystem-heartbeat {
   0%,
   100% {
@@ -830,6 +957,26 @@ button {
   color: #54746b;
   font-size: 13px;
   line-height: 1.45;
+}
+.death-scorecard {
+  width: 100%;
+  padding: 11px;
+  display: grid;
+  gap: 3px;
+  border-radius: 13px;
+  background: #9ed8e5;
+}
+.death-scorecard > span {
+  font:
+    800 8px var(--font-mono),
+    monospace;
+  letter-spacing: 0.1em;
+}
+.death-scorecard > strong {
+  font-size: 32px;
+}
+.death-scorecard > small {
+  font-size: 9px;
 }
 .death-card button {
   margin-top: 5px;
@@ -2247,6 +2394,7 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
   .hud-top-left,
   .hud-top-right,
   .ecosystem-pulse,
+  .agent-arena-panel,
   .desktop-controls,
   .mouse-hint,
   .water-rule,
@@ -2360,6 +2508,55 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
   .mobile-menu-open .status-bubble {
     opacity: 0;
     pointer-events: none;
+  }
+
+  .mobile-agent-arena {
+    gap: 8px;
+  }
+
+  .mobile-agent-score {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .mobile-agent-score strong {
+    min-width: 50px;
+    padding: 7px;
+    border-radius: 10px;
+    background: #9ed8e5;
+    font-family: var(--font-display), sans-serif;
+    font-size: 20px;
+    text-align: center;
+  }
+
+  .mobile-agent-score span {
+    font-size: 11px;
+  }
+
+  .mobile-agent-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+    color: #55776e;
+    font:
+      700 8px var(--font-mono),
+      monospace;
+  }
+
+  .mobile-agent-coach {
+    display: grid;
+    gap: 4px;
+  }
+
+  .mobile-agent-coach > span {
+    color: #55776e;
+    font:
+      800 7px var(--font-mono),
+      monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   .mobile-menu-backdrop {
