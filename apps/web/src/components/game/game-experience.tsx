@@ -1413,7 +1413,6 @@ function SimulatedMonsterActor({
     creature.y,
     creature.z,
   ]);
-  const lastPosition = useRef({ x: creature.x, z: creature.z });
   const motion = useRef<MonsterMotionState>({
     stride: 0,
     intensity: 0,
@@ -1422,6 +1421,8 @@ function SimulatedMonsterActor({
 
   useFrame(({ clock }, delta) => {
     if (!root.current || !visual.current) return;
+    const previousX = root.current.position.x;
+    const previousZ = root.current.position.z;
     const waterBlend = canMonsterSwim(creature.dna)
       ? waterBlendAt(creature.x, creature.z)
       : 0;
@@ -1468,25 +1469,47 @@ function SimulatedMonsterActor({
       delta,
     );
 
-    const moved = Math.hypot(
-      creature.x - lastPosition.current.x,
-      creature.z - lastPosition.current.z,
-    );
-    lastPosition.current = { x: creature.x, z: creature.z };
+    // AI targets advance at 10 Hz, while the actor itself is interpolated every
+    // rendered frame. Measure that rendered motion so the gait remains active
+    // between simulation steps instead of flashing on for only one frame.
+    const renderedSpeed =
+      Math.hypot(
+        root.current.position.x - previousX,
+        root.current.position.z - previousZ,
+      ) / Math.max(delta, 1 / 240);
+    const moving = creature.alive && renderedSpeed > 0.015;
     const swimming = waterBlend > 0.52;
     const flying = creature.dna.adaptation === "wings";
-    const cadence =
-      creature.intent === "flee" || creature.intent === "hunt" ? 14 : 9;
-    motion.current.stride =
-      moved > 0.0005 ? Math.sin(clock.elapsedTime * cadence) * 0.48 : 0;
-    motion.current.intensity = moved > 0.0005 ? 0.82 : 0;
+    const sprinting =
+      creature.intent === "flee" ||
+      creature.intent === "hunt" ||
+      creature.intent === "defend";
+    const cadence = flying ? 6.2 : swimming ? 7.4 : sprinting ? 14 : 9.5;
+    const strideAmount = flying
+      ? 0.16
+      : swimming
+        ? 0.34
+        : sprinting
+          ? 0.68
+          : 0.52;
+    const speedRatio = THREE.MathUtils.clamp(
+      renderedSpeed / Math.max(0.1, getCreatureSpeed(creature.dna)),
+      0,
+      1,
+    );
+    motion.current.stride = moving
+      ? Math.sin(clock.elapsedTime * cadence) * strideAmount
+      : 0;
+    motion.current.intensity = moving
+      ? THREE.MathUtils.lerp(0.68, 1, speedRatio)
+      : 0;
     motion.current.gait = flying
       ? "fly"
       : swimming
         ? "swim"
-        : creature.intent === "flee" || creature.intent === "hunt"
+        : sprinting && moving
           ? "sprint"
-          : moved > 0.0005
+          : moving
             ? "walk"
             : "idle";
 
