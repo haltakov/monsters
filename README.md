@@ -55,3 +55,20 @@ apps/
 ```
 
 The game currently keeps all state in the browser. The API, database schema, migration workflow, CORS setup, and CI are ready for saved worlds and DNA-backed monsters later.
+
+## Production deployment
+
+The repository includes two root-level production images for the Coolify deployment:
+
+- `Dockerfile.app` builds the static Next.js export and serves it with Nginx on port `3000`.
+- `Dockerfile.server` builds the NestJS API, applies pending Prisma migrations on startup, and serves it on port `3000`.
+
+Create a PostgreSQL 17 resource and configure the API with:
+
+```text
+DATABASE_URL=<Coolify internal PostgreSQL URL>
+WEB_ORIGIN=https://monsters.haltakov.com
+PORT=3000
+```
+
+The frontend health endpoint is `/healthz`; the API health endpoint is `/api/health` and verifies its database connection.

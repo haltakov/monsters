@@ -1,0 +1,13 @@
+.git
+.github
+.next
+**/.next
+**/dist
+**/node_modules
+**/out
+**/.env
+**/.env.*
+!**/.env.example
+outputs
+work
+
