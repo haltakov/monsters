@@ -12,7 +12,9 @@ import {
   Egg,
   Heart,
   Leaf,
+  Menu,
   MousePointer2,
+  Pencil,
   Plus,
   Swords,
   Waves,
@@ -2611,6 +2613,7 @@ export function GameExperience() {
   ]);
   const [activeMonsterId, setActiveMonsterId] = useState("monster-1");
   const [creatorDraft, setCreatorDraft] = useState<CreatorDraft | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const activeMonster =
     monsterFamily.find((profile) => profile.id === activeMonsterId) ??
     monsterFamily[0];
@@ -2957,6 +2960,7 @@ export function GameExperience() {
   ]);
 
   const openCreator = useCallback(() => {
+    setMobileMenuOpen(false);
     controls.current.paused = true;
     controls.current.keys.clear();
     controls.current.move = { x: 0, y: 0 };
@@ -2977,6 +2981,7 @@ export function GameExperience() {
       });
       return;
     }
+    setMobileMenuOpen(false);
     controls.current.paused = true;
     controls.current.keys.clear();
     controls.current.move = { x: 0, y: 0 };
@@ -2993,6 +2998,23 @@ export function GameExperience() {
     controls.current.paused = false;
     controls.current.keys.clear();
     setCreatorDraft(null);
+  }, []);
+
+  const openMobileMenu = useCallback(() => {
+    controls.current.paused = true;
+    controls.current.keys.clear();
+    controls.current.move = { x: 0, y: 0 };
+    controls.current.look = { x: 0, y: 0 };
+    if (document.pointerLockElement) document.exitPointerLock();
+    setMobileMenuOpen(true);
+  }, []);
+
+  const closeMobileMenu = useCallback(() => {
+    controls.current.paused = false;
+    controls.current.keys.clear();
+    controls.current.move = { x: 0, y: 0 };
+    controls.current.look = { x: 0, y: 0 };
+    setMobileMenuOpen(false);
   }, []);
 
   const applyMonsterDna = useCallback(
@@ -3272,6 +3294,15 @@ export function GameExperience() {
     triggerMate,
   ]);
 
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onMenuKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Escape") closeMobileMenu();
+    };
+    window.addEventListener("keydown", onMenuKeyDown);
+    return () => window.removeEventListener("keydown", onMenuKeyDown);
+  }, [closeMobileMenu, mobileMenuOpen]);
+
   const ecosystemEvent = simulationSnapshot.event
     ? simulationSnapshot.event.kind === "birth"
       ? t("game.simBirth", {
@@ -3337,7 +3368,48 @@ export function GameExperience() {
         </div>
       )}
 
-      <div className="game-hud" aria-live="polite">
+      <div
+        className={`game-hud${mobileMenuOpen ? " mobile-menu-open" : ""}`}
+        aria-live="polite"
+      >
+        <div className="mobile-compact-hud">
+          <div className="mobile-player-status">
+            <MonsterMark className="mobile-player-mark" />
+            <div className="mobile-player-vitals">
+              <strong>{activeMonster.name}</strong>
+              <div className="mobile-vital-row">
+                <Heart size={13} aria-hidden="true" />
+                <div
+                  className={`mobile-vital-track health${health <= 25 ? " low" : ""}`}
+                  title={`${t("game.health")} ${health}`}
+                >
+                  <i style={{ width: `${health}%` }} />
+                </div>
+                <span>{health}</span>
+              </div>
+              <div className="mobile-vital-row">
+                <Activity size={13} aria-hidden="true" />
+                <div
+                  className={`mobile-vital-track energy${energy <= 25 ? " low" : ""}`}
+                  title={`${t("game.energy")} ${energy}`}
+                >
+                  <i style={{ width: `${energy}%` }} />
+                </div>
+                <span>{energy}</span>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="mobile-menu-toggle"
+            aria-label={t("game.openMenu")}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-game-menu"
+            onClick={openMobileMenu}
+          >
+            <Menu size={23} />
+          </button>
+        </div>
         <div className="hud-top-left">
           <Link href="/" className="back-button" aria-label={t("game.home")}>
             <ArrowLeft size={19} />
@@ -3430,6 +3502,179 @@ export function GameExperience() {
           <span>{t("game.eggs")}</span>
           <small>{ecosystemEvent}</small>
         </div>
+
+        {mobileMenuOpen && (
+          <div
+            className="mobile-menu-backdrop"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              if (event.target === event.currentTarget) closeMobileMenu();
+            }}
+          >
+            <section
+              id="mobile-game-menu"
+              className="mobile-game-menu"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="mobile-game-menu-title"
+            >
+              <header className="mobile-game-menu-header">
+                <div>
+                  <span>{t("game.menuKicker")}</span>
+                  <h2 id="mobile-game-menu-title">{t("game.menu")}</h2>
+                </div>
+                <button
+                  type="button"
+                  className="mobile-menu-close"
+                  onClick={closeMobileMenu}
+                  aria-label={t("game.closeMenu")}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </header>
+
+              <div className="mobile-menu-creature">
+                <MonsterMark className="mobile-menu-monster" />
+                <div>
+                  <span>{t("game.yourMonster")}</span>
+                  <strong>{activeMonster.name}</strong>
+                  <small>
+                    {option(monsterDna.diet)} · {option(monsterDna.social)} ·{" "}
+                    {monsterDna.eyes}{" "}
+                    {monsterDna.eyes === 1
+                      ? t("creator.eye")
+                      : t("creator.eyes")}
+                  </small>
+                </div>
+                <div className="mobile-menu-mode" data-mode={locomotionMode}>
+                  {t(`game.mode.${locomotionMode}` as TranslationKey)}
+                </div>
+              </div>
+
+              <div className="mobile-menu-section">
+                <span className="mobile-menu-label">
+                  {t("game.monsterFamily")}
+                </span>
+                <label className="mobile-family-picker">
+                  <span>{t("game.monster")}</span>
+                  <select
+                    value={activeMonsterId}
+                    onChange={(event) => switchMonster(event.target.value)}
+                  >
+                    {monsterFamily.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="mobile-menu-button-row">
+                  <button type="button" onClick={openCreator}>
+                    <Pencil size={16} /> {t("game.edit")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openNewMonster}
+                    disabled={monsterFamily.length >= MAX_FAMILY_SIZE}
+                  >
+                    <Plus size={16} /> {t("game.new")}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mobile-menu-grid">
+                <div className="mobile-menu-section mobile-island-status">
+                  <span className="mobile-menu-label">
+                    {t("game.islandStatus")}
+                  </span>
+                  <div>
+                    <Activity size={17} />
+                    <strong>{simulationSnapshot.living}</strong>
+                    <span>{t("game.living")}</span>
+                  </div>
+                  <div>
+                    <Egg size={17} />
+                    <strong>{simulationSnapshot.eggs}</strong>
+                    <span>{t("game.eggs")}</span>
+                  </div>
+                </div>
+                <div className="mobile-menu-section mobile-language-section">
+                  <span className="mobile-menu-label">{t("language.label")}</span>
+                  <LanguageSwitcher className="mobile-menu-language" />
+                </div>
+              </div>
+
+              <div className="mobile-menu-section">
+                <span className="mobile-menu-label">{t("game.moreActions")}</span>
+                <div className="mobile-menu-actions">
+                  <button
+                    type="button"
+                    disabled={isDead || matingCooldown > 0}
+                    onClick={() => {
+                      closeMobileMenu();
+                      triggerMate();
+                    }}
+                  >
+                    {matingCooldown > 0 ? <Egg size={18} /> : <Heart size={18} />}
+                    <span>
+                      {matingCooldown > 0
+                        ? t("game.mateReadyIn", { seconds: matingCooldown })
+                        : t("game.mateButton")}
+                    </span>
+                  </button>
+                  {monsterDna.adaptation === "wings" && (
+                    <button
+                      type="button"
+                      disabled={isDead}
+                      onClick={() => {
+                        closeMobileMenu();
+                        toggleFlight();
+                      }}
+                    >
+                      <Wind size={18} />
+                      <span>
+                        {locomotionMode === "fly"
+                          ? t("game.landButton")
+                          : t("game.flyButton")}
+                      </span>
+                    </button>
+                  )}
+                  {canMonsterSwim(monsterDna) && (
+                    <button
+                      type="button"
+                      disabled={isDead}
+                      onClick={() => {
+                        closeMobileMenu();
+                        toggleDive();
+                      }}
+                    >
+                      <Waves size={18} />
+                      <span>
+                        {locomotionMode === "dive"
+                          ? t("game.surfaceButton")
+                          : t("game.diveButton")}
+                      </span>
+                    </button>
+                  )}
+                </div>
+                <p className="mobile-menu-event">{ecosystemEvent}</p>
+              </div>
+
+              <div className="mobile-menu-footer">
+                <Link href="/" className="mobile-menu-exit">
+                  <ArrowLeft size={17} /> {t("game.exitIsland")}
+                </Link>
+                <button
+                  type="button"
+                  className="mobile-menu-continue"
+                  onClick={closeMobileMenu}
+                >
+                  {t("game.continue")}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
 
         {isDead && (
           <div className="death-card" role="dialog" aria-modal="true">
