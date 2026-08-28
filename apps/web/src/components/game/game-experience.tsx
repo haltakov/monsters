@@ -1404,6 +1404,15 @@ function SimulatedMonsterActor({
   const vitals = useRef<THREE.Group>(null);
   const healthFill = useRef<THREE.Mesh>(null);
   const energyFill = useRef<THREE.Mesh>(null);
+  // Keep the mount position referentially stable. A fresh position array here
+  // is reapplied by React Three Fiber whenever the one-second simulation HUD
+  // snapshot rerenders the world, fighting the terrain-following frame loop and
+  // making roaming creatures periodically sink into the ground.
+  const [initialPosition] = useState<[number, number, number]>(() => [
+    creature.x,
+    creature.y,
+    creature.z,
+  ]);
   const lastPosition = useRef({ x: creature.x, z: creature.z });
   const motion = useRef<MonsterMotionState>({
     stride: 0,
@@ -1522,7 +1531,7 @@ function SimulatedMonsterActor({
 
   const barHeight = 2.25 * getMonsterSizeScale(creature.dna.size);
   return (
-    <group ref={root} position={[creature.x, creature.y, creature.z]}>
+    <group ref={root} position={initialPosition}>
       <group ref={visual}>
         <MonsterVisual
           dna={creature.dna}
