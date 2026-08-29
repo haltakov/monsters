@@ -1,4 +1,5 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
 import type { RequestHandler } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
@@ -24,13 +25,19 @@ type BetterAuthInstance = {
   };
 };
 
-function authSecret() {
+const EPHEMERAL_AUTH_SECRET = randomBytes(32).toString('base64url');
+
+function authSecret(signInEnabled: boolean) {
   const configured = process.env.BETTER_AUTH_SECRET?.trim();
   if (configured) return configured;
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('BETTER_AUTH_SECRET is required in production');
+  if (process.env.NODE_ENV === 'production' && signInEnabled) {
+    throw new Error(
+      'BETTER_AUTH_SECRET is required when account sign-in is enabled in production',
+    );
   }
-  return 'monsters-local-development-secret-change-before-production';
+  return process.env.NODE_ENV === 'production'
+    ? EPHEMERAL_AUTH_SECRET
+    : 'monsters-local-development-secret-change-before-production';
 }
 
 @Injectable()
@@ -76,7 +83,9 @@ export class AuthService {
       appName: 'Monsters',
       baseURL,
       basePath: '/api/auth',
-      secret: authSecret(),
+      secret: authSecret(
+        this.configuration.google || this.configuration.magicLink,
+      ),
       database: prismaAdapter(this.prisma, {
         provider: 'postgresql',
         transaction: true,
