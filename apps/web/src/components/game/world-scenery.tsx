@@ -1,7 +1,7 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
   ALL_BUSHES,
@@ -150,25 +150,119 @@ function River({ quality }: { quality: SceneQuality }) {
 
   return (
     <group>
-      {segments.map((segment, index) => (
-        <mesh
-          key={index}
-          position={[segment.x, 0.16, segment.z]}
-          rotation={[0, segment.angle, 0]}
-          receiveShadow={quality === "desktop"}
-        >
-          <boxGeometry args={[2.85, 0.09, segment.length]} />
-          <meshStandardMaterial
-            color="#55B8CE"
-            roughness={0.2}
-            metalness={0.06}
-          />
-        </mesh>
-      ))}
-      {BRIDGE_POSITIONS.map((z) => (
-        <Bridge key={z} z={z} quality={quality} />
-      ))}
+      {quality === "mobile" ? (
+        <MobileRiver segments={segments} />
+      ) : (
+        segments.map((segment, index) => (
+          <mesh
+            key={index}
+            position={[segment.x, 0.16, segment.z]}
+            rotation={[0, segment.angle, 0]}
+            receiveShadow={quality === "desktop"}
+          >
+            <boxGeometry args={[2.85, 0.09, segment.length]} />
+            <meshStandardMaterial
+              color="#55B8CE"
+              roughness={0.2}
+              metalness={0.06}
+            />
+          </mesh>
+        ))
+      )}
+      {quality === "mobile" ? (
+        <MobileBridges />
+      ) : (
+        BRIDGE_POSITIONS.map((z) => <Bridge key={z} z={z} quality={quality} />)
+      )}
     </group>
+  );
+}
+
+type RiverSegment = {
+  x: number;
+  z: number;
+  angle: number;
+  length: number;
+};
+
+function MobileRiver({ segments }: { segments: RiverSegment[] }) {
+  const water = useRef<THREE.InstancedMesh>(null);
+  useLayoutEffect(() => {
+    segments.forEach((segment, index) => {
+      setInstanceTransform(
+        water.current,
+        index,
+        [segment.x, 0.16, segment.z],
+        [1, 1, segment.length],
+        [0, segment.angle, 0],
+      );
+    });
+    finishInstances(water.current);
+  }, [segments]);
+  return (
+    <instancedMesh ref={water} args={[undefined, undefined, segments.length]}>
+      <boxGeometry args={[2.85, 0.09, 1]} />
+      <meshLambertMaterial color="#55B8CE" transparent opacity={0.94} />
+    </instancedMesh>
+  );
+}
+
+function MobileBridges() {
+  const lightPlanks = useRef<THREE.InstancedMesh>(null);
+  const darkPlanks = useRef<THREE.InstancedMesh>(null);
+  const supports = useRef<THREE.InstancedMesh>(null);
+  useLayoutEffect(() => {
+    let lightIndex = 0;
+    let darkIndex = 0;
+    let supportIndex = 0;
+    for (const z of BRIDGE_POSITIONS) {
+      const x = riverX(z);
+      const y = terrainHeight(x, z) + 0.27;
+      for (let index = 0; index < 7; index += 1) {
+        const target = index % 2 ? darkPlanks.current : lightPlanks.current;
+        const targetIndex = index % 2 ? darkIndex++ : lightIndex++;
+        setInstanceTransform(
+          target,
+          targetIndex,
+          [x, y, z + (index - 3) * 0.36],
+          [1, 1, 1],
+        );
+      }
+      for (const offset of [-1.62, 1.62]) {
+        setInstanceTransform(
+          supports.current,
+          supportIndex++,
+          [x + offset, y - 0.18, z],
+          [1, 1, 1],
+        );
+      }
+    }
+    finishInstances(lightPlanks.current, darkPlanks.current, supports.current);
+  }, []);
+  return (
+    <>
+      <instancedMesh
+        ref={lightPlanks}
+        args={[undefined, undefined, BRIDGE_POSITIONS.length * 4]}
+      >
+        <boxGeometry args={[3.65, 0.18, 0.3]} />
+        <meshLambertMaterial color="#BC7B48" />
+      </instancedMesh>
+      <instancedMesh
+        ref={darkPlanks}
+        args={[undefined, undefined, BRIDGE_POSITIONS.length * 3]}
+      >
+        <boxGeometry args={[3.65, 0.18, 0.3]} />
+        <meshLambertMaterial color="#A8683D" />
+      </instancedMesh>
+      <instancedMesh
+        ref={supports}
+        args={[undefined, undefined, BRIDGE_POSITIONS.length * 2]}
+      >
+        <boxGeometry args={[0.18, 0.25, 2.6]} />
+        <meshLambertMaterial color="#70452F" />
+      </instancedMesh>
+    </>
   );
 }
 
@@ -377,6 +471,316 @@ function Plant({
   );
 }
 
+type TreeItem = (typeof ALL_TREES)[number];
+type BushItem = (typeof ALL_BUSHES)[number];
+type RockItem = (typeof ROCKS)[number];
+type PlantItem = (typeof PLANTS)[number];
+const INSTANCE_TRANSFORM = new THREE.Object3D();
+
+function setInstanceTransform(
+  mesh: THREE.InstancedMesh | null,
+  index: number,
+  position: [number, number, number],
+  scale: [number, number, number],
+  rotation: [number, number, number] = [0, 0, 0],
+) {
+  if (!mesh) return;
+  const transform = INSTANCE_TRANSFORM;
+  transform.position.set(...position);
+  transform.rotation.set(...rotation);
+  transform.scale.set(...scale);
+  transform.updateMatrix();
+  mesh.setMatrixAt(index, transform.matrix);
+}
+
+function finishInstances(...meshes: Array<THREE.InstancedMesh | null>) {
+  for (const mesh of meshes) {
+    if (!mesh) continue;
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }
+}
+
+function MobileTrees({ items }: { items: TreeItem[] }) {
+  const trunk = useRef<THREE.InstancedMesh>(null);
+  const crown = useRef<THREE.InstancedMesh>(null);
+  const crownLeft = useRef<THREE.InstancedMesh>(null);
+  const crownRight = useRef<THREE.InstancedMesh>(null);
+
+  useLayoutEffect(() => {
+    items.forEach(([x, z, scale], index) => {
+      const y = terrainHeight(x, z);
+      setInstanceTransform(
+        trunk.current,
+        index,
+        [x, y + 1.25 * scale, z],
+        [scale, scale, scale],
+      );
+      setInstanceTransform(
+        crown.current,
+        index,
+        [x, y + 3.15 * scale, z],
+        [scale, scale * 1.05, scale * 0.96],
+      );
+      setInstanceTransform(
+        crownLeft.current,
+        index,
+        [x - 0.8 * scale, y + 2.75 * scale, z + 0.3 * scale],
+        [scale, scale, scale],
+      );
+      setInstanceTransform(
+        crownRight.current,
+        index,
+        [x + 0.78 * scale, y + 2.75 * scale, z + 0.2 * scale],
+        [scale, scale, scale],
+      );
+    });
+    finishInstances(
+      trunk.current,
+      crown.current,
+      crownLeft.current,
+      crownRight.current,
+    );
+  }, [items]);
+
+  return (
+    <>
+      <instancedMesh ref={trunk} args={[undefined, undefined, items.length]}>
+        <cylinderGeometry args={[0.28, 0.42, 2.5, 10]} />
+        <meshLambertMaterial color="#855333" />
+      </instancedMesh>
+      <instancedMesh ref={crown} args={[undefined, undefined, items.length]}>
+        <sphereGeometry args={[1.45, 12, 9]} />
+        <meshLambertMaterial color="#2F7D4A" />
+      </instancedMesh>
+      <instancedMesh
+        ref={crownLeft}
+        args={[undefined, undefined, items.length]}
+      >
+        <sphereGeometry args={[0.9, 12, 9]} />
+        <meshLambertMaterial color="#3E9152" />
+      </instancedMesh>
+      <instancedMesh
+        ref={crownRight}
+        args={[undefined, undefined, items.length]}
+      >
+        <sphereGeometry args={[0.85, 12, 9]} />
+        <meshLambertMaterial color="#4BA15A" />
+      </instancedMesh>
+    </>
+  );
+}
+
+function MobileBushes({ items }: { items: BushItem[] }) {
+  const left = useRef<THREE.InstancedMesh>(null);
+  const right = useRef<THREE.InstancedMesh>(null);
+  const top = useRef<THREE.InstancedMesh>(null);
+  const flowerLeft = useRef<THREE.InstancedMesh>(null);
+  const flowerRight = useRef<THREE.InstancedMesh>(null);
+
+  useLayoutEffect(() => {
+    items.forEach(([x, z, scale], index) => {
+      const y = terrainHeight(x, z) + 0.48 * scale;
+      setInstanceTransform(
+        left.current,
+        index,
+        [x - 0.48 * scale, y, z],
+        [scale, scale * 0.9, scale * 1.05],
+      );
+      setInstanceTransform(
+        right.current,
+        index,
+        [x + 0.42 * scale, y + 0.05 * scale, z],
+        [scale * 1.05, scale * 0.92, scale],
+      );
+      setInstanceTransform(
+        top.current,
+        index,
+        [x, y + 0.38 * scale, z + 0.12 * scale],
+        [scale, scale, scale],
+      );
+      setInstanceTransform(
+        flowerLeft.current,
+        index,
+        [x - 0.46 * scale, y + 0.42 * scale, z - 0.48 * scale],
+        [scale, scale, scale],
+      );
+      setInstanceTransform(
+        flowerRight.current,
+        index,
+        [x + 0.55 * scale, y + 0.28 * scale, z - 0.45 * scale],
+        [scale, scale, scale],
+      );
+    });
+    finishInstances(
+      left.current,
+      right.current,
+      top.current,
+      flowerLeft.current,
+      flowerRight.current,
+    );
+  }, [items]);
+
+  return (
+    <>
+      <instancedMesh ref={left} args={[undefined, undefined, items.length]}>
+        <sphereGeometry args={[0.7, 10, 8]} />
+        <meshLambertMaterial color="#3F9850" />
+      </instancedMesh>
+      <instancedMesh ref={right} args={[undefined, undefined, items.length]}>
+        <sphereGeometry args={[0.78, 10, 8]} />
+        <meshLambertMaterial color="#54AA57" />
+      </instancedMesh>
+      <instancedMesh ref={top} args={[undefined, undefined, items.length]}>
+        <sphereGeometry args={[0.72, 10, 8]} />
+        <meshLambertMaterial color="#68B95C" />
+      </instancedMesh>
+      <instancedMesh
+        ref={flowerLeft}
+        args={[undefined, undefined, items.length]}
+      >
+        <sphereGeometry args={[0.1, 6, 5]} />
+        <meshBasicMaterial color="#F4CF5A" />
+      </instancedMesh>
+      <instancedMesh
+        ref={flowerRight}
+        args={[undefined, undefined, items.length]}
+      >
+        <sphereGeometry args={[0.1, 6, 5]} />
+        <meshBasicMaterial color="#F4CF5A" />
+      </instancedMesh>
+    </>
+  );
+}
+
+function MobileRocks({ items }: { items: RockItem[] }) {
+  const rocks = useRef<THREE.InstancedMesh>(null);
+  useLayoutEffect(() => {
+    items.forEach(([x, z, scale, rotation], index) => {
+      setInstanceTransform(
+        rocks.current,
+        index,
+        [x, terrainHeight(x, z) + scale * 0.35, z],
+        [scale, scale * 0.72, scale * 0.9],
+        [0.1, rotation, -0.08],
+      );
+    });
+    finishInstances(rocks.current);
+  }, [items]);
+  return (
+    <instancedMesh ref={rocks} args={[undefined, undefined, items.length]}>
+      <sphereGeometry args={[0.9, 12, 9]} />
+      <meshLambertMaterial color="#718A7D" />
+    </instancedMesh>
+  );
+}
+
+function MobilePlants({ items }: { items: PlantItem[] }) {
+  const left = useRef<THREE.InstancedMesh>(null);
+  const middle = useRef<THREE.InstancedMesh>(null);
+  const right = useRef<THREE.InstancedMesh>(null);
+  const flowers = useRef<THREE.InstancedMesh>(null);
+  useLayoutEffect(() => {
+    items.forEach(([x, z], index) => {
+      const y = terrainHeight(x, z);
+      setInstanceTransform(
+        left.current,
+        index,
+        [x - 0.22, y + 0.32, z],
+        [1, 1, 1],
+        [0, 0, -0.352],
+      );
+      setInstanceTransform(middle.current, index, [x, y + 0.38, z], [1, 1, 1]);
+      setInstanceTransform(
+        right.current,
+        index,
+        [x + 0.22, y + 0.44, z],
+        [1, 1, 1],
+        [0, 0, 0.352],
+      );
+      setInstanceTransform(flowers.current, index, [x, y + 0.68, z], [1, 1, 1]);
+    });
+    finishInstances(
+      left.current,
+      middle.current,
+      right.current,
+      flowers.current,
+    );
+  }, [items]);
+  return (
+    <>
+      <instancedMesh ref={left} args={[undefined, undefined, items.length]}>
+        <capsuleGeometry args={[0.11, 0.45, 2, 5]} />
+        <meshLambertMaterial color="#62AC52" />
+      </instancedMesh>
+      <instancedMesh ref={middle} args={[undefined, undefined, items.length]}>
+        <capsuleGeometry args={[0.11, 0.45, 2, 5]} />
+        <meshLambertMaterial color="#82C95E" />
+      </instancedMesh>
+      <instancedMesh ref={right} args={[undefined, undefined, items.length]}>
+        <capsuleGeometry args={[0.11, 0.45, 2, 5]} />
+        <meshLambertMaterial color="#62AC52" />
+      </instancedMesh>
+      <instancedMesh ref={flowers} args={[undefined, undefined, items.length]}>
+        <sphereGeometry args={[0.14, 8, 6]} />
+        <meshBasicMaterial color="#F3C453" />
+      </instancedMesh>
+    </>
+  );
+}
+
+function MobileScenery({
+  depletedResources,
+}: {
+  depletedResources: ReadonlySet<string>;
+}) {
+  const trees = useMemo(
+    () =>
+      ALL_TREES.filter(
+        (_, index) =>
+          !depletedResources.has(`tree-${index}`) &&
+          isVisibleSceneryItem("mobile", index, TREES.length),
+      ),
+    [depletedResources],
+  );
+  const bushes = useMemo(
+    () =>
+      ALL_BUSHES.filter(
+        (_, index) =>
+          !depletedResources.has(`bush-${index}`) &&
+          isVisibleSceneryItem("mobile", index, BUSHES.length),
+      ),
+    [depletedResources],
+  );
+  const rocks = useMemo(
+    () => [
+      ...ROCKS,
+      ...EXTRA_ROCKS.filter((_, index) =>
+        isVisibleSceneryItem("mobile", index, 0),
+      ),
+    ],
+    [],
+  );
+  const plants = useMemo(
+    () => [
+      ...PLANTS,
+      ...EXTRA_PLANTS.filter((_, index) =>
+        isVisibleSceneryItem("mobile", index, 0),
+      ),
+    ],
+    [],
+  );
+
+  return (
+    <>
+      <MobileTrees items={trees} />
+      <MobileBushes items={bushes} />
+      <MobileRocks items={rocks} />
+      <MobilePlants items={plants} />
+    </>
+  );
+}
+
 function SnackCritter({
   prey,
   quality,
@@ -468,59 +872,65 @@ export function Scenery({
       <Sea quality={quality} />
       <Terrain quality={quality} />
       <River quality={quality} />
-      {ALL_TREES.map(([x, z, scale], index) =>
-        depletedResources.has(`tree-${index}`) ||
-        !isVisibleSceneryItem(quality, index, TREES.length) ? null : (
-          <Tree
-            key={`tree-${index}`}
-            x={x}
-            z={z}
-            scale={scale}
-            quality={quality}
-          />
-        ),
-      )}
-      {ALL_BUSHES.map(([x, z, scale], index) =>
-        depletedResources.has(`bush-${index}`) ||
-        !isVisibleSceneryItem(quality, index, BUSHES.length) ? null : (
-          <Bush
-            key={`bush-${index}`}
-            x={x}
-            z={z}
-            scale={scale}
-            quality={quality}
-          />
-        ),
-      )}
-      {ROCKS.map(([x, z, scale, rotation]) => (
-        <Rock
-          key={`${x}-${z}`}
-          x={x}
-          z={z}
-          scale={scale}
-          rotation={rotation}
-          quality={quality}
-        />
-      ))}
-      {EXTRA_ROCKS.map(([x, z, scale, rotation], index) =>
-        !isVisibleSceneryItem(quality, index, 0) ? null : (
-          <Rock
-            key={`extra-${x}-${z}`}
-            x={x}
-            z={z}
-            scale={scale}
-            rotation={rotation}
-            quality={quality}
-          />
-        ),
-      )}
-      {PLANTS.map(([x, z]) => (
-        <Plant key={`${x}-${z}`} x={x} z={z} quality={quality} />
-      ))}
-      {EXTRA_PLANTS.map(([x, z], index) =>
-        !isVisibleSceneryItem(quality, index, 0) ? null : (
-          <Plant key={`extra-${x}-${z}`} x={x} z={z} quality={quality} />
-        ),
+      {quality === "mobile" ? (
+        <MobileScenery depletedResources={depletedResources} />
+      ) : (
+        <>
+          {ALL_TREES.map(([x, z, scale], index) =>
+            depletedResources.has(`tree-${index}`) ||
+            !isVisibleSceneryItem(quality, index, TREES.length) ? null : (
+              <Tree
+                key={`tree-${index}`}
+                x={x}
+                z={z}
+                scale={scale}
+                quality={quality}
+              />
+            ),
+          )}
+          {ALL_BUSHES.map(([x, z, scale], index) =>
+            depletedResources.has(`bush-${index}`) ||
+            !isVisibleSceneryItem(quality, index, BUSHES.length) ? null : (
+              <Bush
+                key={`bush-${index}`}
+                x={x}
+                z={z}
+                scale={scale}
+                quality={quality}
+              />
+            ),
+          )}
+          {ROCKS.map(([x, z, scale, rotation]) => (
+            <Rock
+              key={`${x}-${z}`}
+              x={x}
+              z={z}
+              scale={scale}
+              rotation={rotation}
+              quality={quality}
+            />
+          ))}
+          {EXTRA_ROCKS.map(([x, z, scale, rotation], index) =>
+            !isVisibleSceneryItem(quality, index, 0) ? null : (
+              <Rock
+                key={`extra-${x}-${z}`}
+                x={x}
+                z={z}
+                scale={scale}
+                rotation={rotation}
+                quality={quality}
+              />
+            ),
+          )}
+          {PLANTS.map(([x, z]) => (
+            <Plant key={`${x}-${z}`} x={x} z={z} quality={quality} />
+          ))}
+          {EXTRA_PLANTS.map(([x, z], index) =>
+            !isVisibleSceneryItem(quality, index, 0) ? null : (
+              <Plant key={`extra-${x}-${z}`} x={x} z={z} quality={quality} />
+            ),
+          )}
+        </>
       )}
       {PREY.map((prey) =>
         depletedResources.has(prey.id) ? null : (

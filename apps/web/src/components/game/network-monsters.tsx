@@ -15,12 +15,60 @@ import {
   MonsterVisual,
   type MonsterMotionState,
 } from "@/components/game/monster-model";
+import { getMonsterColor } from "@/components/game/monster-dna";
+import {
+  getInitialNetworkMonsterDetail,
+  getNetworkMonsterDetail,
+  type NetworkMonsterDetail,
+} from "@/components/game/network-detail";
 import type { SceneQuality } from "@/components/game/world-scenery";
 import type {
   WorldConnection,
   WorldEntityRecord,
 } from "@/lib/net/world-connection";
 import { renderTime, sampleAt } from "@/lib/net/interpolation";
+
+const PROXY_GEOMETRY = new THREE.SphereGeometry(1, 10, 7);
+const proxyMaterials = new Map<string, THREE.MeshLambertMaterial>();
+
+function proxyMaterial(color: string) {
+  const existing = proxyMaterials.get(color);
+  if (existing) return existing;
+  const material = new THREE.MeshLambertMaterial({ color });
+  proxyMaterials.set(color, material);
+  return material;
+}
+
+function proxyBodyScale(body: WorldEntityRecord["dna"]["body"]) {
+  if (body === "long" || body === "saurian" || body === "aquatic") {
+    return [0.72, 0.58, 1.08] as const;
+  }
+  if (body === "biped" || body === "avian") {
+    return [0.58, 0.88, 0.62] as const;
+  }
+  if (body === "slug") return [0.72, 0.38, 1.05] as const;
+  if (body === "rhino" || body === "pig") {
+    return [0.82, 0.58, 1.02] as const;
+  }
+  return [0.72, 0.72, 0.82] as const;
+}
+
+function MonsterProxy({ record }: { record: WorldEntityRecord }) {
+  const scale = getMonsterSizeScale(record.dna.size);
+  const bodyScale = proxyBodyScale(record.dna.body);
+  const material = proxyMaterial(getMonsterColor(record.dna.color).hex);
+  return (
+    <mesh
+      geometry={PROXY_GEOMETRY}
+      material={material}
+      position={[0, 0.72 * scale, 0]}
+      scale={
+        bodyScale.map((value) => value * scale) as [number, number, number]
+      }
+      dispose={null}
+    />
+  );
+}
 
 /**
  * One authoritative monster. Position comes from the interpolated network
@@ -55,11 +103,49 @@ function NetworkMonsterActor({
     record?.net.z ?? 0,
   ]);
   const [dna] = useState(() => record?.dna);
+  const [detail, setDetail] = useState<NetworkMonsterDetail>(() => {
+    const self = connection.self?.net;
+    const distance =
+      self && record
+        ? Math.hypot(record.net.x - self.x, record.net.z - self.z)
+        : Number.POSITIVE_INFINITY;
+    return getInitialNetworkMonsterDetail(distance, quality);
+  });
+  const detailRef = useRef(detail);
+  const nextDetailCheck = useRef(
+    0.08 +
+      ([...entityId].reduce(
+        (sum, character) => sum + character.charCodeAt(0),
+        0,
+      ) %
+        23) /
+        23,
+  );
 
-  useFrame(({ clock }, delta) => {
+  useFrame(({ camera, clock }, delta) => {
     const live: WorldEntityRecord | undefined =
       connection.entities.get(entityId);
     if (!root.current || !visual.current || !live) return;
+
+    if (clock.elapsedTime >= nextDetailCheck.current) {
+      nextDetailCheck.current = clock.elapsedTime + 0.32;
+      const distance = Math.hypot(
+        live.net.x - camera.position.x,
+        live.net.z - camera.position.z,
+      );
+      const nextDetail = getNetworkMonsterDetail(
+        distance,
+        quality,
+        detailRef.current,
+      );
+      if (nextDetail !== detailRef.current) {
+        detailRef.current = nextDetail;
+        setDetail(nextDetail);
+      }
+    }
+
+    root.current.visible = detailRef.current !== "hidden";
+    if (detailRef.current === "hidden") return;
 
     const previousX = root.current.position.x;
     const previousZ = root.current.position.z;
@@ -177,40 +263,47 @@ function NetworkMonsterActor({
   return (
     <group ref={root} position={initialPosition}>
       <group ref={visual}>
-        <MonsterVisual
-          dna={dna}
-          motionRef={motion}
-          castShadow={quality === "desktop"}
-        />
+        {detail === "full" ? (
+          <MonsterVisual
+            dna={dna}
+            motionRef={motion}
+            castShadow={quality === "desktop"}
+            geometryQuality="remote"
+          />
+        ) : detail === "proxy" && record ? (
+          <MonsterProxy record={record} />
+        ) : null}
       </group>
-      <Billboard position={[0, barHeight, 0]} follow>
-        <group ref={vitals}>
-          <mesh position={[0, 0.08, 0]} scale={[0.58, 0.065, 0.025]}>
-            <planeGeometry args={[2, 1]} />
-            <meshBasicMaterial color="#173F35" transparent opacity={0.72} />
-          </mesh>
-          <mesh
-            ref={healthFill}
-            position={[0, 0.08, 0.01]}
-            scale={[1, 0.045, 0.025]}
-          >
-            <planeGeometry args={[1.04, 1]} />
-            <meshBasicMaterial color="#F18C73" />
-          </mesh>
-          <mesh position={[0, -0.08, 0]} scale={[0.58, 0.055, 0.025]}>
-            <planeGeometry args={[2, 1]} />
-            <meshBasicMaterial color="#173F35" transparent opacity={0.72} />
-          </mesh>
-          <mesh
-            ref={energyFill}
-            position={[0, -0.08, 0.01]}
-            scale={[1, 0.035, 0.025]}
-          >
-            <planeGeometry args={[1.04, 1]} />
-            <meshBasicMaterial color="#B6D94A" />
-          </mesh>
-        </group>
-      </Billboard>
+      {detail === "full" && (
+        <Billboard position={[0, barHeight, 0]} follow>
+          <group ref={vitals}>
+            <mesh position={[0, 0.08, 0]} scale={[0.58, 0.065, 0.025]}>
+              <planeGeometry args={[2, 1]} />
+              <meshBasicMaterial color="#173F35" transparent opacity={0.72} />
+            </mesh>
+            <mesh
+              ref={healthFill}
+              position={[0, 0.08, 0.01]}
+              scale={[1, 0.045, 0.025]}
+            >
+              <planeGeometry args={[1.04, 1]} />
+              <meshBasicMaterial color="#F18C73" />
+            </mesh>
+            <mesh position={[0, -0.08, 0]} scale={[0.58, 0.055, 0.025]}>
+              <planeGeometry args={[2, 1]} />
+              <meshBasicMaterial color="#173F35" transparent opacity={0.72} />
+            </mesh>
+            <mesh
+              ref={energyFill}
+              position={[0, -0.08, 0.01]}
+              scale={[1, 0.035, 0.025]}
+            >
+              <planeGeometry args={[1.04, 1]} />
+              <meshBasicMaterial color="#B6D94A" />
+            </mesh>
+          </group>
+        </Billboard>
+      )}
     </group>
   );
 }

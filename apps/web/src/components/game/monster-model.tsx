@@ -17,6 +17,7 @@ type MonsterVisualProps = {
   wingRefs?: Array<RefObject<THREE.Group | null>>;
   motionRef?: RefObject<MonsterMotionState>;
   castShadow?: boolean;
+  geometryQuality?: "hero" | "remote";
 };
 
 export type MonsterMotionState = {
@@ -1357,8 +1358,11 @@ type SmoothRig = {
   material: THREE.MeshStandardMaterial;
 };
 
-function getSmoothGeometryCacheKey(dna: MonsterDna) {
-  return `smooth-hybrid-rig-v9:${JSON.stringify(dna)}`;
+function getSmoothGeometryCacheKey(
+  dna: MonsterDna,
+  geometryQuality: "hero" | "remote",
+) {
+  return `smooth-hybrid-rig-v10:${geometryQuality}:${JSON.stringify(dna)}`;
 }
 
 function pruneSmoothGeometryCache() {
@@ -1767,8 +1771,9 @@ function buildSmoothGeometry(
   profile: BodyProfile,
   bodyColor: string,
   accentColor: string,
+  geometryQuality: "hero" | "remote",
 ) {
-  const cacheKey = getSmoothGeometryCacheKey(dna);
+  const cacheKey = getSmoothGeometryCacheKey(dna, geometryQuality);
   const cached = smoothGeometryCache.get(cacheKey);
   if (cached) {
     cached.lastUsedAt = Date.now();
@@ -1777,15 +1782,23 @@ function buildSmoothGeometry(
 
   const temporaryMaterial = new THREE.MeshStandardMaterial();
   const fieldResolution =
-    dna.legs === 10
-      ? 92
-      : dna.legs === 8
-        ? 88
+    geometryQuality === "remote"
+      ? dna.legs >= 8
+        ? 52
         : dna.legs === 6
-          ? 76
+          ? 48
           : dna.legs >= 2
-            ? 64
-            : 56;
+            ? 44
+            : 40
+      : dna.legs === 10
+        ? 92
+        : dna.legs === 8
+          ? 88
+          : dna.legs === 6
+            ? 76
+            : dna.legs >= 2
+              ? 64
+              : 56;
   const field = new MarchingCubes(
     fieldResolution,
     temporaryMaterial,
@@ -2139,11 +2152,20 @@ function buildSmoothGeometry(
   return geometry;
 }
 
-function getSmoothGeometryMetrics(dna: MonsterDna) {
+function getSmoothGeometryMetrics(
+  dna: MonsterDna,
+  geometryQuality: "hero" | "remote",
+) {
   const profile = BODY_PROFILES[dna.body];
   const primary = getMonsterColor(dna.color);
   const accent = getAccentColor(dna.accent);
-  const geometry = buildSmoothGeometry(dna, profile, primary.hex, accent.hex);
+  const geometry = buildSmoothGeometry(
+    dna,
+    profile,
+    primary.hex,
+    accent.hex,
+    geometryQuality,
+  );
   const cachedMinimumY = geometry.userData.minimumWorldY;
   return {
     vertices: geometry.getAttribute("position").count,
@@ -2157,9 +2179,16 @@ function createSmoothRig(
   bodyColor: string,
   accentColor: string,
   castShadow: boolean,
+  geometryQuality: "hero" | "remote",
 ): SmoothRig {
-  const cacheKey = getSmoothGeometryCacheKey(dna);
-  const geometry = buildSmoothGeometry(dna, profile, bodyColor, accentColor);
+  const cacheKey = getSmoothGeometryCacheKey(dna, geometryQuality);
+  const geometry = buildSmoothGeometry(
+    dna,
+    profile,
+    bodyColor,
+    accentColor,
+    geometryQuality,
+  );
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 0.64,
@@ -2231,6 +2260,7 @@ function SmoothMonsterCore({
   accentColor,
   castShadow,
   motionRef,
+  geometryQuality,
 }: {
   dna: MonsterDna;
   profile: BodyProfile;
@@ -2238,9 +2268,17 @@ function SmoothMonsterCore({
   accentColor: string;
   castShadow: boolean;
   motionRef?: RefObject<MonsterMotionState>;
+  geometryQuality: "hero" | "remote";
 }) {
   const [rig] = useState(() =>
-    createSmoothRig(dna, profile, bodyColor, accentColor, castShadow),
+    createSmoothRig(
+      dna,
+      profile,
+      bodyColor,
+      accentColor,
+      castShadow,
+      geometryQuality,
+    ),
   );
   const meshRef = useRef<THREE.SkinnedMesh>(null);
   const legBonesRef = useRef<THREE.Bone[]>([]);
@@ -2254,6 +2292,7 @@ function SmoothMonsterCore({
     tailBoneRef.current = rig.tailBone ?? null;
     return () => {
       rig.material.dispose();
+      rig.mesh.skeleton.dispose();
       releaseSmoothGeometry(rig.cacheKey);
     };
   }, [rig]);
@@ -2335,13 +2374,14 @@ function SmoothMonsterVisual({
   wingRefs,
   motionRef,
   castShadow,
+  geometryQuality = "hero",
 }: MonsterVisualProps & { castShadow: boolean }) {
   const primary = getMonsterColor(dna.color);
   const accent = getAccentColor(dna.accent);
   const profile = BODY_PROFILES[dna.body];
   const sizeScale = getMonsterSizeScale(dna.size);
   const buildScale = getMonsterBuildScale(dna.build);
-  const geometryMetrics = getSmoothGeometryMetrics(dna);
+  const geometryMetrics = getSmoothGeometryMetrics(dna, geometryQuality);
   const groundOffset = 0.025 - geometryMetrics.minimumY * buildScale[1];
   const surfaceColorAt = (x: number, y: number, z: number) =>
     new THREE.Color(primary.hex)
@@ -2371,13 +2411,14 @@ function SmoothMonsterVisual({
     <group scale={sizeScale}>
       <group position={[0, groundOffset, 0]} scale={buildScale}>
         <SmoothMonsterCore
-          key={JSON.stringify(dna)}
+          key={`${geometryQuality}:${JSON.stringify(dna)}`}
           dna={dna}
           profile={profile}
           bodyColor={primary.hex}
           accentColor={accent.hex}
           castShadow={castShadow}
           motionRef={motionRef}
+          geometryQuality={geometryQuality}
         />
         <group position={[0, 0, -0.2]}>
           <Face
@@ -2428,6 +2469,7 @@ export function MonsterVisual({
   wingRefs,
   motionRef,
   castShadow = true,
+  geometryQuality = "hero",
 }: MonsterVisualProps) {
   if (dna.mesh === "smooth") {
     return (
@@ -2436,6 +2478,7 @@ export function MonsterVisual({
         wingRefs={wingRefs}
         motionRef={motionRef}
         castShadow={castShadow}
+        geometryQuality={geometryQuality}
       />
     );
   }
