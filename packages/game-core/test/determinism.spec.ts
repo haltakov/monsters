@@ -51,6 +51,8 @@ describe("deterministic simulation", () => {
           entity.dna.adaptation !== "wings" &&
           entity.dna.legShape !== "flippers" &&
           entity.dna.tail !== "fin" &&
+          entity.dna.pattern !== "rings" &&
+          entity.dna.horns !== "buds" &&
           !canMonsterSwim(entity.dna),
       ),
     ).toBe(true);

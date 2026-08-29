@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_MONSTER_DNA, decodeMonsterDna, encodeMonsterDna } from "../src/dna/dna";
+import {
+  DEFAULT_MONSTER_DNA,
+  SMOOTH_HORN_SHAPES,
+  SMOOTH_PATTERNS,
+  decodeMonsterDna,
+  encodeMonsterDna,
+} from "../src/dna/dna";
 import { createSeededRandom } from "../src/rng";
 import {
   ADULT_AGE_SECONDS,
@@ -15,7 +21,11 @@ import { emptyWorld, makeEntity, makePlayer, run, withDna } from "./helpers";
 describe("genetics", () => {
   it("inherits every gene from one of the two parents apart from mutations", () => {
     const first = withDna({ body: "round", color: "moss", diet: "herbivore" });
-    const second = withDna({ body: "saurian", color: "ember", diet: "carnivore" });
+    const second = withDna({
+      body: "saurian",
+      color: "ember",
+      diet: "carnivore",
+    });
     const { dna, mutations } = mixMonsterDna(
       first,
       second,
@@ -36,17 +46,41 @@ describe("genetics", () => {
     const parentB = withDna({ body: "bean" });
     const one = mixMonsterDna(parentA, parentB, createSeededRandom(99), 1);
     const two = mixMonsterDna(parentA, parentB, createSeededRandom(99), 1);
-    const different = mixMonsterDna(parentA, parentB, createSeededRandom(100), 1);
+    const different = mixMonsterDna(
+      parentA,
+      parentB,
+      createSeededRandom(100),
+      1,
+    );
 
     expect(one).toEqual(two);
     expect(one.mutations).toBeGreaterThan(0);
     expect(different.dna).not.toEqual(one.dna);
   });
 
+  it("keeps weak legacy traits out of new organic mutations", () => {
+    expect(SMOOTH_PATTERNS).not.toContain("rings");
+    expect(SMOOTH_HORN_SHAPES).not.toContain("buds");
+
+    for (let seed = 0; seed < 100; seed += 1) {
+      const result = mixMonsterDna(
+        withDna({ pattern: "plain", horns: "none" }),
+        withDna({ pattern: "spots", horns: "spikes" }),
+        createSeededRandom(seed),
+        1,
+      );
+      expect(result.dna.pattern).not.toBe("rings");
+      expect(result.dna.horns).not.toBe("buds");
+    }
+  });
+
   it("scores identical DNA as fully similar", () => {
     expect(dnaSimilarity(DEFAULT_MONSTER_DNA, DEFAULT_MONSTER_DNA)).toBe(1);
     expect(
-      dnaSimilarity(DEFAULT_MONSTER_DNA, withDna({ body: "aquatic", diet: "carnivore" })),
+      dnaSimilarity(
+        DEFAULT_MONSTER_DNA,
+        withDna({ body: "aquatic", diet: "carnivore" }),
+      ),
     ).toBeLessThan(1);
   });
 
@@ -68,7 +102,9 @@ describe("pairing and eggs", () => {
       { type: "action", entityId: "p1", action: "pair" },
     ]);
     expect(
-      events.some((event) => event.type === "pairFailed" && event.reason === "cooldown"),
+      events.some(
+        (event) => event.type === "pairFailed" && event.reason === "cooldown",
+      ),
     ).toBe(true);
 
     player.mateCooldownUntil = 0;
@@ -77,7 +113,9 @@ describe("pairing and eggs", () => {
       { type: "action", entityId: "p1", action: "pair" },
     ]);
     expect(
-      events.some((event) => event.type === "pairFailed" && event.reason === "tooFar"),
+      events.some(
+        (event) => event.type === "pairFailed" && event.reason === "tooFar",
+      ),
     ).toBe(true);
 
     partner.x = 1;
@@ -86,7 +124,9 @@ describe("pairing and eggs", () => {
       { type: "action", entityId: "p1", action: "pair" },
     ]);
     expect(
-      events.some((event) => event.type === "pairFailed" && event.reason === "noPartner"),
+      events.some(
+        (event) => event.type === "pairFailed" && event.reason === "noPartner",
+      ),
     ).toBe(true);
   });
 
@@ -134,7 +174,8 @@ describe("pairing and eggs", () => {
     ]);
     expect(
       rejected.some(
-        (event) => event.type === "pairResolved" && event.outcome === "rejected",
+        (event) =>
+          event.type === "pairResolved" && event.outcome === "rejected",
       ),
     ).toBe(true);
     expect(state.eggs).toHaveLength(0);
@@ -148,7 +189,8 @@ describe("pairing and eggs", () => {
     ]);
     expect(
       accepted.some(
-        (event) => event.type === "pairResolved" && event.outcome === "accepted",
+        (event) =>
+          event.type === "pairResolved" && event.outcome === "accepted",
       ),
     ).toBe(true);
     expect(state.eggs).toHaveLength(1);
@@ -156,7 +198,10 @@ describe("pairing and eggs", () => {
 
   it("expires an unanswered player pairing request", () => {
     const state = emptyWorld();
-    state.entities.push(makePlayer("p1", { x: 0, z: 0 }), makePlayer("p2", { x: 2, z: 0 }));
+    state.entities.push(
+      makePlayer("p1", { x: 0, z: 0 }),
+      makePlayer("p2", { x: 2, z: 0 }),
+    );
 
     stepWorld(state, TICK_SECONDS, [
       { type: "action", entityId: "p1", action: "pair" },

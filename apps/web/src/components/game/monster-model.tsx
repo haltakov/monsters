@@ -1362,7 +1362,7 @@ function getSmoothGeometryCacheKey(
   dna: MonsterDna,
   geometryQuality: "hero" | "remote",
 ) {
-  return `smooth-hybrid-rig-v10:${geometryQuality}:${JSON.stringify(dna)}`;
+  return `smooth-hybrid-rig-v14:${geometryQuality}:${JSON.stringify(dna)}`;
 }
 
 function pruneSmoothGeometryCache() {
@@ -1846,7 +1846,13 @@ function buildSmoothGeometry(
   });
 
   const legFootY =
-    dna.legShape === "springy" || dna.legShape === "paws" ? 0.08 : 0.14;
+    dna.legShape === "stilt"
+      ? -0.28
+      : dna.legShape === "springy"
+        ? -0.02
+        : dna.legShape === "paws" || dna.legShape === "clawed"
+          ? 0.04
+          : 0.12;
   const legHips = legPositions(dna.legs, profile).map(([x, , z], index) => {
     const hipY = cy - sy * 0.52;
     const outward =
@@ -1854,10 +1860,10 @@ function buildSmoothGeometry(
         ? x < 0
           ? -0.16
           : 0.16
-        : dna.legShape === "paws"
+        : dna.legShape === "paws" || dna.legShape === "clawed"
           ? x < 0
-            ? -0.13
-            : 0.13
+            ? -0.15
+            : 0.15
           : 0;
     const footX = x + outward;
     const legDensityScale =
@@ -1868,19 +1874,22 @@ function buildSmoothGeometry(
           : dna.legs === 6
             ? 0.84
             : 1;
+    const footReachScale = legDensityScale;
     const legStrength =
       (dna.legShape === "stubby"
         ? 0.3
         : dna.legShape === "paws"
           ? 0.33
-          : dna.legShape === "stilt"
-            ? 0.18
-            : 0.24) * legDensityScale;
+          : dna.legShape === "clawed"
+            ? 0.23
+            : dna.legShape === "stilt"
+              ? 0.14
+              : 0.24) * legDensityScale;
     const kneePush =
       dna.legShape === "springy"
-        ? 0.22
+        ? 0.42
         : dna.legShape === "clawed"
-          ? 0.11
+          ? 0.18
           : 0.05;
     for (let step = 0; step < 5; step += 1) {
       const progress = step / 4;
@@ -1897,17 +1906,110 @@ function buildSmoothGeometry(
       field,
       footX,
       legFootY,
-      z - (dna.legShape === "clawed" ? 0.12 : 0),
-      (dna.legShape === "hoof" || dna.legShape === "flippers"
-        ? 0.34
-        : dna.legShape === "paws"
-          ? 0.35
-          : dna.legShape === "stilt"
-            ? 0.2
-            : 0.25) * legDensityScale,
+      z - (dna.legShape === "clawed" ? 0.18 * footReachScale : 0),
+      (dna.legShape === "hoof"
+        ? 0.21
+        : dna.legShape === "flippers"
+          ? 0.34
+          : dna.legShape === "paws"
+            ? 0.36
+            : dna.legShape === "stilt"
+              ? 0.16
+              : 0.25) * legDensityScale,
       10.8,
     );
-    if (dna.legShape === "flippers") {
+
+    if (dna.legShape === "hoof") {
+      for (const side of [-1, 1]) {
+        addSmoothBall(
+          field,
+          footX + side * 0.16 * legDensityScale,
+          legFootY - 0.01,
+          z - 0.19 * footReachScale,
+          0.21 * legDensityScale,
+          11.2,
+        );
+        if (geometryQuality === "hero") {
+          addSmoothBall(
+            field,
+            footX + side * 0.17 * legDensityScale,
+            legFootY - 0.02,
+            z - 0.34 * footReachScale,
+            0.16 * legDensityScale,
+            11.4,
+          );
+        }
+      }
+    } else if (dna.legShape === "springy") {
+      addSmoothBall(
+        field,
+        footX,
+        legFootY + 0.15,
+        z + 0.25 * footReachScale,
+        0.23 * legDensityScale,
+        10.9,
+      );
+      addSmoothBall(
+        field,
+        footX,
+        legFootY - 0.02,
+        z - 0.38 * footReachScale,
+        0.22 * legDensityScale,
+        10.9,
+      );
+      if (geometryQuality === "hero") {
+        addSmoothBall(
+          field,
+          footX,
+          legFootY - 0.025,
+          z - 0.55 * footReachScale,
+          0.15 * legDensityScale,
+          11.2,
+        );
+      }
+    } else if (dna.legShape === "clawed") {
+      for (const toe of [-1, 0, 1]) {
+        const toeX = footX + toe * 0.18 * legDensityScale;
+        addSmoothBall(
+          field,
+          toeX,
+          legFootY - 0.01,
+          z - 0.34 * footReachScale,
+          0.17 * legDensityScale,
+          11.4,
+        );
+        if (geometryQuality === "hero") {
+          addSmoothBall(
+            field,
+            toeX,
+            legFootY - 0.025,
+            z - 0.55 * footReachScale,
+            0.13 * legDensityScale,
+            11.5,
+          );
+        }
+      }
+    } else if (dna.legShape === "paws") {
+      for (const toe of [-1, 0, 1]) {
+        addSmoothBall(
+          field,
+          footX + toe * 0.16 * legDensityScale,
+          legFootY - 0.015,
+          z - 0.36 * footReachScale,
+          0.18 * legDensityScale,
+          11.2,
+        );
+      }
+    } else if (dna.legShape === "stilt") {
+      addSmoothBall(
+        field,
+        footX,
+        legFootY - 0.015,
+        z - 0.22 * footReachScale,
+        0.14 * legDensityScale,
+        11.2,
+      );
+    } else if (dna.legShape === "flippers") {
       const flipperReach = dna.legs >= 6 ? 0.18 : 0.32;
       addSmoothBall(
         field,
@@ -1917,6 +2019,26 @@ function buildSmoothGeometry(
         0.34 * legDensityScale,
         10.4,
       );
+      for (const side of [-1, 1]) {
+        addSmoothBall(
+          field,
+          footX + side * 0.2 * legDensityScale,
+          legFootY - 0.01,
+          z - flipperReach * 1.25,
+          0.25 * legDensityScale,
+          10.7,
+        );
+      }
+      if (geometryQuality === "hero") {
+        addSmoothBall(
+          field,
+          footX,
+          legFootY - 0.02,
+          z - flipperReach * 1.75,
+          0.24 * legDensityScale,
+          10.6,
+        );
+      }
     }
     return { x, y: hipY, z, index };
   });
@@ -2033,6 +2155,13 @@ function buildSmoothGeometry(
     mixed
       .copy(primary)
       .lerp(accent, smoothPatternMix(dna, profile, localX, localY, localZ));
+    if (dna.legs > 0) {
+      const footAccent =
+        (1 -
+          THREE.MathUtils.smoothstep(localY, legFootY + 0.05, legFootY + 0.3)) *
+        0.7;
+      mixed.lerp(accent, footAccent);
+    }
     colors[index * 3] = mixed.r;
     colors[index * 3 + 1] = mixed.g;
     colors[index * 3 + 2] = mixed.b;

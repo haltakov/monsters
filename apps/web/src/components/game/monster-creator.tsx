@@ -25,6 +25,8 @@ import {
   PATTERNS,
   RESPIRATIONS,
   SOCIAL_BEHAVIORS,
+  SMOOTH_HORN_SHAPES,
+  SMOOTH_PATTERNS,
   TAIL_SHAPES,
   type MonsterDna,
 } from "@/components/game/monster-dna";
@@ -203,6 +205,7 @@ export function MonsterCreator({
   };
 
   const surpriseMe = () => {
+    const mesh = randomOption(MESH_STYLES);
     updateDraft({
       body: randomOption(BODY_SHAPES),
       legs: randomOption(LEG_COUNTS),
@@ -213,15 +216,15 @@ export function MonsterCreator({
       build: randomOption(MONSTER_BUILDS),
       color: randomOption(MONSTER_COLORS).id,
       accent: randomOption(ACCENT_COLORS).id,
-      pattern: randomOption(PATTERNS),
-      horns: randomOption(HORN_SHAPES),
+      pattern: randomOption(mesh === "smooth" ? SMOOTH_PATTERNS : PATTERNS),
+      horns: randomOption(mesh === "smooth" ? SMOOTH_HORN_SHAPES : HORN_SHAPES),
       ears: randomOption(EAR_SHAPES),
       tail: randomOption(TAIL_SHAPES),
       adaptation: randomOption(ADAPTATIONS),
       diet: randomOption(DIETS),
       breathing: randomOption(RESPIRATIONS),
       social: randomOption(SOCIAL_BEHAVIORS),
-      mesh: randomOption(MESH_STYLES),
+      mesh,
     });
   };
 
@@ -444,13 +447,15 @@ export function MonsterCreator({
               <GeneChoices
                 label={t("creator.pattern")}
                 value={draft.pattern}
-                options={PATTERNS}
+                options={draft.mesh === "smooth" ? SMOOTH_PATTERNS : PATTERNS}
                 onChange={(value) => changeGene("pattern", value)}
               />
               <GeneChoices
                 label={t("creator.horns")}
                 value={draft.horns}
-                options={HORN_SHAPES}
+                options={
+                  draft.mesh === "smooth" ? SMOOTH_HORN_SHAPES : HORN_SHAPES
+                }
                 onChange={(value) => changeGene("horns", value)}
               />
               <GeneChoices

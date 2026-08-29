@@ -3,12 +3,15 @@
 import { Canvas } from "@react-three/fiber";
 import { OrthographicCamera } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AUDIT_SPECIMENS } from "@/components/game/monster-audit-data";
+import {
+  AUDIT_SPECIMENS,
+  FOOT_AUDIT_SPECIMENS,
+} from "@/components/game/monster-audit-data";
 import { MonsterVisual } from "@/components/game/monster-model";
 import type { MonsterMotionState } from "@/components/game/monster-model";
 
 const PAGE_SIZE = 10;
-const PAGE_COUNT = Math.ceil(AUDIT_SPECIMENS.length / PAGE_SIZE);
+type AuditMode = "morphology" | "feet";
 type AuditView = "front" | "side" | "rear";
 const AUDIT_VIEW_ROTATION: Record<AuditView, number> = {
   front: 0.48,
@@ -18,6 +21,7 @@ const AUDIT_VIEW_ROTATION: Record<AuditView, number> = {
 
 export function MonsterAudit() {
   const [page, setPage] = useState(0);
+  const [mode, setMode] = useState<AuditMode>("morphology");
   const [view, setView] = useState<AuditView>("front");
   const idleMotion = useRef<MonsterMotionState>({
     stride: 0,
@@ -27,25 +31,35 @@ export function MonsterAudit() {
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      const requested = Number(
-        new URLSearchParams(window.location.search).get("page"),
-      );
+      const parameters = new URLSearchParams(window.location.search);
+      const requestedMode = parameters.get("mode");
+      const requested = Number(parameters.get("page"));
+      if (requestedMode === "feet") setMode("feet");
       if (Number.isFinite(requested)) {
-        setPage(Math.max(0, Math.min(PAGE_COUNT - 1, Math.floor(requested))));
+        setPage(Math.max(0, Math.floor(requested)));
       }
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  const allSpecimens = mode === "feet" ? FOOT_AUDIT_SPECIMENS : AUDIT_SPECIMENS;
+  const pageCount = Math.ceil(allSpecimens.length / PAGE_SIZE);
+  const safePage = Math.min(page, pageCount - 1);
   const specimens = useMemo(
-    () => AUDIT_SPECIMENS.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-    [page],
+    () => allSpecimens.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE),
+    [allSpecimens, safePage],
   );
 
   const changePage = (next: number) => {
-    const safePage = Math.max(0, Math.min(PAGE_COUNT - 1, next));
-    setPage(safePage);
-    window.history.replaceState(null, "", `?page=${safePage}`);
+    const nextPage = Math.max(0, Math.min(pageCount - 1, next));
+    setPage(nextPage);
+    window.history.replaceState(null, "", `?mode=${mode}&page=${nextPage}`);
+  };
+
+  const changeMode = (nextMode: AuditMode) => {
+    setMode(nextMode);
+    setPage(0);
+    window.history.replaceState(null, "", `?mode=${nextMode}&page=0`);
   };
 
   const cycleView = () => {
@@ -59,7 +73,11 @@ export function MonsterAudit() {
       <header className="monster-audit-header">
         <div>
           <span>SMOOTH MESH · DETERMINISTIC QA</span>
-          <h1>100-monster morphology audit</h1>
+          <h1>
+            {mode === "feet"
+              ? "Smooth foot silhouette audit"
+              : "100-monster morphology audit"}
+          </h1>
         </div>
         <div className="monster-audit-actions">
           <button type="button" onClick={cycleView}>
@@ -71,18 +89,24 @@ export function MonsterAudit() {
           </button>
           <button
             type="button"
-            disabled={page === 0}
-            onClick={() => changePage(page - 1)}
+            onClick={() => changeMode(mode === "feet" ? "morphology" : "feet")}
+          >
+            {mode === "feet" ? "100 monsters" : "Compare feet"}
+          </button>
+          <button
+            type="button"
+            disabled={safePage === 0}
+            onClick={() => changePage(safePage - 1)}
           >
             Previous
           </button>
           <strong>
-            {page + 1} / {PAGE_COUNT}
+            {safePage + 1} / {pageCount}
           </strong>
           <button
             type="button"
-            disabled={page === PAGE_COUNT - 1}
-            onClick={() => changePage(page + 1)}
+            disabled={safePage === pageCount - 1}
+            onClick={() => changePage(safePage + 1)}
           >
             Next
           </button>

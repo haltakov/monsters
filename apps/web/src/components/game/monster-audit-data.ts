@@ -2,19 +2,20 @@ import {
   ACCENT_COLORS,
   ADAPTATIONS,
   BODY_SHAPES,
+  DEFAULT_MONSTER_DNA,
   DIETS,
   EAR_SHAPES,
   EYE_COUNTS,
-  HORN_SHAPES,
   LEG_COUNTS,
   LEG_SHAPES,
   MONSTER_BUILDS,
   MONSTER_COLORS,
   MONSTER_SIZES,
   MOUTH_SHAPES,
-  PATTERNS,
   RESPIRATIONS,
   SOCIAL_BEHAVIORS,
+  SMOOTH_HORN_SHAPES,
+  SMOOTH_PATTERNS,
   TAIL_SHAPES,
   type MonsterDna,
 } from "@/components/game/monster-dna";
@@ -24,6 +25,30 @@ export type AuditSpecimen = {
   id: number;
   dna: MonsterDna;
 };
+
+export const FOOT_AUDIT_SPECIMENS: AuditSpecimen[] = LEG_SHAPES.map(
+  (legShape, index) => ({
+    id: index + 1,
+    dna: {
+      ...DEFAULT_MONSTER_DNA,
+      body: "long",
+      legs: 4,
+      legShape,
+      eyes: 2,
+      mouth: "smile",
+      size: "medium",
+      build: "balanced",
+      color: "moss",
+      accent: "peach",
+      pattern: "plain",
+      horns: "none",
+      ears: "none",
+      tail: "none",
+      adaptation: "none",
+      mesh: "smooth",
+    },
+  }),
+);
 
 function pick<T>(options: readonly T[], random: () => number) {
   return options[
@@ -51,12 +76,13 @@ export function createAuditSpecimens(count = 100, seed = 0x5a17c0de) {
         build: pick(MONSTER_BUILDS, random),
         color: pick(MONSTER_COLORS, random).id,
         accent: pick(ACCENT_COLORS, random).id,
-        pattern: pick(PATTERNS, random),
+        pattern: pick(SMOOTH_PATTERNS, random),
         // Attachment genes deliberately cycle as well as randomize so every
         // family is exercised repeatedly in each reproducible 100-model run.
         horns:
-          HORN_SHAPES[
-            (index + attempt + Math.floor(random() * 3)) % HORN_SHAPES.length
+          SMOOTH_HORN_SHAPES[
+            (index + attempt + Math.floor(random() * 3)) %
+              SMOOTH_HORN_SHAPES.length
           ],
         ears: EAR_SHAPES[
           (index * 2 + attempt + Math.floor(random() * 2)) % EAR_SHAPES.length

@@ -22,6 +22,8 @@ export {
   PATTERNS,
   RESPIRATIONS,
   SOCIAL_BEHAVIORS,
+  SMOOTH_HORN_SHAPES,
+  SMOOTH_PATTERNS,
   TAIL_SHAPES,
   canMonsterEatPlants,
   canMonsterHunt,

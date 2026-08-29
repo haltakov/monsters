@@ -56,6 +56,17 @@ export const HORN_SHAPES = [
   "single",
   "ram",
 ] as const;
+
+/**
+ * Options that produce a clean, unmistakable phenotype on the organic mesh.
+ * Retired values remain in the codec so existing DNA is never corrupted.
+ */
+export const SMOOTH_PATTERNS = PATTERNS.filter(
+  (pattern) => pattern !== "rings",
+);
+export const SMOOTH_HORN_SHAPES = HORN_SHAPES.filter(
+  (horns) => horns !== "buds",
+);
 export const EAR_SHAPES = [
   "none",
   "round",
