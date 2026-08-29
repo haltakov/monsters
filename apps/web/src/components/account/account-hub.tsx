@@ -98,6 +98,8 @@ export function AccountHub({
   const [adminDna, setAdminDna] = useState(selectedDna);
   const [adminEditId, setAdminEditId] = useState<string | null>(null);
   const claimKey = useRef<string | null>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     void api
@@ -132,6 +134,15 @@ export function AccountHub({
     setOpen(false);
     setLineage(null);
   }, []);
+
+  useEffect(() => {
+    if (open) {
+      closeButton.current?.focus();
+      return;
+    }
+    opener.current?.focus();
+    opener.current = null;
+  }, [open]);
 
   const history = useMemo(
     () =>
@@ -240,6 +251,10 @@ export function AccountHub({
         className="account-entry account-entry-desktop"
         onPointerDown={(event) => {
           event.stopPropagation();
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          opener.current = event.currentTarget;
           setOpen(true);
         }}
         aria-label={t("account.open")}
@@ -256,6 +271,10 @@ export function AccountHub({
         className="account-entry account-entry-mobile"
         onPointerDown={(event) => {
           event.stopPropagation();
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          opener.current = event.currentTarget;
           setOpen(true);
         }}
         aria-label={t("account.open")}
@@ -280,6 +299,10 @@ export function AccountHub({
             role="dialog"
             aria-modal="true"
             aria-labelledby="account-title"
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.code === "Escape") closePanel();
+            }}
           >
             <header className="account-ledger-header">
               <div>
@@ -289,6 +312,7 @@ export function AccountHub({
                 </h2>
               </div>
               <button
+                ref={closeButton}
                 type="button"
                 className="account-close"
                 onClick={closePanel}
@@ -556,6 +580,7 @@ export function AccountHub({
                 <div className="admin-filters">
                   <select
                     value={adminOrigin}
+                    aria-label={t("account.filterOrigin")}
                     onChange={(event) => setAdminOrigin(event.target.value)}
                   >
                     <option value="all">All origins</option>
@@ -567,7 +592,8 @@ export function AccountHub({
                   </select>
                   <input
                     value={adminSearch}
-                    placeholder="Search nickname"
+                    aria-label={t("account.searchName")}
+                    placeholder={t("account.searchName")}
                     onChange={(event) => setAdminSearch(event.target.value)}
                   />
                   <button type="button" onClick={() => void loadArchive()}>
@@ -657,6 +683,7 @@ export function AccountHub({
                   <div className="admin-filters">
                     <select
                       value={adminOrigin}
+                      aria-label={t("account.filterOrigin")}
                       onChange={(event) => setAdminOrigin(event.target.value)}
                     >
                       <option value="all">All origins</option>
@@ -668,7 +695,8 @@ export function AccountHub({
                     </select>
                     <input
                       value={adminSearch}
-                      placeholder="Search nickname"
+                      aria-label={t("account.searchName")}
+                      placeholder={t("account.searchName")}
                       onChange={(event) => setAdminSearch(event.target.value)}
                     />
                     <button type="button" onClick={() => void loadAdmin()}>

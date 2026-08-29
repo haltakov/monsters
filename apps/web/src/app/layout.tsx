@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Comfortaa, IBM_Plex_Mono, Nunito } from "next/font/google";
 import { LanguageProvider } from "@/components/i18n";
 import "./globals.css";
@@ -24,6 +24,12 @@ export const metadata: Metadata = {
   },
   description:
     "Създавай чудовища, изследвай острова им и открий какво може тяхното DNA.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

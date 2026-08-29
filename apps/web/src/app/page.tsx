@@ -1,7 +1,17 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Dna, Footprints, Sprout } from "lucide-react";
+import {
+  ArrowRight,
+  Dna,
+  Egg,
+  Footprints,
+  HeartPulse,
+  Sparkles,
+  Sprout,
+  Users,
+} from "lucide-react";
 import {
   LanguageSwitcher,
   useI18n,
@@ -10,7 +20,7 @@ import {
 import { MonsterMark } from "@/components/monster-mark";
 
 export default function Home() {
-  const { t } = useI18n();
+  const { t, option } = useI18n();
   useLocalizedTitle("meta.homeTitle");
 
   return (
@@ -32,13 +42,34 @@ export default function Home() {
         </div>
       </header>
 
-      <main>
-        <section className="hero">
+      <main className="landing-main">
+        <section className="landing-hero">
+          <figure className="hero-world">
+            <Image
+              src="/images/monster-island-hero.webp"
+              alt={t("landing.diorama")}
+              fill
+              priority
+              unoptimized
+              sizes="(max-width: 760px) 100vw, 1240px"
+            />
+            <div className="hero-world-shade" aria-hidden="true" />
+            <figcaption className="specimen-tag">
+              <span>{t("landing.specimen")}</span>
+              <strong>{t("landing.specimenName")}</strong>
+              <small>{t("landing.specimenTraits")}</small>
+            </figcaption>
+            <div className="world-coordinate" aria-hidden="true">
+              42°N · MONSTER ISLAND · LIVE
+            </div>
+          </figure>
+
           <div className="hero-copy">
-            <p className="eyebrow">{t("landing.eyebrow")}</p>
+            <p className="eyebrow">
+              <span aria-hidden="true" /> {t("landing.eyebrow")}
+            </p>
             <h1>
               {t("landing.titleOne")}
-              <br />
               <span>{t("landing.titleTwo")}</span>
             </h1>
             <p className="hero-lede">{t("landing.lede")}</p>
@@ -49,60 +80,98 @@ export default function Home() {
               <span className="prototype-note">{t("landing.note")}</span>
             </div>
           </div>
+        </section>
+
+        <section className="life-cycle" aria-label={t("landing.cycleLabel")}>
+          <article>
+            <Dna size={20} />
+            <span>01</span>
+            <strong>{t("landing.cycleDna")}</strong>
+          </article>
+          <i aria-hidden="true" />
+          <article>
+            <Egg size={20} />
+            <span>02</span>
+            <strong>{t("landing.cycleHatch")}</strong>
+          </article>
+          <i aria-hidden="true" />
+          <article>
+            <Footprints size={20} />
+            <span>03</span>
+            <strong>{t("landing.cycleLive")}</strong>
+          </article>
+          <i aria-hidden="true" />
+          <article>
+            <Sparkles size={20} />
+            <span>04</span>
+            <strong>{t("landing.cycleEvolve")}</strong>
+          </article>
+        </section>
+
+        <section className="landing-story">
+          <div className="story-heading">
+            <p className="eyebrow">{t("landing.storyEyebrow")}</p>
+            <h2>{t("landing.storyTitle")}</h2>
+            <p>{t("landing.storyBody")}</p>
+            <div
+              className="gene-ribbon"
+              role="group"
+              aria-label={t("landing.geneLabel")}
+            >
+              {["wings", "gills", "fangs", "pack", "spots", "fin"].map(
+                (gene) => (
+                  <span key={gene}>{option(gene)}</span>
+                ),
+              )}
+            </div>
+          </div>
 
           <div
-            className="diorama-wrap"
-            aria-label={t("landing.diorama")}
+            className="trait-grid"
+            role="group"
+            aria-label={t("landing.features")}
           >
-            <div className="diorama-sun" />
-            <div className="cloud cloud-one" />
-            <div className="cloud cloud-two" />
-            <div className="island-shadow" />
-            <div className="island">
-              <div className="river" />
-              <div className="tiny-tree tree-one">
-                <i />
+            <article className="trait-card trait-card-dna">
+              <Dna size={27} />
+              <div>
+                <strong>{t("landing.dnaTitle")}</strong>
+                <p>{t("landing.dnaBody")}</p>
               </div>
-              <div className="tiny-tree tree-two">
-                <i />
+            </article>
+            <article className="trait-card trait-card-world">
+              <Sprout size={27} />
+              <div>
+                <strong>{t("landing.worldTitle")}</strong>
+                <p>{t("landing.worldBody")}</p>
               </div>
-              <div className="tiny-tree tree-three">
-                <i />
+            </article>
+            <article className="trait-card trait-card-life">
+              <HeartPulse size={27} />
+              <div>
+                <strong>{t("landing.tracksTitle")}</strong>
+                <p>{t("landing.tracksBody")}</p>
               </div>
-              <div className="tiny-rock rock-one" />
-              <div className="tiny-rock rock-two" />
-              <MonsterMark className="diorama-monster" />
-            </div>
-            <div className="specimen-tag">
-              <span>{t("landing.specimen")}</span>
-              <strong>{t("landing.specimenName")}</strong>
-              <small>{t("landing.specimenTraits")}</small>
-            </div>
+            </article>
+            <article className="trait-card trait-card-family">
+              <Users size={27} />
+              <div>
+                <strong>{t("landing.familyTitle")}</strong>
+                <p>{t("landing.familyBody")}</p>
+              </div>
+            </article>
           </div>
         </section>
 
-        <section className="trait-strip" aria-label={t("landing.features")}>
-          <article>
-            <Dna size={24} />
-            <div>
-              <strong>{t("landing.dnaTitle")}</strong>
-              <span>{t("landing.dnaBody")}</span>
-            </div>
-          </article>
-          <article>
-            <Footprints size={24} />
-            <div>
-              <strong>{t("landing.tracksTitle")}</strong>
-              <span>{t("landing.tracksBody")}</span>
-            </div>
-          </article>
-          <article>
-            <Sprout size={24} />
-            <div>
-              <strong>{t("landing.worldTitle")}</strong>
-              <span>{t("landing.worldBody")}</span>
-            </div>
-          </article>
+        <section className="landing-callout">
+          <MonsterMark className="callout-monster" />
+          <div>
+            <p>{t("landing.ctaKicker")}</p>
+            <h2>{t("landing.ctaTitle")}</h2>
+            <span>{t("landing.ctaBody")}</span>
+          </div>
+          <Link href="/game" className="callout-cta">
+            {t("landing.ctaAction")} <ArrowRight size={20} />
+          </Link>
         </section>
       </main>
 
