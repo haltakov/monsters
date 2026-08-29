@@ -36,6 +36,15 @@ export function normalizeDisplayName(value: unknown, field = 'name'): string {
   return trimmed;
 }
 
+/** Database key used to enforce globally unique player monster nicknames. */
+export function normalizeNicknameKey(name: string): string {
+  return name
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('en-US');
+}
+
 /** Accepts only a DNA string the shared codec can decode. */
 export function parseDna(value: unknown): {
   dna: MonsterDna;

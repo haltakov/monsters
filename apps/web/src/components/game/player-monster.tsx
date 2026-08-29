@@ -3,8 +3,10 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { MonsterNameLabel } from "@/components/game/monster-name-label";
 import {
   applyPlayerMovement,
+  getMonsterSizeScale,
   type LocomotionMode,
   type MonsterDna,
   type PlayerInput,
@@ -158,11 +160,13 @@ export function PlayerMonster({
   connection,
   controls,
   dna,
+  name,
   onFrame,
 }: {
   connection: WorldConnection;
   controls: React.RefObject<ControlState>;
   dna: MonsterDna;
+  name: string;
   onFrame: (frame: {
     x: number;
     y: number;
@@ -473,6 +477,10 @@ export function PlayerMonster({
           motionRef={motion}
         />
       </group>
+      <MonsterNameLabel
+        name={name}
+        positionY={2.62 * getMonsterSizeScale(dna.size)}
+      />
     </group>
   );
 }

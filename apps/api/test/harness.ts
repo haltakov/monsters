@@ -15,7 +15,7 @@ export type Harness = {
 };
 
 const TRUNCATE_SQL =
-  'TRUNCATE TABLE "WorldEvent", "WorldSnapshot", "WorldMember", "Monster", "World", "GuestPlayer" RESTART IDENTITY CASCADE';
+  'TRUNCATE TABLE "WorldEvent", "WorldSnapshot", "WorldMember", "Monster", "World", "GuestPlayer", "Session", "Account", "Verification", "User" RESTART IDENTITY CASCADE';
 
 /** Removes every row so each suite starts from a known empty world. */
 export async function resetDatabase(prisma: PrismaService) {

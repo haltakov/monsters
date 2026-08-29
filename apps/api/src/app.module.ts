@@ -7,12 +7,16 @@ import { HealthController } from './health.controller';
 import { GuestModule } from './guest/guest.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { WorldModule } from './world/world.module';
+import { AuthModule } from './auth/auth.module';
+import { AccountModule } from './account/account.module';
 
 @Module({
   imports: [
     // In-memory rate limiting sized for a small public prototype. No Redis.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 240 }]),
     PrismaModule,
+    AuthModule,
+    AccountModule,
     GuestModule,
     WorldModule,
   ],

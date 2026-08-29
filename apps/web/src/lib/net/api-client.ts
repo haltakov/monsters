@@ -20,6 +20,21 @@ export type MonsterSummary = {
   createdAt: string;
   inWorld: boolean;
   selected: boolean;
+  accountOwned: boolean;
+  originType: string;
+  clonedFromId: string | null;
+};
+
+export type MonsterRelation = Pick<
+  MonsterSummary,
+  "id" | "name" | "species" | "generation" | "alive" | "originType"
+>;
+
+export type MonsterLineage = {
+  monster: MonsterSummary;
+  parents: MonsterRelation[];
+  clonedFrom: MonsterRelation | null;
+  children: MonsterRelation[];
 };
 
 export type PublicWorld = {
@@ -79,6 +94,7 @@ export async function apiRequest<T>(
   const response = await fetchImpl(`${baseUrl}${path}`, {
     method,
     signal,
+    credentials: "include",
     headers: {
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -106,7 +122,11 @@ export const api = {
     }),
   getGuest: (token: string, options: RequestOptions = {}) =>
     apiRequest<{ guest: GuestProfile }>("/api/guest/me", { ...options, token }),
-  updateGuest: (token: string, displayName: string, options: RequestOptions = {}) =>
+  updateGuest: (
+    token: string,
+    displayName: string,
+    options: RequestOptions = {},
+  ) =>
     apiRequest<{ guest: GuestProfile }>("/api/guest/me", {
       ...options,
       method: "PATCH",
@@ -116,10 +136,10 @@ export const api = {
   getPublicWorld: (options: RequestOptions = {}) =>
     apiRequest<PublicWorld>("/api/worlds/public", options),
   listMonsters: (token: string, options: RequestOptions = {}) =>
-    apiRequest<{ monsters: MonsterSummary[]; selectedMonsterId: string | null }>(
-      "/api/monsters",
-      { ...options, token },
-    ),
+    apiRequest<{
+      monsters: MonsterSummary[];
+      selectedMonsterId: string | null;
+    }>("/api/monsters", { ...options, token }),
   createMonster: (
     token: string,
     input: { name: string; dna: string },
@@ -148,5 +168,79 @@ export const api = {
       ...options,
       method: "POST",
       token,
+    }),
+  copyMonster: (token: string, id: string, options: RequestOptions = {}) =>
+    apiRequest<{ monster: MonsterSummary }>(`/api/monsters/${id}/copy`, {
+      ...options,
+      method: "POST",
+      token,
+    }),
+  claimAccount: (token: string, options: RequestOptions = {}) =>
+    apiRequest<{ claimedMonsters: number }>("/api/account/claim", {
+      ...options,
+      method: "POST",
+      token,
+    }),
+  releaseAccount: (token: string, options: RequestOptions = {}) =>
+    apiRequest<{ released: boolean }>("/api/account/release", {
+      ...options,
+      method: "POST",
+      token,
+    }),
+  authConfiguration: (options: RequestOptions = {}) =>
+    apiRequest<{ google: boolean; magicLink: boolean }>(
+      "/api/account/auth-configuration",
+      options,
+    ),
+  getMonsterLineage: (id: string, options: RequestOptions = {}) =>
+    apiRequest<MonsterLineage>(`/api/monsters/public/${id}`, options),
+  listPublicMonsters: (
+    origin = "all",
+    search = "",
+    options: RequestOptions = {},
+  ) =>
+    apiRequest<{ monsters: MonsterSummary[]; total: number }>(
+      `/api/monsters/public?origin=${encodeURIComponent(origin)}&search=${encodeURIComponent(search)}`,
+      options,
+    ),
+  adminListMonsters: (
+    origin = "all",
+    search = "",
+    options: RequestOptions = {},
+  ) =>
+    apiRequest<{
+      monsters: Array<
+        MonsterSummary & {
+          owner: { id: string; name: string; email: string } | null;
+          localPlayerCreated: boolean;
+        }
+      >;
+    }>(
+      `/api/admin/monsters?origin=${encodeURIComponent(origin)}&search=${encodeURIComponent(search)}`,
+      options,
+    ),
+  adminCreateMonster: (
+    input: { name: string; dna: string; spawn: boolean },
+    options: RequestOptions = {},
+  ) =>
+    apiRequest<{ monster: MonsterSummary }>("/api/admin/monsters", {
+      ...options,
+      method: "POST",
+      body: input,
+    }),
+  adminUpdateMonster: (
+    id: string,
+    input: { name?: string; dna?: string },
+    options: RequestOptions = {},
+  ) =>
+    apiRequest<{ monster: MonsterSummary }>(`/api/admin/monsters/${id}`, {
+      ...options,
+      method: "PATCH",
+      body: input,
+    }),
+  adminSpawnMonster: (id: string, options: RequestOptions = {}) =>
+    apiRequest<{ monster: MonsterSummary }>(`/api/admin/monsters/${id}/spawn`, {
+      ...options,
+      method: "POST",
     }),
 };

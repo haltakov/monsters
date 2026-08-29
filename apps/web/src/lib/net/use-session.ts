@@ -8,7 +8,11 @@ import {
   type MonsterSummary,
   type PublicWorld,
 } from "./api-client";
-import { createLocalTokenStore, resolveSession, type TokenStore } from "./session";
+import {
+  createLocalTokenStore,
+  resolveSession,
+  type TokenStore,
+} from "./session";
 
 export type SessionStatus = "loading" | "ready" | "error";
 
@@ -150,6 +154,20 @@ export function useGuestSession(options: { tokenStore?: TokenStore } = {}) {
     [state.token],
   );
 
+  const copyMonster = useCallback(
+    async (id: string) => {
+      if (!state.token) throw new Error("No session");
+      const { monster } = await api.copyMonster(state.token, id);
+      setState((current) => ({
+        ...current,
+        monsters: [monster, ...current.monsters],
+        selectedMonsterId: monster.id,
+      }));
+      return monster;
+    },
+    [state.token],
+  );
+
   const markMonsterDead = useCallback((id: string) => {
     setState((current) => ({
       ...current,
@@ -166,6 +184,7 @@ export function useGuestSession(options: { tokenStore?: TokenStore } = {}) {
     createMonster,
     updateMonster,
     selectMonster,
+    copyMonster,
     markMonsterDead,
   };
 }

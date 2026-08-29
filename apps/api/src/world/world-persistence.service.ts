@@ -50,6 +50,11 @@ export function monsterRowData(entity: SimEntity, worldId: string) {
     energy: Math.round(entity.energy),
     worldId,
     ownerId: entity.ownerGuestId,
+    originType: entity.parentIds
+      ? 'mating'
+      : entity.ownerGuestId
+        ? 'player'
+        : 'wild',
     generation: entity.generation,
     parentAId: entity.parentIds?.[0] ?? null,
     parentBId: entity.parentIds?.[1] ?? null,
@@ -260,15 +265,36 @@ export class WorldPersistenceService {
     );
 
     return this.enqueue(async () => {
+      const parentIds = [
+        ...new Set(
+          [...bornEntities.values()]
+            .flatMap((row) => (row ? [row.parentAId, row.parentBId] : []))
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      const parentOwners = new Map(
+        (
+          await this.prisma.monster.findMany({
+            where: { id: { in: parentIds } },
+            select: { id: true, accountOwnerId: true },
+          })
+        ).map((parent) => [parent.id, parent.accountOwnerId]),
+      );
       const operations: Prisma.PrismaPromise<unknown>[] = [];
       for (const event of events) {
         if (event.type === 'birth') {
           const row = bornEntities.get(event.entityId);
           if (row) {
+            // Offspring enters the signed-in history of the first account-owned
+            // parent (the initiating parent wins when both are players).
+            const accountOwnerId =
+              (row.parentAId ? parentOwners.get(row.parentAId) : null) ??
+              (row.parentBId ? parentOwners.get(row.parentBId) : null) ??
+              null;
             operations.push(
               this.prisma.monster.upsert({
                 where: { id: event.entityId },
-                create: { id: event.entityId, ...row },
+                create: { id: event.entityId, ...row, accountOwnerId },
                 update: row,
               }),
             );

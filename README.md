@@ -61,6 +61,29 @@ packages/
 
 PostgreSQL stores anonymous guest identities, owned monsters, lineage, semantic lifecycle events, and the latest recoverable world checkpoint. The API holds hot simulation state in memory, checkpoints it at least every 15 seconds, and uses a dedicated PostgreSQL advisory lock so only one API container can advance the world during a rolling deployment. Player movement is predicted locally for responsiveness; health, energy, combat, AI, mating, eggs, and death remain authoritative on the server.
 
+## Accounts
+
+Accounts are optional. Every browser starts with a device-bound local guest stored in `localStorage`, so the game remains immediately playable. After a Google or email magic-link sign-in, the browser's existing monsters are claimed by that account and become available in its alive/dead history across devices. Player-chosen monster nicknames are unique regardless of capitalization, and public lineage pages show parents, descendants, copies, and creation origin without exposing account email addresses.
+
+For local auth setup, add these values to `apps/api/.env`:
+
+```text
+BETTER_AUTH_SECRET=<openssl rand -base64 32>
+BETTER_AUTH_URL=http://localhost:3101
+GOOGLE_CLIENT_ID=<Google OAuth client id>
+GOOGLE_CLIENT_SECRET=<Google OAuth client secret>
+RESEND_API_KEY=<Resend API key>
+RESEND_FROM_EMAIL=Monsters <login@your-verified-domain.example>
+```
+
+Use `http://localhost:3101/api/auth/callback/google` as the local Google callback. In production use `https://monsters-api.haltakov.com/api/auth/callback/google`, set `BETTER_AUTH_URL=https://monsters-api.haltakov.com`, and set `AUTH_COOKIE_DOMAIN=.haltakov.com` so the static game and API can share the secure session cookie.
+
+Administrators are deliberately not assignable through the application. Mark one directly in PostgreSQL:
+
+```sql
+UPDATE "User" SET "role" = 'admin' WHERE "email" = 'you@example.com';
+```
+
 ## Verification
 
 ```bash
@@ -89,6 +112,13 @@ Create a PostgreSQL 17 resource and configure the API with:
 DATABASE_URL=<Coolify internal PostgreSQL URL>
 WEB_ORIGIN=https://monsters.haltakov.com
 PORT=3000
+BETTER_AUTH_SECRET=<strong random secret>
+BETTER_AUTH_URL=https://monsters-api.haltakov.com
+AUTH_COOKIE_DOMAIN=.haltakov.com
+GOOGLE_CLIENT_ID=<Google OAuth client id>
+GOOGLE_CLIENT_SECRET=<Google OAuth client secret>
+RESEND_API_KEY=<Resend API key>
+RESEND_FROM_EMAIL=Monsters <login@your-verified-domain.example>
 ```
 
 The frontend health endpoint is `/healthz`; the API health endpoint is `/api/health` and verifies its database connection.

@@ -6,9 +6,11 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { GuestService } from './guest.service';
+import { AuthService, type AccountSession } from '../auth/auth.service';
 
 export type AuthenticatedRequest = Request & {
   guest?: { id: string; displayName: string };
+  account?: AccountSession;
 };
 
 export function readBearerToken(header: unknown): string | null {
@@ -20,7 +22,10 @@ export function readBearerToken(header: unknown): string | null {
 
 @Injectable()
 export class GuestAuthGuard implements CanActivate {
-  constructor(private readonly guests: GuestService) {}
+  constructor(
+    private readonly guests: GuestService,
+    private readonly auth: AuthService,
+  ) {}
 
   async canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
@@ -29,6 +34,8 @@ export class GuestAuthGuard implements CanActivate {
       throw new UnauthorizedException('A guest bearer token is required');
     }
     request.guest = await this.guests.authenticate(token);
+    const account = await this.auth.getSession(request.headers);
+    if (account) request.account = account;
     return true;
   }
 }

@@ -27,6 +27,7 @@ import type {
   WorldEntityRecord,
 } from "@/lib/net/world-connection";
 import { renderTime, sampleAt } from "@/lib/net/interpolation";
+import { MonsterNameLabel } from "@/components/game/monster-name-label";
 
 const PROXY_GEOMETRY = new THREE.SphereGeometry(1, 10, 7);
 const proxyMaterials = new Map<string, THREE.MeshLambertMaterial>();
@@ -275,34 +276,40 @@ function NetworkMonsterActor({
         ) : null}
       </group>
       {detail === "full" && (
-        <Billboard position={[0, barHeight, 0]} follow>
-          <group ref={vitals}>
-            <mesh position={[0, 0.08, 0]} scale={[0.58, 0.065, 0.025]}>
-              <planeGeometry args={[2, 1]} />
-              <meshBasicMaterial color="#173F35" transparent opacity={0.72} />
-            </mesh>
-            <mesh
-              ref={healthFill}
-              position={[0, 0.08, 0.01]}
-              scale={[1, 0.045, 0.025]}
-            >
-              <planeGeometry args={[1.04, 1]} />
-              <meshBasicMaterial color="#F18C73" />
-            </mesh>
-            <mesh position={[0, -0.08, 0]} scale={[0.58, 0.055, 0.025]}>
-              <planeGeometry args={[2, 1]} />
-              <meshBasicMaterial color="#173F35" transparent opacity={0.72} />
-            </mesh>
-            <mesh
-              ref={energyFill}
-              position={[0, -0.08, 0.01]}
-              scale={[1, 0.035, 0.025]}
-            >
-              <planeGeometry args={[1.04, 1]} />
-              <meshBasicMaterial color="#B6D94A" />
-            </mesh>
-          </group>
-        </Billboard>
+        <>
+          <MonsterNameLabel
+            name={record?.net.name ?? "Monster"}
+            positionY={barHeight + 0.38}
+          />
+          <Billboard position={[0, barHeight, 0]} follow>
+            <group ref={vitals}>
+              <mesh position={[0, 0.08, 0]} scale={[0.58, 0.065, 0.025]}>
+                <planeGeometry args={[2, 1]} />
+                <meshBasicMaterial color="#173F35" transparent opacity={0.72} />
+              </mesh>
+              <mesh
+                ref={healthFill}
+                position={[0, 0.08, 0.01]}
+                scale={[1, 0.045, 0.025]}
+              >
+                <planeGeometry args={[1.04, 1]} />
+                <meshBasicMaterial color="#F18C73" />
+              </mesh>
+              <mesh position={[0, -0.08, 0]} scale={[0.58, 0.055, 0.025]}>
+                <planeGeometry args={[2, 1]} />
+                <meshBasicMaterial color="#173F35" transparent opacity={0.72} />
+              </mesh>
+              <mesh
+                ref={energyFill}
+                position={[0, -0.08, 0.01]}
+                scale={[1, 0.035, 0.025]}
+              >
+                <planeGeometry args={[1.04, 1]} />
+                <meshBasicMaterial color="#B6D94A" />
+              </mesh>
+            </group>
+          </Billboard>
+        </>
       )}
     </group>
   );

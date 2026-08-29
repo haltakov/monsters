@@ -8,6 +8,66 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Better Auth identity. `role` is intentionally changed only in PostgreSQL.
+model User {
+  id            String        @id
+  name          String
+  email         String        @unique
+  emailVerified Boolean       @default(false)
+  image         String?
+  role          String        @default("user")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  guestDevices  GuestPlayer[]
+  monsters      Monster[]     @relation("AccountMonsterOwner")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+
+  @@index([identifier])
+}
+
 /// Anonymous device-bound identity. Only a hash of the bearer token is stored.
 model GuestPlayer {
   id          String        @id @default(cuid())
@@ -16,8 +76,13 @@ model GuestPlayer {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   lastSeenAt  DateTime      @default(now())
+  /// Set while this browser identity is attached to a signed-in account.
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId      String?
   monsters    Monster[]
   memberships WorldMember[]
+
+  @@index([userId])
 }
 
 model World {
@@ -58,28 +123,38 @@ model WorldMember {
 }
 
 model Monster {
-  id          String       @id @default(cuid())
-  name        String
-  species     String
+  id             String       @id @default(cuid())
+  name           String
+  /// Unicode-normalized, case-folded player nickname. Wild names may repeat.
+  nicknameKey    String?      @unique
+  species        String
   /// Versioned deterministic DNA document.
-  dna         Json
-  position    Json?
-  energy      Int          @default(100)
-  world       World        @relation(fields: [worldId], references: [id], onDelete: Cascade)
-  worldId     String
-  owner       GuestPlayer? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  ownerId     String?
-  generation  Int          @default(0)
-  parentAId   String?
-  parentBId   String?
-  mutations   Int          @default(0)
-  alive       Boolean      @default(true)
-  diedAt      DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  dna            Json
+  position       Json?
+  energy         Int          @default(100)
+  world          World        @relation(fields: [worldId], references: [id], onDelete: Cascade)
+  worldId        String
+  owner          GuestPlayer? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId        String?
+  /// Permanent signed-in history owner; local control remains device-bound.
+  accountOwner   User?        @relation("AccountMonsterOwner", fields: [accountOwnerId], references: [id], onDelete: SetNull)
+  accountOwnerId String?
+  /// player, mating, wild, admin or copy.
+  originType     String       @default("wild")
+  clonedFromId   String?
+  generation     Int          @default(0)
+  parentAId      String?
+  parentBId      String?
+  mutations      Int          @default(0)
+  alive          Boolean      @default(true)
+  diedAt         DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([worldId])
   @@index([ownerId])
+  @@index([accountOwnerId])
+  @@index([originType])
   @@index([worldId, alive])
 }
 

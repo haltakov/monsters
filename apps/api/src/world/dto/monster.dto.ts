@@ -1,4 +1,10 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { MIN_NAME_LENGTH } from '../../common/validation';
 
 export class CreateMonsterDto {
@@ -25,3 +31,11 @@ export class UpdateMonsterDto {
   @MaxLength(512)
   dna?: string;
 }
+
+export class AdminCreateMonsterDto extends CreateMonsterDto {
+  @IsOptional()
+  @IsBoolean()
+  spawn?: boolean;
+}
+
+export class AdminUpdateMonsterDto extends UpdateMonsterDto {}

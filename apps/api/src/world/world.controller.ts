@@ -8,6 +8,8 @@ import {
   Post,
   ServiceUnavailableException,
   UseGuards,
+  Req,
+  Query,
 } from '@nestjs/common';
 import { CurrentGuest } from '../guest/current-guest.decorator';
 import { GuestAuthGuard } from '../guest/guest-auth.guard';
@@ -16,6 +18,7 @@ import { buildSnapshot, createConnectionView } from './world-snapshot.builder';
 import { WorldRunnerService } from './world-runner.service';
 import { WorldService } from './world.service';
 import { CreateMonsterDto, UpdateMonsterDto } from './dto/monster.dto';
+import type { AuthenticatedRequest } from '../guest/guest-auth.guard';
 
 @Controller('worlds')
 export class WorldController {
@@ -60,8 +63,11 @@ export class MonsterController {
   constructor(private readonly worlds: WorldService) {}
 
   @Get()
-  list(@CurrentGuest() guest: GuestRecord) {
-    return this.worlds.listMonsters(guest.id);
+  list(
+    @CurrentGuest() guest: GuestRecord,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.worlds.listMonsters(guest.id, request.account?.user.id);
   }
 
   @Post()
@@ -69,11 +75,13 @@ export class MonsterController {
   async create(
     @CurrentGuest() guest: GuestRecord,
     @Body() body: CreateMonsterDto,
+    @Req() request: AuthenticatedRequest,
   ) {
     const monster = await this.worlds.createMonster(
       guest.id,
       body.name,
       body.dna,
+      request.account?.user.id,
     );
     return { monster };
   }
@@ -90,8 +98,46 @@ export class MonsterController {
 
   @Post(':id/select')
   @HttpCode(200)
-  async select(@CurrentGuest() guest: GuestRecord, @Param('id') id: string) {
-    const monster = await this.worlds.selectMonster(guest.id, id);
+  async select(
+    @CurrentGuest() guest: GuestRecord,
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const monster = await this.worlds.selectMonster(
+      guest.id,
+      id,
+      request.account?.user.id,
+    );
     return { monster };
+  }
+
+  @Post(':id/copy')
+  @HttpCode(201)
+  async copy(
+    @CurrentGuest() guest: GuestRecord,
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const monster = await this.worlds.copyMonster(
+      guest.id,
+      id,
+      request.account?.user.id,
+    );
+    return { monster };
+  }
+}
+
+@Controller('monsters/public')
+export class PublicMonsterController {
+  constructor(private readonly worlds: WorldService) {}
+
+  @Get()
+  list(@Query('origin') origin?: string, @Query('search') search?: string) {
+    return this.worlds.listPublicMonsters(origin, search);
+  }
+
+  @Get(':id')
+  detail(@Param('id') id: string) {
+    return this.worlds.getPublicMonster(id);
   }
 }

@@ -97,6 +97,7 @@ import {
   type AgentArenaState,
 } from "@/lib/agent/arena";
 import { registerWebMcpTools } from "@/lib/agent/webmcp";
+import { AccountHub } from "@/components/account/account-hub";
 
 function CreatorLoading() {
   const { t } = useI18n();
@@ -151,6 +152,7 @@ function World({
   connection,
   controls,
   dna,
+  name,
   quality,
   selfEntityId,
   depletedResources,
@@ -159,6 +161,7 @@ function World({
   connection: WorldConnection;
   controls: React.RefObject<ControlState>;
   dna: MonsterDna;
+  name: string;
   quality: SceneQuality;
   selfEntityId: string | null;
   depletedResources: ReadonlySet<string>;
@@ -230,6 +233,7 @@ function World({
           connection={connection}
           controls={controls}
           dna={dna}
+          name={name}
           onFrame={onPlayerFrame}
         />
       )}
@@ -935,6 +939,22 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           values: { message: (error as Error).message },
         });
       }
+    },
+    [connection, session],
+  );
+
+  const copyMonster = useCallback(
+    async (id: string) => {
+      const copied = await session.copyMonster(id);
+      controls.current.keys.clear();
+      controls.current.move = { x: 0, y: 0 };
+      controls.current.isDead = false;
+      setIsDead(false);
+      connection.join(copied.id);
+      setStatus({
+        key: "game.nowPlaying",
+        values: { name: copied.name },
+      });
     },
     [connection, session],
   );
@@ -1805,6 +1825,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             connection={connection}
             controls={controls}
             dna={monsterDna}
+            name={monsterName}
             quality={sceneQuality}
             selfEntityId={selfEntityId}
             depletedResources={depletedResources}
@@ -1821,6 +1842,14 @@ function ConnectedGame({ session }: { session: SessionApi }) {
         className={`game-hud${mobileMenuOpen ? " mobile-menu-open" : ""}`}
         aria-live="polite"
       >
+        <AccountHub
+          guestToken={token}
+          monsters={session.monsters}
+          selectedDna={encodeMonsterDna(monsterDna)}
+          onRefresh={session.refreshMonsters}
+          onPlay={switchMonster}
+          onCopy={copyMonster}
+        />
         <div className="mobile-compact-hud">
           <div className="mobile-player-status">
             <MonsterMark className="mobile-player-mark" />

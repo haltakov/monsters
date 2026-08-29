@@ -7,6 +7,7 @@ import {
 } from '../../test/harness';
 import { PUBLIC_WORLD_SLUG } from '../config/app-config';
 import { MAX_OWNED_MONSTERS } from './world.service';
+import { AccountService } from '../account/account.service';
 
 const DNA = encodeMonsterDna(DEFAULT_MONSTER_DNA);
 const OTHER_DNA = encodeMonsterDna({
@@ -161,6 +162,94 @@ describe('world REST API', () => {
       .set(auth)
       .send({ name: `bad${String.fromCharCode(9)}name`, dna: DNA })
       .expect(400);
+  });
+
+  it('reserves player nicknames globally, ignoring case and spacing', async () => {
+    const first = await bootstrapGuest();
+    const second = await bootstrapGuest();
+    await request(server())
+      .post('/api/monsters')
+      .set({ Authorization: `Bearer ${first.token}` })
+      .send({ name: 'Moon Hopper', dna: DNA })
+      .expect(201);
+    await request(server())
+      .post('/api/monsters')
+      .set({ Authorization: `Bearer ${second.token}` })
+      .send({ name: '  moon   hopper  ', dna: DNA })
+      .expect(409);
+  });
+
+  it('exposes public lineage and lets an owner spawn a named copy', async () => {
+    const { token } = await bootstrapGuest();
+    const auth = { Authorization: `Bearer ${token}` };
+    const created = await request(server())
+      .post('/api/monsters')
+      .set(auth)
+      .send({ name: 'Ancestor', dna: DNA })
+      .expect(201);
+    const sourceId = (created.body as { monster: { id: string } }).monster.id;
+    const copied = await request(server())
+      .post(`/api/monsters/${sourceId}/copy`)
+      .set(auth)
+      .expect(201);
+    const copy = (
+      copied.body as {
+        monster: { id: string; name: string; originType: string };
+      }
+    ).monster;
+    expect(copy).toMatchObject({ name: 'Ancestor 2', originType: 'copy' });
+
+    const lineage = await request(server())
+      .get(`/api/monsters/public/${copy.id}`)
+      .expect(200);
+    expect((lineage.body as { clonedFrom: { id: string } }).clonedFrom.id).toBe(
+      sourceId,
+    );
+  });
+
+  it('claims local progress for an account and releases all but the active monster', async () => {
+    const { token, guest } = await bootstrapGuest();
+    const auth = { Authorization: `Bearer ${token}` };
+    const first = await request(server())
+      .post('/api/monsters')
+      .set(auth)
+      .send({ name: 'Claim One', dna: DNA })
+      .expect(201);
+    const second = await request(server())
+      .post('/api/monsters')
+      .set(auth)
+      .send({ name: 'Claim Two', dna: OTHER_DNA })
+      .expect(201);
+    const firstId = (first.body as { monster: { id: string } }).monster.id;
+    const secondId = (second.body as { monster: { id: string } }).monster.id;
+    await harness.prisma.user.create({
+      data: {
+        id: 'account-test',
+        name: 'Account Test',
+        email: 'account@example.com',
+      },
+    });
+    const accounts = harness.app.get(AccountService);
+    await expect(
+      accounts.claimGuest(guest.id, 'account-test'),
+    ).resolves.toEqual({ claimedMonsters: 2 });
+    expect(
+      await harness.prisma.monster.count({
+        where: { accountOwnerId: 'account-test' },
+      }),
+    ).toBe(2);
+
+    await accounts.releaseGuest(guest.id, 'account-test');
+    const rows = await harness.prisma.monster.findMany({
+      where: { id: { in: [firstId, secondId] } },
+      select: { id: true, ownerId: true, accountOwnerId: true },
+    });
+    expect(rows.every((row) => row.accountOwnerId === 'account-test')).toBe(
+      true,
+    );
+    expect(
+      rows.filter((row) => row.ownerId === guest.id).map((row) => row.id),
+    ).toEqual([secondId]);
   });
 
   it('refuses to let one guest touch another guest monster', async () => {

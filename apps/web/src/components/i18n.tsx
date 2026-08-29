@@ -29,7 +29,8 @@ const en = {
   "landing.lede":
     "Grow monsters from wild DNA, then watch them explore, adapt, make friends—or decide that lunch has legs.",
   "landing.play": "Play the prototype",
-  "landing.note": "No account. No saving. Just play.",
+  "landing.note":
+    "Play locally now. Sign in whenever you want to keep your family.",
   "landing.diorama": "A tiny monster island illustration",
   "landing.specimen": "SPECIMEN 001",
   "landing.specimenName": "MOSS MUNCHER",
@@ -351,6 +352,38 @@ const en = {
   "game.monsterDied": "{{name}} died. Pick or create another monster.",
   "game.createFirst": "Create your first monster",
   "game.deadLabel": "dead",
+  "account.open": "Open monster archive",
+  "account.close": "Close account",
+  "account.kicker": "KEEPER'S FIELD LEDGER",
+  "account.local": "Local player",
+  "account.localTitle": "Your local family",
+  "account.playingLocal": "Playing on this device",
+  "account.localWarning":
+    "Your monsters stay in this browser. Sign in to keep their history on every device.",
+  "account.google": "Continue with Google",
+  "account.email": "Email address",
+  "account.magic": "Email me a sign-in link",
+  "account.magicSent": "Check your inbox for the sign-in link.",
+  "account.setupPending":
+    "Account sign-in is prepared and will appear when the API keys are configured.",
+  "account.claimed": "Added {{count}} local monsters to your account.",
+  "account.localAgain": "Signed out. This device can still play locally.",
+  "account.savedAcross": "Monster history saved across devices",
+  "account.signOut": "Sign out",
+  "account.family": "My family",
+  "account.islandArchive": "Island archive",
+  "account.publicRecord": "PUBLIC FAMILY RECORD",
+  "account.islandKeeper": "Island keeper",
+  "account.archive": "SPECIMEN ARCHIVE",
+  "account.history": "Monster history",
+  "account.empty": "Create a monster to begin this family record.",
+  "account.alive": "alive",
+  "account.dead": "dead",
+  "account.play": "Play",
+  "account.copy": "Spawn copy",
+  "account.backHistory": "Back to history",
+  "account.lineage": "FAMILY LINE",
+  "account.noRelations": "No parents, copies, or children recorded yet.",
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -371,7 +404,8 @@ const bg: Record<TranslationKey, string> = {
   "landing.lede":
     "Създавай чудовища от дива DNA, после ги гледай как изследват, приспособяват се, сприятеляват се — или решават, че обядът има крака.",
   "landing.play": "Играй прототипа",
-  "landing.note": "Без профил. Без запазване. Просто играй.",
+  "landing.note":
+    "Играй локално сега. Влез в профил, когато поискаш да запазиш семейството си.",
   "landing.diorama": "Илюстрация на малък остров с чудовища",
   "landing.specimen": "ЕКЗЕМПЛЯР 001",
   "landing.specimenName": "МЪХЕСТИЯТ ЛАКОМНИК",
@@ -676,7 +710,8 @@ const bg: Record<TranslationKey, string> = {
   "net.reconnecting": "Повторно свързване…",
   "net.offline": "Офлайн",
   "net.failed": "Връзката се провали",
-  "net.observer": "Наблюдаваш острова. Избери или създай чудовище, за да играеш.",
+  "net.observer":
+    "Наблюдаваш острова. Избери или създай чудовище, за да играеш.",
   "net.controlTaken": "Друг раздел пое контрола над това чудовище.",
   "net.worldPaused": "Този сървър още не движи света. Опитваме отново…",
   "game.pairRequest": "{{name}} иска да се сдвои с теб.",
@@ -686,12 +721,46 @@ const bg: Record<TranslationKey, string> = {
   "game.pairWaiting": "Чакаме отговор от {{name}}…",
   "game.pairDeclined": "Сдвояването беше отказано.",
   "game.pairExpired": "Поканата за сдвояване изтече.",
-  "game.playerProtected": "Играчите не могат да си причиняват вреда на този остров.",
+  "game.playerProtected":
+    "Играчите не могат да си причиняват вреда на този остров.",
   "game.saveFailed": "Неуспешно записване: {{message}}",
   "game.aiTookOver": "{{name}} се върна под контрола на дивия AI.",
   "game.monsterDied": "{{name}} умря. Избери или създай друго чудовище.",
   "game.createFirst": "Създай първото си чудовище",
   "game.deadLabel": "мъртво",
+  "account.open": "Отвори архива с чудовища",
+  "account.close": "Затвори профила",
+  "account.kicker": "ДНЕВНИК НА ПАЗИТЕЛЯ",
+  "account.local": "Локален играч",
+  "account.localTitle": "Твоето локално семейство",
+  "account.playingLocal": "Играеш на това устройство",
+  "account.localWarning":
+    "Чудовищата са само в този браузър. Влез в профил, за да пазиш историята им на всички устройства.",
+  "account.google": "Продължи с Google",
+  "account.email": "Имейл адрес",
+  "account.magic": "Изпрати ми линк за вход",
+  "account.magicSent": "Провери пощата си за линка за вход.",
+  "account.setupPending":
+    "Входът е подготвен и ще се появи след настройване на API ключовете.",
+  "account.claimed": "Добавихме {{count}} локални чудовища към профила ти.",
+  "account.localAgain":
+    "Излезе от профила. Това устройство остава за локална игра.",
+  "account.savedAcross": "Историята се пази на всички устройства",
+  "account.signOut": "Изход",
+  "account.family": "Моето семейство",
+  "account.islandArchive": "Архив на острова",
+  "account.publicRecord": "ПУБЛИЧНО РОДОСЛОВИЕ",
+  "account.islandKeeper": "Пазител на острова",
+  "account.archive": "АРХИВ НА ЕКЗЕМПЛЯРИТЕ",
+  "account.history": "История на чудовищата",
+  "account.empty": "Създай чудовище, за да започнеш семейната история.",
+  "account.alive": "живо",
+  "account.dead": "мъртво",
+  "account.play": "Играй",
+  "account.copy": "Създай копие",
+  "account.backHistory": "Назад към историята",
+  "account.lineage": "РОДОСЛОВИЕ",
+  "account.noRelations": "Още няма записани родители, копия или деца.",
 };
 
 const de: Record<TranslationKey, string> = {
@@ -710,7 +779,8 @@ const de: Record<TranslationKey, string> = {
   "landing.lede":
     "Erschaffe Monster aus wilder DNA und beobachte, wie sie erkunden, sich anpassen, Freunde finden – oder beschließen, dass das Mittagessen Beine hat.",
   "landing.play": "Prototyp spielen",
-  "landing.note": "Kein Konto. Kein Speichern. Einfach spielen.",
+  "landing.note":
+    "Spiele jetzt lokal. Melde dich an, wenn du deine Familie behalten möchtest.",
   "landing.diorama": "Illustration einer kleinen Monsterinsel",
   "landing.specimen": "EXEMPLAR 001",
   "landing.specimenName": "MOOSMÜMMELER",
@@ -1024,7 +1094,8 @@ const de: Record<TranslationKey, string> = {
   "net.failed": "Verbindung fehlgeschlagen",
   "net.observer": "Du schaust zu. Wähle oder erstelle ein Monster zum Spielen.",
   "net.controlTaken": "Ein anderer Tab hat die Kontrolle übernommen.",
-  "net.worldPaused": "Dieser Server führt die Welt noch nicht aus. Neuer Versuch…",
+  "net.worldPaused":
+    "Dieser Server führt die Welt noch nicht aus. Neuer Versuch…",
   "game.pairRequest": "{{name}} möchte sich mit dir paaren.",
   "game.pairAccept": "Annehmen",
   "game.pairDecline": "Ablehnen",
@@ -1032,12 +1103,48 @@ const de: Record<TranslationKey, string> = {
   "game.pairWaiting": "Warte auf die Antwort von {{name}}…",
   "game.pairDeclined": "Die Paarung wurde abgelehnt.",
   "game.pairExpired": "Die Paarungsanfrage ist abgelaufen.",
-  "game.playerProtected": "Spieler können sich auf dieser Insel nicht verletzen.",
+  "game.playerProtected":
+    "Spieler können sich auf dieser Insel nicht verletzen.",
   "game.saveFailed": "Speichern fehlgeschlagen: {{message}}",
   "game.aiTookOver": "{{name}} steht wieder unter wilder KI-Kontrolle.",
-  "game.monsterDied": "{{name}} ist gestorben. Wähle oder erstelle ein anderes Monster.",
+  "game.monsterDied":
+    "{{name}} ist gestorben. Wähle oder erstelle ein anderes Monster.",
   "game.createFirst": "Erstelle dein erstes Monster",
   "game.deadLabel": "tot",
+  "account.open": "Monsterarchiv öffnen",
+  "account.close": "Konto schließen",
+  "account.kicker": "FELDBUCH DES HÜTERS",
+  "account.local": "Lokaler Spieler",
+  "account.localTitle": "Deine lokale Familie",
+  "account.playingLocal": "Du spielst auf diesem Gerät",
+  "account.localWarning":
+    "Deine Monster bleiben in diesem Browser. Melde dich an, um ihre Geschichte auf allen Geräten zu behalten.",
+  "account.google": "Mit Google fortfahren",
+  "account.email": "E-Mail-Adresse",
+  "account.magic": "Anmeldelink per E-Mail",
+  "account.magicSent": "Prüfe dein Postfach für den Anmeldelink.",
+  "account.setupPending":
+    "Die Anmeldung ist vorbereitet und erscheint, sobald die API-Schlüssel eingerichtet sind.",
+  "account.claimed":
+    "{{count}} lokale Monster wurden deinem Konto hinzugefügt.",
+  "account.localAgain":
+    "Abgemeldet. Dieses Gerät kann weiterhin lokal spielen.",
+  "account.savedAcross": "Monsterverlauf auf allen Geräten gespeichert",
+  "account.signOut": "Abmelden",
+  "account.family": "Meine Familie",
+  "account.islandArchive": "Inselarchiv",
+  "account.publicRecord": "ÖFFENTLICHES FAMILIENREGISTER",
+  "account.islandKeeper": "Inselhüter",
+  "account.archive": "EXEMPLAR-ARCHIV",
+  "account.history": "Monsterverlauf",
+  "account.empty": "Erstelle ein Monster, um die Familienakte zu beginnen.",
+  "account.alive": "lebendig",
+  "account.dead": "tot",
+  "account.play": "Spielen",
+  "account.copy": "Kopie erzeugen",
+  "account.backHistory": "Zurück zum Verlauf",
+  "account.lineage": "FAMILIENLINIE",
+  "account.noRelations": "Noch keine Eltern, Kopien oder Kinder verzeichnet.",
 };
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
