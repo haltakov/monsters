@@ -1,10 +1,32 @@
 import {
+  ACCENT_COLORS,
+  ADAPTATIONS,
+  BODY_SHAPES,
   canMonsterEatPlants,
   canMonsterHunt,
   canMonsterSwim,
+  DIETS,
+  EAR_SHAPES,
+  EYE_COUNTS,
+  HORN_SHAPES,
+  LEG_COUNTS,
+  LEG_SHAPES,
+  MONSTER_BUILDS,
+  MONSTER_COLORS,
+  MONSTER_SIZES,
+  MOUTH_SHAPES,
+  PATTERNS,
+  SOCIAL_BEHAVIORS,
+  TAIL_SHAPES,
   type MonsterDna,
 } from "../dna/dna";
-import { clamp, dampAngle, direction, normalizeAngle, smoothstep } from "../mathx";
+import {
+  clamp,
+  dampAngle,
+  direction,
+  normalizeAngle,
+  smoothstep,
+} from "../mathx";
 import { nextRandom, randomFn } from "../rng";
 import {
   EDIBLE_REGROW_SECONDS,
@@ -75,6 +97,62 @@ import type {
 } from "./types";
 
 export const WORLD_STATE_VERSION = 1;
+
+export type InitialPopulationOptions = {
+  /** Excludes every phenotype capable of swimming or flying. */
+  terrestrialOnly?: boolean;
+};
+
+const TERRESTRIAL_BODIES = BODY_SHAPES.filter(
+  (body) => body !== "aquatic" && body !== "avian",
+);
+const TERRESTRIAL_LEG_SHAPES = LEG_SHAPES.filter(
+  (shape) => shape !== "flippers",
+);
+const TERRESTRIAL_TAILS = TAIL_SHAPES.filter((tail) => tail !== "fin");
+const TERRESTRIAL_ADAPTATIONS = ADAPTATIONS.filter(
+  (adaptation) => adaptation !== "fins" && adaptation !== "wings",
+);
+
+function pick<T>(values: readonly T[], random: () => number): T {
+  return values[
+    Math.min(values.length - 1, Math.floor(random() * values.length))
+  ];
+}
+
+function terrestrialVariant(base: MonsterDna, random: () => number) {
+  const dna: MonsterDna = {
+    ...base,
+    body: pick(TERRESTRIAL_BODIES, random),
+    legs: pick(
+      LEG_COUNTS.filter((count) => count > 0),
+      random,
+    ),
+    legShape: pick(TERRESTRIAL_LEG_SHAPES, random),
+    eyes: pick(EYE_COUNTS, random),
+    mouth: pick(MOUTH_SHAPES, random),
+    size: pick(MONSTER_SIZES, random),
+    build: pick(MONSTER_BUILDS, random),
+    color: pick(
+      MONSTER_COLORS.map((color) => color.id),
+      random,
+    ),
+    accent: pick(
+      ACCENT_COLORS.map((color) => color.id),
+      random,
+    ),
+    pattern: pick(PATTERNS, random),
+    horns: pick(HORN_SHAPES, random),
+    ears: pick(EAR_SHAPES, random),
+    tail: pick(TERRESTRIAL_TAILS, random),
+    adaptation: pick(TERRESTRIAL_ADAPTATIONS, random),
+    diet: pick(DIETS, random),
+    breathing: "lungs",
+    social: pick(SOCIAL_BEHAVIORS, random),
+    mesh: "smooth",
+  };
+  return dna;
+}
 
 type Parent = {
   id: string;
@@ -171,10 +249,19 @@ export function createInitialWildPopulation(
   seed: number,
   count = INITIAL_WILD_MONSTERS,
   idPrefix = "",
+  options: InitialPopulationOptions = {},
 ): SimEntity[] {
   const state = { value: seed >>> 0 };
   const random = randomFn(state);
-  const shuffled = [...MONSTER_ARCHETYPES]
+  const eligibleArchetypes = options.terrestrialOnly
+    ? MONSTER_ARCHETYPES.filter(
+        ({ dna }) =>
+          !canMonsterSwim(dna) &&
+          dna.adaptation !== "wings" &&
+          dna.body !== "avian",
+      )
+    : MONSTER_ARCHETYPES;
+  const shuffled = [...eligibleArchetypes]
     .map((archetype) => ({ archetype, order: random() }))
     .sort((first, second) => first.order - second.order)
     .slice(0, Math.min(6, MONSTER_ARCHETYPES.length));
@@ -191,7 +278,9 @@ export function createInitialWildPopulation(
         {
           id: `${idPrefix}wild-${index + 1}`,
           name: createRandomName(random),
-          dna: { ...base.dna, mesh: "smooth" },
+          dna: options.terrestrialOnly
+            ? terrestrialVariant(base.dna, random)
+            : { ...base.dna, mesh: "smooth" },
           ownerGuestId: null,
         },
         random,
@@ -223,6 +312,8 @@ export function createWorldState(options: {
   idPrefix?: string;
   /** Wild monsters to seed. Ten by default; raised only for load testing. */
   initialPopulation?: number;
+  /** Seed only creatures that walk on land. */
+  terrestrialOnly?: boolean;
   settings?: Partial<WorldSettings>;
 }): WorldSimState {
   const settings = { ...defaultWorldSettings(), ...options.settings };
@@ -245,6 +336,9 @@ export function createWorldState(options: {
       options.seed,
       initialPopulation,
       idPrefix,
+      {
+        terrestrialOnly: options.terrestrialOnly,
+      },
     ),
     eggs: [],
     depletedResources: {},
@@ -887,8 +981,7 @@ function applyCommand(
     const entity = findEntity(state, command.entityId);
     if (!entity || entity.controllerId !== command.connectionId) return;
     entity.input = null;
-    entity.controlExpiresAt =
-      state.time + state.settings.controlGraceSeconds;
+    entity.controlExpiresAt = state.time + state.settings.controlGraceSeconds;
     events.push({
       type: "control",
       tick: state.tick,
@@ -986,10 +1079,7 @@ function updateAiEntity(
   const now = state.time;
   const random = randomFn(state.rng);
 
-  entity.energy = Math.max(
-    0,
-    entity.energy - AI_IDLE_ENERGY_PER_SECOND * dt,
-  );
+  entity.energy = Math.max(0, entity.energy - AI_IDLE_ENERGY_PER_SECOND * dt);
   if (entity.energy <= 0) {
     killEntity(state, entity, "energy", null, events);
     return;
@@ -1315,7 +1405,9 @@ function updateAiEntity(
     }
   }
 
-  const blend = canMonsterSwim(entity.dna) ? waterBlendAt(entity.x, entity.z) : 0;
+  const blend = canMonsterSwim(entity.dna)
+    ? waterBlendAt(entity.x, entity.z)
+    : 0;
   entity.locomotion =
     entity.dna.adaptation === "wings" ? "fly" : blend > 0.52 ? "swim" : "land";
   entity.y =

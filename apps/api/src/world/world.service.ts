@@ -593,6 +593,18 @@ export class WorldService {
     return this.toMonsterView(revived);
   }
 
+  async adminResetWorld(population: number) {
+    if (!this.runner.isRunning) {
+      throw new ServiceUnavailableException(
+        'This API instance does not currently own the world',
+      );
+    }
+    return this.runner.resetWorld({
+      initialPopulation: population,
+      terrestrialOnly: true,
+    });
+  }
+
   private spawnDurableMonster(monster: MonsterRow) {
     if (!this.runner.isRunning) {
       throw new ServiceUnavailableException(

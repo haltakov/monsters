@@ -9,6 +9,7 @@ import {
   LogOut,
   Mail,
   Play,
+  RotateCcw,
   Shield,
   UserRound,
   X,
@@ -97,6 +98,7 @@ export function AccountHub({
   const [adminName, setAdminName] = useState("Keeper's creature");
   const [adminDna, setAdminDna] = useState(selectedDna);
   const [adminEditId, setAdminEditId] = useState<string | null>(null);
+  const [resetPopulation, setResetPopulation] = useState(10);
   const claimKey = useRef<string | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -243,6 +245,22 @@ export function AccountHub({
       setAdminDna(selectedDna);
       await loadAdmin();
     });
+
+  const resetAdminWorld = () => {
+    if (
+      !window.confirm(t("account.resetConfirm", { count: resetPopulation }))
+    ) {
+      return;
+    }
+    void run(async () => {
+      const result = await api.adminResetWorld(resetPopulation);
+      const refreshed = await api.adminListMonsters(adminOrigin, adminSearch);
+      setAdminMonsters(refreshed.monsters);
+      setAdminEditId(null);
+      await onRefresh();
+      setMessage(t("account.resetComplete", { count: result.population }));
+    });
+  };
 
   return (
     <>
@@ -744,6 +762,40 @@ export function AccountHub({
                     ))}
                   </div>
                 </div>
+                <section
+                  className="admin-world-reset"
+                  aria-labelledby="world-reset-title"
+                >
+                  <div>
+                    <span>{t("account.dangerZone")}</span>
+                    <h3 id="world-reset-title">{t("account.resetWorld")}</h3>
+                    <p>{t("account.resetWorldHelp")}</p>
+                  </div>
+                  <label>
+                    <span>{t("account.resetPopulation")}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={resetPopulation}
+                      onChange={(event) =>
+                        setResetPopulation(
+                          Math.max(
+                            1,
+                            Math.min(100, Number(event.target.value) || 1),
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={resetAdminWorld}
+                  >
+                    <RotateCcw size={16} /> {t("account.resetAction")}
+                  </button>
+                </section>
               </div>
             )}
           </section>

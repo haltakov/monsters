@@ -1090,6 +1090,57 @@ button {
   gap: 3px;
   font-weight: 800;
 }
+.admin-world-reset {
+  grid-column: 1 / -1;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px auto;
+  align-items: end;
+  gap: 14px;
+  border: 1.5px solid #9d3c31;
+  border-radius: 16px;
+  background: #ffe1d8;
+}
+.admin-world-reset > div > span,
+.admin-world-reset label > span {
+  display: block;
+  margin-bottom: 4px;
+  color: #9d3c31;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+.admin-world-reset h3 {
+  font-size: 22px;
+}
+.admin-world-reset p {
+  max-width: 65ch;
+  margin: 3px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.admin-world-reset input {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1.5px solid var(--ink);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+}
+.admin-world-reset button {
+  min-height: 38px;
+  padding: 8px 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1.5px solid var(--ink);
+  border-radius: 11px;
+  background: var(--coral);
+  color: var(--ink);
+  font-weight: 850;
+}
 .hud-top-left {
   position: absolute;
   top: max(20px, env(safe-area-inset-top));
@@ -2938,6 +2989,10 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
   }
   .admin-monster-list article > .account-origin {
     display: none;
+  }
+  .admin-world-reset {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .mobile-compact-hud {

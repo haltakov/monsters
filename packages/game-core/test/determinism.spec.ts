@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { accumulate, createAccumulator } from "../src/sim/accumulator";
 import { TICK_SECONDS } from "../src/sim/constants";
-import { createWorldState, stepWorld } from "../src/sim/engine";
+import { canMonsterSwim } from "../src/dna/dna";
 import {
-  cloneWorldState,
-  serializeWorldState,
-} from "../src/sim/snapshot";
+  createInitialWildPopulation,
+  createWorldState,
+  stepWorld,
+} from "../src/sim/engine";
+import { cloneWorldState, serializeWorldState } from "../src/sim/snapshot";
 import type { SimCommand } from "../src/sim/types";
 import { input, SEED } from "./helpers";
 
@@ -26,6 +28,34 @@ function scriptedCommands(tick: number): SimCommand[] {
 }
 
 describe("deterministic simulation", () => {
+  it("creates varied terrestrial-only reset populations", () => {
+    const population = createInitialWildPopulation(918273, 100, "reset:", {
+      terrestrialOnly: true,
+    });
+
+    expect(population).toHaveLength(100);
+    expect(
+      new Set(population.map((entity) => entity.dna.body)).size,
+    ).toBeGreaterThan(3);
+    expect(
+      new Set(population.map((entity) => entity.dna.color)).size,
+    ).toBeGreaterThan(8);
+    expect(
+      population.every(
+        (entity) =>
+          entity.locomotion === "land" &&
+          entity.dna.breathing === "lungs" &&
+          entity.dna.body !== "aquatic" &&
+          entity.dna.body !== "avian" &&
+          entity.dna.adaptation !== "fins" &&
+          entity.dna.adaptation !== "wings" &&
+          entity.dna.legShape !== "flippers" &&
+          entity.dna.tail !== "fin" &&
+          !canMonsterSwim(entity.dna),
+      ),
+    ).toBe(true);
+  });
+
   it("produces identical snapshots and events for the same seed and inputs", () => {
     const first = createWorldState({ seed: SEED });
     const second = createWorldState({ seed: SEED });
@@ -33,7 +63,9 @@ describe("deterministic simulation", () => {
     const secondEvents = [];
 
     for (let tick = 0; tick < 240; tick += 1) {
-      firstEvents.push(...stepWorld(first, TICK_SECONDS, scriptedCommands(tick)));
+      firstEvents.push(
+        ...stepWorld(first, TICK_SECONDS, scriptedCommands(tick)),
+      );
       secondEvents.push(
         ...stepWorld(second, TICK_SECONDS, scriptedCommands(tick)),
       );

@@ -1,4 +1,4 @@
-import type { SimEvent } from '@monsters/game-core';
+import { canMonsterSwim, type SimEvent } from '@monsters/game-core';
 import {
   createHarness,
   resetDatabaseStandalone,
@@ -120,6 +120,72 @@ describe('world persistence', () => {
     });
     expect(row?.alive).toBe(false);
     expect(row?.diedAt).not.toBeNull();
+  });
+
+  it('transactionally resets and reseeds a terrestrial-only world', async () => {
+    const world = harness.runner.getWorld()!;
+    const oldMonsterId = harness.runner.getState()!.entities[0].id;
+    const guest = await harness.prisma.guestPlayer.create({
+      data: {
+        tokenHash: 'reset-test-token-hash',
+        displayName: 'Reset tester',
+      },
+    });
+    await harness.prisma.worldMember.create({
+      data: {
+        worldId: world.id,
+        guestId: guest.id,
+        selectedMonsterId: oldMonsterId,
+      },
+    });
+
+    const result = await harness.runner.resetWorld({
+      initialPopulation: 14,
+      terrestrialOnly: true,
+    });
+
+    expect(result.population).toBe(14);
+    expect(result.terrestrialOnly).toBe(true);
+    const state = harness.runner.getState()!;
+    expect(state.entities).toHaveLength(14);
+    expect(state.entities.some((entity) => entity.id === oldMonsterId)).toBe(
+      false,
+    );
+    expect(
+      state.entities.every(
+        (entity) =>
+          entity.locomotion === 'land' &&
+          entity.dna.breathing === 'lungs' &&
+          entity.dna.body !== 'aquatic' &&
+          entity.dna.body !== 'avian' &&
+          entity.dna.adaptation !== 'wings' &&
+          !canMonsterSwim(entity.dna),
+      ),
+    ).toBe(true);
+
+    const [storedMonsters, member, events, snapshot, storedWorld] =
+      await Promise.all([
+        harness.prisma.monster.findMany({ where: { worldId: world.id } }),
+        harness.prisma.worldMember.findUnique({
+          where: {
+            worldId_guestId: { worldId: world.id, guestId: guest.id },
+          },
+        }),
+        harness.prisma.worldEvent.findMany({ where: { worldId: world.id } }),
+        harness.prisma.worldSnapshot.findUnique({
+          where: { worldId: world.id },
+        }),
+        harness.prisma.world.findUnique({ where: { id: world.id } }),
+      ]);
+    expect(storedMonsters).toHaveLength(14);
+    expect(
+      storedMonsters.every((monster) => monster.originType === 'wild'),
+    ).toBe(true);
+    expect(member?.selectedMonsterId).toBeNull();
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('worldReset');
+    expect(snapshot?.tick).toBe(0);
+    expect(storedWorld?.seed).toBe(result.seed);
   });
 
   it('keeps advancing the world after a simulated restart', async () => {

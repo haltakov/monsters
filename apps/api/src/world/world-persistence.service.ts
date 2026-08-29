@@ -30,6 +30,12 @@ export type WorldRecord = {
   createdAt: Date;
 };
 
+export type ResetWorldOptions = {
+  seed: number;
+  initialPopulation: number;
+  terrestrialOnly: boolean;
+};
+
 /** Keep the event log useful without letting it grow forever. */
 const EVENT_RETENTION_DAYS = 7;
 
@@ -173,6 +179,72 @@ export class WorldPersistenceService {
       }),
     ]);
     return { state, simulatedAt: now };
+  }
+
+  /**
+   * Permanently replaces one world's simulation and relational history while
+   * preserving accounts, guest devices and their memberships.
+   */
+  resetWorld(world: WorldRecord, options: ResetWorldOptions) {
+    const now = new Date();
+    const state = createWorldState({
+      seed: options.seed,
+      idPrefix: `${world.slug}:reset-${options.seed}:`,
+      initialPopulation: options.initialPopulation,
+      terrestrialOnly: options.terrestrialOnly,
+    });
+    const serialized = serializeWorldState(state) as Prisma.InputJsonValue;
+
+    return this.enqueue(async () => {
+      const updatedWorld = await this.prisma.$transaction(async (tx) => {
+        await tx.worldMember.updateMany({
+          where: { worldId: world.id },
+          data: { selectedMonsterId: null },
+        });
+        await tx.worldEvent.deleteMany({ where: { worldId: world.id } });
+        await tx.worldSnapshot.deleteMany({ where: { worldId: world.id } });
+        await tx.monster.deleteMany({ where: { worldId: world.id } });
+        await tx.monster.createMany({
+          data: state.entities.map((entity) => ({
+            id: entity.id,
+            ...monsterRowData(entity, world.id),
+          })),
+        });
+        await tx.worldSnapshot.create({
+          data: {
+            worldId: world.id,
+            version: WORLD_STATE_VERSION,
+            tick: 0,
+            simulatedAt: now,
+            state: serialized,
+          },
+        });
+        const nextWorld = await tx.world.update({
+          where: { id: world.id },
+          data: {
+            seed: options.seed,
+            status: 'active',
+            currentTick: 0,
+            simulatedAt: now,
+          },
+        });
+        await tx.worldEvent.create({
+          data: {
+            worldId: world.id,
+            tick: 0,
+            type: 'worldReset',
+            payload: {
+              entities: state.entities.length,
+              seed: options.seed,
+              terrestrialOnly: options.terrestrialOnly,
+            },
+          },
+        });
+        return nextWorld;
+      });
+
+      return { world: updatedWorld, state, simulatedAt: now };
+    });
   }
 
   /**

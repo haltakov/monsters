@@ -12,6 +12,7 @@ import { WorldPersistenceService } from './world-persistence.service';
 import { WorldRunnerService } from './world-runner.service';
 import { WorldService } from './world.service';
 import { AdminMonsterController } from './admin-monster.controller';
+import { AdminWorldController } from './admin-world.controller';
 
 @Module({
   imports: [PrismaModule, GuestModule],
@@ -20,6 +21,7 @@ import { AdminMonsterController } from './admin-monster.controller';
     MonsterController,
     PublicMonsterController,
     AdminMonsterController,
+    AdminWorldController,
   ],
   providers: [
     WorldLockService,

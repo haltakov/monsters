@@ -407,6 +407,16 @@ const en = {
   "account.noRelations": "No parents, copies, or children recorded yet.",
   "account.filterOrigin": "Filter by origin",
   "account.searchName": "Search by name",
+  "account.dangerZone": "DANGER ZONE",
+  "account.resetWorld": "Reset the living world",
+  "account.resetWorldHelp":
+    "Permanently removes every monster, egg, family line, and world event. Accounts remain. The replacement population is land-only.",
+  "account.resetPopulation": "New wild population",
+  "account.resetAction": "Reset and reseed",
+  "account.resetConfirm":
+    "Permanently reset Monster Island and replace everything with {{count}} new land monsters? This cannot be undone.",
+  "account.resetComplete":
+    "The island was reset with {{count}} new land monsters.",
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -807,6 +817,16 @@ const bg: Record<TranslationKey, string> = {
   "account.noRelations": "Още няма записани родители, копия или деца.",
   "account.filterOrigin": "Филтрирай по произход",
   "account.searchName": "Търси по име",
+  "account.dangerZone": "ОПАСНА ЗОНА",
+  "account.resetWorld": "Нулирай живия свят",
+  "account.resetWorldHelp":
+    "Изтрива завинаги всички чудовища, яйца, родословия и събития. Профилите остават. Новата популация е само сухоземна.",
+  "account.resetPopulation": "Нова дива популация",
+  "account.resetAction": "Нулирай и засели",
+  "account.resetConfirm":
+    "Да нулирам ли завинаги Острова на чудовищата и да заменя всичко с {{count}} нови сухоземни чудовища? Това не може да се отмени.",
+  "account.resetComplete":
+    "Островът беше нулиран с {{count}} нови сухоземни чудовища.",
 };
 
 const de: Record<TranslationKey, string> = {
@@ -1214,6 +1234,16 @@ const de: Record<TranslationKey, string> = {
   "account.noRelations": "Noch keine Eltern, Kopien oder Kinder verzeichnet.",
   "account.filterOrigin": "Nach Herkunft filtern",
   "account.searchName": "Nach Namen suchen",
+  "account.dangerZone": "GEFAHRENBEREICH",
+  "account.resetWorld": "Lebende Welt zurücksetzen",
+  "account.resetWorldHelp":
+    "Löscht dauerhaft alle Monster, Eier, Stammbäume und Weltereignisse. Konten bleiben erhalten. Die neue Population lebt nur an Land.",
+  "account.resetPopulation": "Neue Wildpopulation",
+  "account.resetAction": "Zurücksetzen und neu besiedeln",
+  "account.resetConfirm":
+    "Monster Island dauerhaft zurücksetzen und alles durch {{count}} neue Landmonster ersetzen? Dies kann nicht rückgängig gemacht werden.",
+  "account.resetComplete":
+    "Die Insel wurde mit {{count}} neuen Landmonstern zurückgesetzt.",
 };
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {

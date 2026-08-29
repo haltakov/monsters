@@ -243,4 +243,17 @@ export const api = {
       ...options,
       method: "POST",
     }),
+  adminResetWorld: (population: number, options: RequestOptions = {}) =>
+    apiRequest<{
+      seed: number;
+      population: number;
+      terrestrialOnly: boolean;
+    }>("/api/admin/world/reset", {
+      ...options,
+      method: "POST",
+      body: {
+        population,
+        confirmation: "RESET MONSTER ISLAND",
+      },
+    }),
 };

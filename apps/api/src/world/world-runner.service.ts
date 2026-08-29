@@ -4,6 +4,7 @@ import {
   OnApplicationShutdown,
   OnModuleInit,
 } from '@nestjs/common';
+import { randomInt } from 'node:crypto';
 import {
   accumulate,
   catchUpWorld,
@@ -155,6 +156,55 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     return true;
   }
 
+  /** Atomically replaces the live world and publishes its fresh state. */
+  async resetWorld(options: {
+    initialPopulation: number;
+    terrestrialOnly: boolean;
+  }) {
+    if (
+      this.mode !== 'running' ||
+      !this.lock.isOwned ||
+      !this.world ||
+      !this.state
+    ) {
+      throw new Error('This API instance does not own the running world');
+    }
+
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.mode = 'starting';
+    this.commands = [];
+
+    try {
+      await this.persistence.drain();
+      const reset = await this.persistence.resetWorld(this.world, {
+        seed: randomInt(1, 0x7fffffff),
+        initialPopulation: options.initialPopulation,
+        terrestrialOnly: options.terrestrialOnly,
+      });
+      this.world = reset.world;
+      this.state = reset.state;
+      this.lastCheckpointAt = reset.simulatedAt;
+      this.lastTickAt = reset.simulatedAt;
+      this.lastTickDurationMs = 0;
+      this.start();
+      this.publish([], this.state);
+      this.logger.warn(
+        `Reset world "${this.world.slug}" with ${this.state.entities.length} terrestrial monsters`,
+      );
+      return {
+        seed: this.world.seed,
+        population: this.state.entities.length,
+        terrestrialOnly: options.terrestrialOnly,
+      };
+    } catch (error) {
+      // Reload whichever complete transaction is durable, then resume service.
+      await this.load();
+      this.start();
+      throw error;
+    }
+  }
+
   private scheduleLockRetry() {
     if (this.stopping || this.lockRetryTimer) return;
     this.mode = 'standby';
@@ -290,17 +340,7 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     this.lastTickAt = new Date();
     this.lastTickDurationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
 
-    for (const publish of this.publishers) {
-      try {
-        publish({ state: this.state, events, tick: this.state.tick });
-      } catch (error) {
-        this.logger.error(
-          `World publisher failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
+    this.publish(events, this.state);
 
     const critical = events.filter(isCriticalEvent);
     if (critical.length > 0) {
@@ -313,6 +353,20 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
       CHECKPOINT_INTERVAL_MS
     ) {
       void this.writeCheckpoint();
+    }
+  }
+
+  private publish(events: SimEvent[], state: WorldSimState) {
+    for (const publish of this.publishers) {
+      try {
+        publish({ state, events, tick: state.tick });
+      } catch (error) {
+        this.logger.error(
+          `World publisher failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
   }
 
