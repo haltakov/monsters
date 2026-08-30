@@ -244,6 +244,45 @@ describe('world websocket protocol', () => {
     expect(takeover.snapshot!.you.isController).toBe(true);
   });
 
+  it('releases the previous monster when one socket switches control', async () => {
+    const first = await createPlayer('Switcher One');
+    const created = await request(server())
+      .post('/api/monsters')
+      .set({ Authorization: `Bearer ${first.token}` })
+      .send({ name: 'Switcher Two', dna: DNA })
+      .expect(201);
+    const secondId = (created.body as { monster: { id: string } }).monster.id;
+    const client = await connect(first.token);
+    await client.join(first.monsterId);
+    const firstEntity = await joinedEntity(first.monsterId);
+
+    client.input({ forward: 1, heading: 0 });
+    await waitFor(() => firstEntity.input?.forward === 1);
+
+    // TestClient normally retains the last snapshot, so clear it before
+    // waiting for the replacement snapshot emitted by a second join.
+    client.snapshot = null;
+    await client.join(secondId);
+    const secondEntity = await joinedEntity(secondId);
+
+    await waitFor(() => firstEntity.controlExpiresAt !== null);
+    expect(firstEntity.input).toBeNull();
+    expect(secondEntity.controllerId).toBe(client.socket.id);
+
+    // Taking over the released monster must not demote the first socket from
+    // the new monster it now controls.
+    const takeover = await connect(first.token);
+    await takeover.join(first.monsterId);
+    await waitFor(() => firstEntity.controllerId === takeover.socket.id);
+    expect(secondEntity.controllerId).toBe(client.socket.id);
+
+    client.input({ forward: 1, heading: 0 });
+    await waitFor(() => secondEntity.lastInputSeq > 0);
+    expect(client.errors.some((error) => error.code === 'notOwner')).toBe(
+      false,
+    );
+  });
+
   it('never lets a player damage another controlled player', async () => {
     const attacker = await createPlayer('Attacker');
     const victim = await createPlayer('Victim');

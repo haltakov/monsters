@@ -16,8 +16,6 @@ import {
   ROCKS,
   TREES,
   WORLD_RADIUS,
-  dampAngle,
-  isWaterAt,
   riverX,
   terrainHeight,
   type Prey,
@@ -1052,38 +1050,15 @@ function SnackCritter({
   const y = terrainHeight(prey.x, prey.z);
   const phase = Number(prey.id.split("-").at(-1) ?? 0) * 1.37;
 
-  useFrame(({ clock }, delta) => {
+  useFrame(({ clock }) => {
     if (!root.current) return;
     const time = clock.elapsedTime;
-    const x = prey.x + Math.sin(time * 0.65 + phase) * 1.15;
-    const z = prey.z + Math.cos(time * 0.52 + phase) * 0.9;
-    if (isWaterAt(x, z)) return;
-    const dx = x - root.current.position.x;
-    const dz = z - root.current.position.z;
-    root.current.position.x = THREE.MathUtils.damp(
-      root.current.position.x,
-      x,
-      5,
-      delta,
-    );
-    root.current.position.z = THREE.MathUtils.damp(
-      root.current.position.z,
-      z,
-      5,
-      delta,
-    );
+    // Keep the visible critter on the exact authoritative interaction point.
+    // A small idle hop preserves life without making attacks miss an animal
+    // that the player can plainly see.
     root.current.position.y =
-      terrainHeight(root.current.position.x, root.current.position.z) +
-      0.38 +
-      Math.abs(Math.sin(time * 6.5 + phase)) * 0.06;
-    if (Math.hypot(dx, dz) > 0.002) {
-      root.current.rotation.y = dampAngle(
-        root.current.rotation.y,
-        Math.atan2(-dx, -dz),
-        6,
-        delta,
-      );
-    }
+      y + 0.38 + Math.abs(Math.sin(time * 6.5 + phase)) * 0.06;
+    root.current.rotation.y = -0.4 + Math.sin(time * 0.72 + phase) * 0.08;
   });
 
   return (

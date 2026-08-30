@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { TICK_SECONDS } from "../src/sim/constants";
 import { createWorldState, stepWorld } from "../src/sim/engine";
 import { EDIBLES } from "../src/world/resources";
+import { WORLD_RADIUS } from "../src/world/terrain";
 import {
   emptyWorld,
   makeEntity,
@@ -87,6 +88,37 @@ describe("AI objective selection", () => {
     expect(flyer.locomotion).toBe("fly");
   });
 
+  it("keeps a fleeing winged AI inside the simulated ocean boundary", () => {
+    const state = emptyWorld();
+    const flyer = makeEntity("edge-flyer", {
+      x: WORLD_RADIUS + 21,
+      z: 0,
+      energy: 100,
+      health: 20,
+      mateCooldownUntil: 9999,
+      dna: withDna({
+        adaptation: "wings",
+        diet: "herbivore",
+        social: "solitary",
+        size: "tiny",
+      }),
+    });
+    const threat = makePlayer("edge-threat", {
+      x: WORLD_RADIUS + 19,
+      z: 0,
+      dna: withDna({ diet: "carnivore", size: "huge", mouth: "fangs" }),
+    });
+    state.entities.push(flyer, threat);
+
+    run(state, 30);
+
+    expect(flyer.intent).toBe("flee");
+    expect(flyer.locomotion).toBe("fly");
+    expect(Math.hypot(flyer.x, flyer.z)).toBeLessThanOrEqual(
+      WORLD_RADIUS + 22.01,
+    );
+  });
+
   it("hunts when a carnivore is hungry and the target is weaker", () => {
     const state = emptyWorld();
     const hunter = makeEntity("hunter", {
@@ -109,6 +141,57 @@ describe("AI objective selection", () => {
     // The hunter chases toward its prey while the prey runs away.
     expect(hunter.x).toBeLessThan(-10);
     expect(target.x).toBeLessThan(-22);
+  });
+
+  it("does not attack or reward an already defeated target twice in one tick", () => {
+    const state = emptyWorld();
+    const firstHunter = makeEntity("hunter-one", {
+      x: -1,
+      z: 0,
+      energy: 30,
+      mateCooldownUntil: 9999,
+      dna: withDna({ diet: "carnivore", size: "large", mouth: "fangs" }),
+    });
+    const secondHunter = makeEntity("hunter-two", {
+      x: 1,
+      z: 0,
+      energy: 30,
+      mateCooldownUntil: 9999,
+      dna: withDna({ diet: "carnivore", size: "large", mouth: "fangs" }),
+    });
+    const target = makeEntity("fragile-target", {
+      x: 0,
+      z: 0,
+      health: 1,
+      mateCooldownUntil: 9999,
+      dna: withDna({ diet: "herbivore", size: "tiny" }),
+    });
+    state.entities.push(firstHunter, secondHunter, target);
+
+    const events = stepWorld(state, TICK_SECONDS);
+    const targetAttacks = events.filter(
+      (event) => event.type === "attack" && event.targetId === target.id,
+    );
+
+    expect(target.alive).toBe(false);
+    expect(targetAttacks).toHaveLength(1);
+    expect(
+      targetAttacks.filter(
+        (event) => event.type === "attack" && event.energyReward > 0,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("does not let AI initiate mating with a controlled player", () => {
+    const state = emptyWorld();
+    const wild = makeEntity("wild", { x: 0, z: 0, energy: 100 });
+    const player = makePlayer("player", { x: 1, z: 0, energy: 100 });
+    state.entities.push(wild, player);
+
+    stepWorld(state, TICK_SECONDS);
+
+    expect(state.eggs).toHaveLength(0);
+    expect(player.mateCooldownUntil).toBe(0);
   });
 
   it("keeps solitary monsters apart and pulls pack monsters together", () => {

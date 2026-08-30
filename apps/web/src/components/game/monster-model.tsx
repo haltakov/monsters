@@ -345,6 +345,27 @@ function Mouth({
     );
   }
 
+  if (shape === "grin") {
+    return (
+      <group position={[0, -0.43, -0.14]}>
+        <mesh scale={[1.16, 0.55, 0.18]}>
+          <sphereGeometry args={[0.3, 24, 16]} />
+          <meshStandardMaterial color="#173F35" roughness={0.78} />
+        </mesh>
+        {[-0.18, -0.06, 0.06, 0.18].map((x) => (
+          <mesh
+            key={x}
+            position={[x, -0.015, -0.176]}
+            scale={[0.045, 0.075, 0.025]}
+          >
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial color="#FFF8E8" roughness={0.66} />
+          </mesh>
+        ))}
+      </group>
+    );
+  }
+
   return (
     <mesh position={[0, -0.43, -0.13]} rotation={[Math.PI / 2, 0, 0]}>
       <torusGeometry args={[0.2, 0.038, 12, 28, Math.PI]} />
@@ -370,7 +391,14 @@ function Face({
       scale={profile.faceScale}
     >
       {eyeOffsets(dna.eyes).map(([x, y], index) => {
-        const eyeScale = dna.eyes >= 10 ? 0.62 : dna.eyes >= 6 ? 0.78 : 1;
+        const eyeScale =
+          dna.eyes >= 10
+            ? 0.52
+            : dna.eyes >= 8
+              ? 0.61
+              : dna.eyes >= 6
+                ? 0.7
+                : 1;
         return (
           <group
             key={`${x}-${y}-${index}`}
@@ -502,6 +530,30 @@ function Horns({
     );
   }
 
+  if (shape === "crown") {
+    return (
+      <group position={[0, y - surfaceInset, z]}>
+        <mesh position={[0, -0.22, 0]} scale={[0.54, 0.22, 0.28]}>
+          <sphereGeometry args={[1, 22, 16]} />
+          <meshStandardMaterial color={bodyColor ?? accent} roughness={0.76} />
+        </mesh>
+        {[-0.34, 0, 0.34].map((x, index) => (
+          <mesh
+            key={x}
+            position={[x, index === 1 ? 0.12 : 0.02, 0]}
+            rotation={[0, 0, x * 0.5]}
+            castShadow={castShadow}
+          >
+            <coneGeometry
+              args={[index === 1 ? 0.15 : 0.13, index === 1 ? 0.62 : 0.48, 18]}
+            />
+            <meshStandardMaterial color={accent} roughness={0.72} />
+          </mesh>
+        ))}
+      </group>
+    );
+  }
+
   if (shape === "ram") {
     return (
       <group>
@@ -622,6 +674,17 @@ function Ears({
             >
               <sphereGeometry args={[1, 22, 16]} />
               <meshStandardMaterial color={accent} roughness={0.76} />
+            </mesh>
+          )}
+          {shape === "long-ear" && (
+            <mesh
+              position={[side * 0.13, 0.38, 0.02]}
+              rotation={[0.03, side * 0.08, side * -0.18]}
+              scale={[0.17, 0.68, 0.14]}
+              castShadow={castShadow}
+            >
+              <capsuleGeometry args={[1, 0.7, 10, 18]} />
+              <meshStandardMaterial color={accent} roughness={0.78} />
             </mesh>
           )}
         </group>
@@ -800,6 +863,41 @@ function Adaptation({
     );
   }
 
+  if (type === "spines") {
+    return (
+      <group>
+        {Array.from({ length: 9 }, (_, index) => {
+          const progress = index / 8;
+          return (
+            <group
+              key={index}
+              position={[
+                0,
+                cy +
+                  sy * (0.78 - Math.abs(progress - 0.5) * 0.14) -
+                  surfaceInset,
+                cz - sz * 0.7 + progress * sz * 1.4,
+              ]}
+              scale={[1, 0.78 + Math.sin(progress * Math.PI) * 0.38, 0.72]}
+            >
+              <mesh position={[0, -0.13, 0]} scale={[0.2, 0.17, 0.2]}>
+                <sphereGeometry args={[1, 16, 12]} />
+                <meshStandardMaterial
+                  color={bodyColor ?? accent}
+                  roughness={0.78}
+                />
+              </mesh>
+              <mesh position={[0, 0.13, 0]} castShadow={castShadow}>
+                <coneGeometry args={[0.105, 0.48, 14]} />
+                <meshStandardMaterial color={accent} roughness={0.76} />
+              </mesh>
+            </group>
+          );
+        })}
+      </group>
+    );
+  }
+
   return (
     <group>
       {Array.from({ length: 6 }, (_, index) => (
@@ -886,7 +984,19 @@ function getSmoothGeometryCacheKey(
   dna: MonsterDna,
   geometryQuality: "hero" | "remote",
 ) {
-  return `smooth-hybrid-rig-v14:${geometryQuality}:${JSON.stringify(dna)}`;
+  return `smooth-hybrid-rig-v17:${geometryQuality}:${getSmoothCoreSignature(dna)}`;
+}
+
+function getSmoothCoreSignature(dna: MonsterDna) {
+  return [
+    dna.body,
+    dna.legs,
+    dna.legShape,
+    dna.tail,
+    dna.pattern,
+    dna.color,
+    dna.accent,
+  ].join(":");
 }
 
 function pruneSmoothGeometryCache() {
@@ -936,6 +1046,52 @@ function addSmoothBall(
     strength,
     subtract,
   );
+}
+
+/** Adds a deterministic anisotropic field primitive for readable feet. */
+function addSmoothEllipsoid(
+  field: MarchingCubes,
+  center: [number, number, number],
+  radius: [number, number, number],
+  amplitude = 190,
+) {
+  const size = field.size;
+  const worldToGrid = (value: number, origin = 0) =>
+    Math.floor((0.5 + (value - origin) / (SMOOTH_FIELD_SCALE * 2)) * size);
+  const [cx, cy, cz] = center;
+  const [rx, ry, rz] = radius;
+  const minX = THREE.MathUtils.clamp(worldToGrid(cx - rx), 1, size - 2);
+  const maxX = THREE.MathUtils.clamp(worldToGrid(cx + rx) + 1, 1, size - 2);
+  const minY = THREE.MathUtils.clamp(
+    worldToGrid(cy - ry, SMOOTH_FIELD_ORIGIN_Y),
+    1,
+    size - 2,
+  );
+  const maxY = THREE.MathUtils.clamp(
+    worldToGrid(cy + ry, SMOOTH_FIELD_ORIGIN_Y) + 1,
+    1,
+    size - 2,
+  );
+  const minZ = THREE.MathUtils.clamp(worldToGrid(cz - rz), 1, size - 2);
+  const maxZ = THREE.MathUtils.clamp(worldToGrid(cz + rz) + 1, 1, size - 2);
+
+  for (let z = minZ; z <= maxZ; z += 1) {
+    const worldZ = (z / size - 0.5) * SMOOTH_FIELD_SCALE * 2;
+    const dz = (worldZ - cz) / rz;
+    for (let y = minY; y <= maxY; y += 1) {
+      const worldY =
+        (y / size - 0.5) * SMOOTH_FIELD_SCALE * 2 + SMOOTH_FIELD_ORIGIN_Y;
+      const dy = (worldY - cy) / ry;
+      for (let x = minX; x <= maxX; x += 1) {
+        const worldX = (x / size - 0.5) * SMOOTH_FIELD_SCALE * 2;
+        const dx = (worldX - cx) / rx;
+        const distanceSquared = dx * dx + dy * dy + dz * dz;
+        if (distanceSquared >= 1) continue;
+        const fieldIndex = z * field.size2 + y * size + x;
+        field.field[fieldIndex] += amplitude * (1 - distanceSquared);
+      }
+    }
+  }
 }
 
 function smoothScalarMin(first: number, second: number, smoothing: number) {
@@ -1285,6 +1441,24 @@ function smoothPatternMix(
     const horizontal = 1 - THREE.MathUtils.smoothstep(Math.abs(nx), 0.38, 0.82);
     return frontness * vertical * horizontal * 0.78;
   }
+  if (dna.pattern === "freckles") {
+    const fine =
+      0.5 +
+      0.5 *
+        Math.sin(nx * 13.4 + nz * 4.1) *
+        Math.cos(ny * 12.8 - nx * 2.7) *
+        Math.sin(nz * 11.6 + ny * 3.2);
+    const faceBias = THREE.MathUtils.smoothstep(-nz, 0.08, 0.82);
+    return THREE.MathUtils.smoothstep(fine, 0.72, 0.9) * faceBias * 0.78;
+  }
+  if (dna.pattern === "saddle") {
+    const top = THREE.MathUtils.smoothstep(ny, 0.08, 0.68);
+    const middle =
+      1 - THREE.MathUtils.smoothstep(Math.abs(nz - 0.08), 0.34, 0.88);
+    const sideFalloff =
+      1 - THREE.MathUtils.smoothstep(Math.abs(nx), 0.58, 1.08);
+    return top * middle * sideFalloff * 0.82;
+  }
   const scales =
     0.5 + 0.5 * Math.sin((nx + nz) * 11.5) * Math.sin((ny - nz * 0.72) * 10.5);
   return 0.1 + THREE.MathUtils.smoothstep(scales, 0.56, 0.8) * 0.38;
@@ -1333,13 +1507,29 @@ function buildSmoothGeometry(
   const [cx, cy, cz] = profile.center;
   const [sx, sy, sz] = profile.scale;
 
-  addSmoothBall(field, cx, cy, cz, 1.18, 7.5);
-  addSmoothBall(field, cx - sx * 0.4, cy, cz, 0.7, 8.5);
-  addSmoothBall(field, cx + sx * 0.4, cy, cz, 0.7, 8.5);
-  addSmoothBall(field, cx, cy - sy * 0.24, cz, 0.58, 8.8);
+  if (dna.legs === 0) {
+    // A single convex body gives legless creatures an honest silhouette.
+    // The generic side/front satellite balls read as phantom feet once their
+    // lower surfaces were grounded, especially on aquatic and biped profiles.
+    addSmoothEllipsoid(
+      field,
+      [cx, cy, cz],
+      [
+        Math.max(1.15, sx * 1.15),
+        Math.max(dna.body === "slug" ? 0.62 : 0.78, sy * 1.05),
+        Math.max(1.3, sz * 1.02),
+      ],
+      300,
+    );
+  } else {
+    addSmoothBall(field, cx, cy, cz, 1.18, 7.5);
+    addSmoothBall(field, cx - sx * 0.4, cy, cz, 0.7, 8.5);
+    addSmoothBall(field, cx + sx * 0.4, cy, cz, 0.7, 8.5);
+    addSmoothBall(field, cx, cy - sy * 0.24, cz, 0.58, 8.8);
+    addSmoothBall(field, cx, cy, cz - sz * 0.42, 0.82, 8.2);
+    addSmoothBall(field, cx, cy, cz + sz * 0.42, 0.82, 8.2);
+  }
   addSmoothBall(field, cx, cy + sy * 0.38, cz, 0.72, 8.5);
-  addSmoothBall(field, cx, cy, cz - sz * 0.42, 0.82, 8.2);
-  addSmoothBall(field, cx, cy, cz + sz * 0.42, 0.82, 8.2);
 
   const [faceY, faceZ] = profile.face;
   const headStrength = dna.body === "biped" ? 0.72 : 0.82;
@@ -1426,143 +1616,94 @@ function buildSmoothGeometry(
         10.8,
       );
     }
-    addSmoothBall(
-      field,
-      footX,
-      legFootY,
-      z - (dna.legShape === "clawed" ? 0.18 * footReachScale : 0),
-      (dna.legShape === "hoof"
-        ? 0.21
-        : dna.legShape === "flippers"
-          ? 0.34
-          : dna.legShape === "paws"
-            ? 0.36
-            : dna.legShape === "stilt"
-              ? 0.16
-              : 0.25) * legDensityScale,
-      10.8,
-    );
+    const scaledRadius = (
+      radius: [number, number, number],
+    ): [number, number, number] => [
+      radius[0] * legDensityScale,
+      radius[1],
+      radius[2] * footReachScale,
+    ];
 
-    if (dna.legShape === "hoof") {
+    if (dna.legShape === "stubby") {
+      addSmoothEllipsoid(
+        field,
+        [footX, legFootY - 0.01, z - 0.08],
+        scaledRadius([0.31, 0.23, 0.3]),
+      );
+    } else if (dna.legShape === "hoof") {
       for (const side of [-1, 1]) {
-        addSmoothBall(
+        addSmoothEllipsoid(
           field,
-          footX + side * 0.16 * legDensityScale,
-          legFootY - 0.01,
-          z - 0.19 * footReachScale,
-          0.21 * legDensityScale,
-          11.2,
+          [
+            footX + side * 0.13 * legDensityScale,
+            legFootY - 0.035,
+            z - 0.23 * footReachScale,
+          ],
+          scaledRadius([0.145, 0.14, 0.32]),
+          205,
         );
-        if (geometryQuality === "hero") {
-          addSmoothBall(
-            field,
-            footX + side * 0.17 * legDensityScale,
-            legFootY - 0.02,
-            z - 0.34 * footReachScale,
-            0.16 * legDensityScale,
-            11.4,
-          );
-        }
       }
     } else if (dna.legShape === "springy") {
-      addSmoothBall(
+      addSmoothEllipsoid(
         field,
-        footX,
-        legFootY + 0.15,
-        z + 0.25 * footReachScale,
-        0.23 * legDensityScale,
-        10.9,
+        [footX, legFootY + 0.11, z + 0.18 * footReachScale],
+        scaledRadius([0.18, 0.2, 0.24]),
       );
-      addSmoothBall(
+      addSmoothEllipsoid(
         field,
-        footX,
-        legFootY - 0.02,
-        z - 0.38 * footReachScale,
-        0.22 * legDensityScale,
-        10.9,
+        [footX, legFootY - 0.035, z - 0.34 * footReachScale],
+        scaledRadius([0.21, 0.12, 0.54]),
+        205,
       );
-      if (geometryQuality === "hero") {
-        addSmoothBall(
-          field,
-          footX,
-          legFootY - 0.025,
-          z - 0.55 * footReachScale,
-          0.15 * legDensityScale,
-          11.2,
-        );
-      }
     } else if (dna.legShape === "clawed") {
+      addSmoothEllipsoid(
+        field,
+        [footX, legFootY, z - 0.18 * footReachScale],
+        scaledRadius([0.27, 0.13, 0.29]),
+      );
       for (const toe of [-1, 0, 1]) {
-        const toeX = footX + toe * 0.18 * legDensityScale;
-        addSmoothBall(
+        addSmoothEllipsoid(
           field,
-          toeX,
-          legFootY - 0.01,
-          z - 0.34 * footReachScale,
-          0.17 * legDensityScale,
-          11.4,
+          [
+            footX + toe * 0.17 * legDensityScale,
+            legFootY - 0.045,
+            z - 0.48 * footReachScale,
+          ],
+          scaledRadius([0.075, 0.075, 0.38]),
+          215,
         );
-        if (geometryQuality === "hero") {
-          addSmoothBall(
-            field,
-            toeX,
-            legFootY - 0.025,
-            z - 0.55 * footReachScale,
-            0.13 * legDensityScale,
-            11.5,
-          );
-        }
       }
     } else if (dna.legShape === "paws") {
+      addSmoothEllipsoid(
+        field,
+        [footX, legFootY - 0.02, z - 0.22 * footReachScale],
+        scaledRadius([0.39, 0.17, 0.4]),
+        195,
+      );
       for (const toe of [-1, 0, 1]) {
         addSmoothBall(
           field,
-          footX + toe * 0.16 * legDensityScale,
-          legFootY - 0.015,
-          z - 0.36 * footReachScale,
-          0.18 * legDensityScale,
-          11.2,
+          footX + toe * 0.17 * legDensityScale,
+          legFootY - 0.025,
+          z - 0.43 * footReachScale,
+          0.13 * legDensityScale,
+          11.4,
         );
       }
     } else if (dna.legShape === "stilt") {
-      addSmoothBall(
+      addSmoothEllipsoid(
         field,
-        footX,
-        legFootY - 0.015,
-        z - 0.22 * footReachScale,
-        0.14 * legDensityScale,
-        11.2,
+        [footX, legFootY - 0.035, z - 0.18 * footReachScale],
+        scaledRadius([0.14, 0.085, 0.3]),
+        205,
       );
-    } else if (dna.legShape === "flippers") {
-      const flipperReach = dna.legs >= 6 ? 0.18 : 0.32;
-      addSmoothBall(
+    } else {
+      addSmoothEllipsoid(
         field,
-        footX,
-        legFootY,
-        z - flipperReach,
-        0.34 * legDensityScale,
-        10.4,
+        [footX, legFootY - 0.04, z - 0.3 * footReachScale],
+        scaledRadius([0.45, 0.11, 0.58]),
+        205,
       );
-      for (const side of [-1, 1]) {
-        addSmoothBall(
-          field,
-          footX + side * 0.2 * legDensityScale,
-          legFootY - 0.01,
-          z - flipperReach * 1.25,
-          0.25 * legDensityScale,
-          10.7,
-        );
-      }
-      if (geometryQuality === "hero") {
-        addSmoothBall(
-          field,
-          footX,
-          legFootY - 0.02,
-          z - flipperReach * 1.75,
-          0.24 * legDensityScale,
-          10.6,
-        );
-      }
     }
     return { x, y: hipY, z, index };
   });
@@ -1900,10 +2041,12 @@ function createSmoothRig(
 }
 
 function legGaitDirection(index: number) {
-  // legPositions is row-major: even indices are one side, odd indices the
-  // other. Keeping every leg on a side in phase prevents adjacent rows from
-  // crossing and visually closing their guaranteed openings.
-  return index % 2 === 0 ? 1 : -1;
+  // legPositions is row-major. Alternating both side and row produces
+  // diagonal pairs for quadrupeds and a readable tripod/wave rhythm for
+  // denser creatures instead of moving every leg on one side as a rigid comb.
+  const row = Math.floor(index / 2);
+  const side = index % 2;
+  return (row + side) % 2 === 0 ? 1 : -1;
 }
 
 function SmoothMonsterCore({
@@ -2008,8 +2151,11 @@ function SmoothMonsterCore({
       );
     }
     if (meshRef.current) {
-      const breath = Math.sin(time * 1.9) * 0.008;
-      const movementCompression = Math.abs(stride) * intensity * 0.025;
+      // Keep the organic idle motion subtle: external sockets (eyes, horns,
+      // ears and adaptations) intentionally overlap the skin, and large core-
+      // only squash used to expose those joins while walking.
+      const breath = Math.sin(time * 1.9) * 0.003;
+      const movementCompression = Math.abs(stride) * intensity * 0.006;
       meshRef.current.scale.y = 1 + breath - movementCompression;
       meshRef.current.scale.x = 1 - breath * 0.5 + movementCompression * 0.45;
     }
@@ -2064,7 +2210,7 @@ function SmoothMonsterVisual({
     <group scale={sizeScale}>
       <group position={[0, groundOffset, 0]} scale={buildScale}>
         <SmoothMonsterCore
-          key={`${geometryQuality}:${JSON.stringify(dna)}`}
+          key={`${geometryQuality}:${getSmoothCoreSignature(dna)}`}
           dna={dna}
           profile={profile}
           bodyColor={primary.hex}

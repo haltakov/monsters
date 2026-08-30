@@ -85,7 +85,16 @@ describe("genetics", () => {
   });
 
   it("round-trips DNA through the versioned codec", () => {
-    const dna = withDna({ body: "avian", adaptation: "wings", ears: "fan" });
+    const dna = withDna({
+      body: "avian",
+      mouth: "grin",
+      pattern: "saddle",
+      horns: "crown",
+      ears: "long-ear",
+      adaptation: "spines",
+      color: "jade",
+      accent: "copper",
+    });
     expect(decodeMonsterDna(encodeMonsterDna(dna))).toEqual(dna);
     expect(
       decodeMonsterDna(
@@ -241,5 +250,36 @@ describe("pairing and eggs", () => {
 
     run(state, ADULT_AGE_SECONDS * 10 + 5);
     expect(baby!.age).toBeGreaterThanOrEqual(ADULT_AGE_SECONDS);
+  });
+
+  it("keeps a due egg queued until population capacity is available", () => {
+    const state = emptyWorld();
+    const parent = makePlayer("parent", { x: 0, z: 0 });
+    state.entities.push(parent);
+    state.settings.maxPopulation = 1;
+    state.eggs.push({
+      id: "waiting-egg",
+      dna: { ...DEFAULT_MONSTER_DNA },
+      parentIds: ["parent-a", "parent-b"],
+      parentNames: ["Parent A", "Parent B"],
+      generation: 1,
+      x: 2,
+      y: 0,
+      z: 2,
+      laidAt: 0,
+      hatchAt: 0,
+      mutations: 0,
+    });
+
+    let events = stepWorld(state, TICK_SECONDS);
+    expect(state.eggs.map((egg) => egg.id)).toEqual(["waiting-egg"]);
+    expect(events.some((event) => event.type === "birth")).toBe(false);
+
+    parent.alive = false;
+    parent.health = 0;
+    events = stepWorld(state, TICK_SECONDS);
+    expect(state.eggs).toHaveLength(0);
+    expect(events.some((event) => event.type === "birth")).toBe(true);
+    expect(state.stats.births).toBe(1);
   });
 });

@@ -5,6 +5,7 @@ import {
   canMonsterEatPlants,
   canMonsterHunt,
   canMonsterSwim,
+  DEFAULT_MONSTER_DNA,
   DIETS,
   EAR_SHAPES,
   EYE_COUNTS,
@@ -485,6 +486,15 @@ function resolveLocomotion(
   const canSwim = canMonsterSwim(entity.dna);
   const canFly = entity.dna.adaptation === "wings";
   const overWater = isWaterAt(entity.x, entity.z);
+  if (
+    requested === "land" &&
+    overWater &&
+    !canSwim &&
+    canFly &&
+    entity.locomotion === "fly"
+  ) {
+    return "fly";
+  }
   let mode = requested;
   if (mode === "fly" && !canFly) {
     mode = overWater && canSwim ? "swim" : "land";
@@ -520,6 +530,24 @@ export function sanitizeInput(input: PlayerInput): PlayerInput {
     sprint: Boolean(input.sprint),
     seq: Math.max(0, Math.floor(safe(input.seq))),
   };
+}
+
+/**
+ * Applies the shoreline/outer-ocean gate while still letting a persisted
+ * creature that predates the hard boundary travel back toward the world.
+ */
+function isMovementBlocked(
+  currentX: number,
+  currentZ: number,
+  nextX: number,
+  nextZ: number,
+  canCrossWater: boolean,
+) {
+  if (!isBlockedByWater(nextX, nextZ, canCrossWater)) return false;
+  if (!canCrossWater || !isBlockedByWater(currentX, currentZ, true)) {
+    return true;
+  }
+  return Math.hypot(nextX, nextZ) >= Math.hypot(currentX, currentZ) - 0.000001;
 }
 
 /**
@@ -564,20 +592,28 @@ export function applyPlayerMovement(entity: SimEntity, dt: number) {
       velocityX /= magnitude;
       velocityZ /= magnitude;
       const flying = entity.locomotion === "fly" && canFly;
-      const speed = flying
-        ? sprinting
-          ? PLAYER_FLY_SPRINT_SPEED
-          : PLAYER_FLY_SPEED
-        : sprinting
-          ? PLAYER_SPRINT_SPEED
-          : PLAYER_WALK_SPEED;
+      const dnaSpeedMultiplier =
+        getCreatureSpeed(entity.dna) / getCreatureSpeed(DEFAULT_MONSTER_DNA);
+      const speed =
+        (flying
+          ? sprinting
+            ? PLAYER_FLY_SPRINT_SPEED
+            : PLAYER_FLY_SPEED
+          : sprinting
+            ? PLAYER_SPRINT_SPEED
+            : PLAYER_WALK_SPEED) * dnaSpeedMultiplier;
       const nextX = entity.x + velocityX * speed * dt;
       const nextZ = entity.z + velocityZ * speed * dt;
-      if (flying || !isBlockedByWater(nextX, entity.z, canSwim)) {
+      const movementCanSwim = flying || canSwim;
+      if (
+        !isMovementBlocked(entity.x, entity.z, nextX, entity.z, movementCanSwim)
+      ) {
         entity.x = nextX;
         moved = true;
       }
-      if (flying || !isBlockedByWater(entity.x, nextZ, canSwim)) {
+      if (
+        !isMovementBlocked(entity.x, entity.z, entity.x, nextZ, movementCanSwim)
+      ) {
         entity.z = nextZ;
         moved = true;
       }
@@ -1168,7 +1204,7 @@ function updateAiEntity(
   let nearestThreat: SimEntity | null = null;
   let threatDistance = 16;
   for (const other of living) {
-    if (other.id === entity.id) continue;
+    if (!other.alive || other.id === entity.id) continue;
     if (!canMonsterHunt(other.dna)) continue;
     const separation = direction(entity.x, entity.z, other.x, other.z);
     const dangerous =
@@ -1201,7 +1237,7 @@ function updateAiEntity(
     let repelZ = 0;
     let nearby = 0;
     for (const other of living) {
-      if (other.id === entity.id) continue;
+      if (!other.alive || other.id === entity.id) continue;
       const distance = Math.hypot(other.x - entity.x, other.z - entity.z);
       if (distance > 11 || distance < 0.001) continue;
       const away = direction(other.x, other.z, entity.x, entity.z);
@@ -1219,7 +1255,7 @@ function updateAiEntity(
     const desiredNeighbors =
       entity.dna.social === "pair" ? 1 : entity.dna.social === "pack" ? 3 : 7;
     const preferred = living
-      .filter((other) => other.id !== entity.id)
+      .filter((other) => other.alive && other.id !== entity.id)
       .map((other) => ({
         x: other.x,
         z: other.z,
@@ -1310,7 +1346,7 @@ function updateAiEntity(
     (entity.dna.diet === "carnivore" ? entity.energy < 68 : entity.energy < 38);
   if (shouldHunt) {
     for (const other of living) {
-      if (other.id === entity.id) continue;
+      if (!other.alive || other.id === entity.id) continue;
       const otherPower = getCreaturePower(other.dna);
       const distance = Math.hypot(other.x - entity.x, other.z - entity.z);
       if (distance < preyDistance && otherPower < power * 1.22) {
@@ -1325,9 +1361,11 @@ function updateAiEntity(
   let combatTarget: SimEntity | null = prey;
   if (defending) {
     combatTarget =
-      living.find((other) => other.id === entity.lastAttackerId) ?? null;
+      living.find(
+        (other) => other.alive && other.id === entity.lastAttackerId,
+      ) ?? null;
   }
-  if (combatTarget && entity.locomotion !== "fly") {
+  if (combatTarget?.alive && entity.locomotion !== "fly") {
     const towardTarget = direction(
       entity.x,
       entity.z,
@@ -1382,11 +1420,13 @@ function updateAiEntity(
     entity.energy >= 62 &&
     entity.health >= 62 &&
     entity.mateCooldownUntil <= now &&
-    living.length + state.eggs.length < state.settings.maxPopulation;
+    livingCount(state) + state.eggs.length < state.settings.maxPopulation;
   if (readyToMate && entity.locomotion !== "fly") {
     const partner = living
       .filter(
         (other) =>
+          other.alive &&
+          !isPlayerControlled(other) &&
           other.id !== entity.id &&
           other.age >= ADULT_AGE_SECONDS &&
           other.energy >= 60 &&
@@ -1430,7 +1470,7 @@ function updateAiEntity(
   // Local separation is always active, even for armies, so a group stays a
   // readable cluster rather than collapsing into one overlapping mesh.
   for (const other of living) {
-    if (other.id === entity.id) continue;
+    if (!other.alive || other.id === entity.id) continue;
     const separation = direction(other.x, other.z, entity.x, entity.z);
     if (separation.distance < 2.6 && separation.distance > 0.001) {
       const strength = (2.6 - separation.distance) / 2.6;
@@ -1471,8 +1511,13 @@ function updateAiEntity(
     const moveZ = (steerZ / length) * speed * dt;
     const nextX = entity.x + moveX;
     const nextZ = entity.z + moveZ;
-    const blocked =
-      !shouldFly && isBlockedByWater(nextX, nextZ, canMonsterSwim(entity.dna));
+    const blocked = isMovementBlocked(
+      entity.x,
+      entity.z,
+      nextX,
+      nextZ,
+      shouldFly || canMonsterSwim(entity.dna),
+    );
     if (!blocked) {
       entity.x = nextX;
       entity.z = nextZ;
@@ -1512,6 +1557,7 @@ function hatchEggs(state: WorldSimState, events: SimEvent[]) {
   const due = state.eggs.filter((egg) => egg.hatchAt <= state.time);
   if (due.length === 0) return;
   const random = randomFn(state.rng);
+  const hatchedIds = new Set<string>();
   for (const egg of due) {
     if (livingCount(state) >= state.settings.maxPopulation) break;
     const baby = blankEntity(
@@ -1540,6 +1586,7 @@ function hatchEggs(state: WorldSimState, events: SimEvent[]) {
     baby.mateCooldownUntil = state.time + ADULT_AGE_SECONDS;
     settleHabitat(baby, state.nextCreatureId);
     state.entities.push(baby);
+    hatchedIds.add(egg.id);
     state.stats.births += 1;
     events.push({
       type: "birth",
@@ -1552,7 +1599,9 @@ function hatchEggs(state: WorldSimState, events: SimEvent[]) {
       mutations: egg.mutations,
     });
   }
-  state.eggs = state.eggs.filter((egg) => egg.hatchAt > state.time);
+  // A due egg that cannot hatch because the world is full remains viable. It
+  // will hatch on a later tick after population capacity becomes available.
+  state.eggs = state.eggs.filter((egg) => !hatchedIds.has(egg.id));
 }
 
 function removeExpiredBodies(state: WorldSimState) {

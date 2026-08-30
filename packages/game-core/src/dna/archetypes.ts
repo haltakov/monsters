@@ -67,7 +67,7 @@ export const MONSTER_ARCHETYPES: MonsterArchetype[] = [
     mark: "GUL",
     summary: "A small winged omnivore that travels in a noisy pack.",
     dna: {
-      body: "long",
+      body: "avian",
       legs: 2,
       legShape: "clawed",
       eyes: 2,

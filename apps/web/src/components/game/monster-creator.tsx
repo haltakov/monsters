@@ -3,7 +3,7 @@
 import { Canvas } from "@react-three/fiber";
 import { ContactShadows, OrbitControls } from "@react-three/drei";
 import { Check, Dna, Rotate3D, Shuffle, X } from "lucide-react";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   ACCENT_COLORS,
   ADAPTATIONS,
@@ -29,11 +29,7 @@ import {
 } from "@/components/game/monster-dna";
 import { MONSTER_ARCHETYPES } from "@/components/game/monster-archetypes";
 import { MonsterVisual } from "@/components/game/monster-model";
-import {
-  LanguageSwitcher,
-  useI18n,
-  type TranslationKey,
-} from "@/components/i18n";
+import { useI18n, type TranslationKey } from "@/components/i18n";
 
 type MonsterCreatorProps = {
   dna: MonsterDna;
@@ -42,6 +38,7 @@ type MonsterCreatorProps = {
   onClose: () => void;
   /** Server-side validation or save failure, shown next to the apply button. */
   error?: string | null;
+  saving?: boolean;
 };
 
 function GeneChoices<T extends string | number>({
@@ -50,16 +47,24 @@ function GeneChoices<T extends string | number>({
   options,
   onChange,
   featured = false,
+  disabled = false,
+  hint,
 }: {
   label: string;
   value: T;
   options: readonly T[];
   onChange: (value: T) => void;
   featured?: boolean;
+  disabled?: boolean;
+  hint?: string;
 }) {
   const { option: optionLabel } = useI18n();
+  const numeric = options.every((option) => typeof option === "number");
   return (
-    <fieldset className={`gene-field${featured ? " silhouette-gene" : ""}`}>
+    <fieldset
+      className={`gene-field${featured ? " silhouette-gene" : ""}${numeric ? " numeric-gene" : ""}`}
+      disabled={disabled}
+    >
       <legend>{label}</legend>
       <div className="gene-options">
         {options.map((option) => (
@@ -72,10 +77,11 @@ function GeneChoices<T extends string | number>({
             onClick={() => onChange(option)}
           >
             {featured && <i className="gene-silhouette" aria-hidden="true" />}
-            {optionLabel(option)}
+            <span>{optionLabel(option)}</span>
           </button>
         ))}
       </div>
+      {hint && <small className="gene-hint">{hint}</small>}
     </fieldset>
   );
 }
@@ -111,7 +117,28 @@ function ColorChoices({
           </button>
         ))}
       </div>
+      <small className="selected-color-name">{optionLabel(value)}</small>
     </fieldset>
+  );
+}
+
+function TraitSection({
+  index,
+  title,
+  children,
+}: {
+  index: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="gene-section">
+      <h3>
+        <span>{index}</span>
+        {title}
+      </h3>
+      <div className="gene-section-grid">{children}</div>
+    </section>
   );
 }
 
@@ -164,6 +191,7 @@ export function MonsterCreator({
   onApply,
   onClose,
   error = null,
+  saving = false,
 }: MonsterCreatorProps) {
   const { t, option } = useI18n();
   const initialDna = { ...dna, mesh: "smooth" } as const;
@@ -174,11 +202,11 @@ export function MonsterCreator({
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.code === "Escape") onClose();
+      if (event.code === "Escape" && !saving) onClose();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
+  }, [onClose, saving]);
 
   const updateDraft = (next: MonsterDna) => {
     const smoothed = { ...next, mesh: "smooth" } as const;
@@ -205,10 +233,29 @@ export function MonsterCreator({
   };
 
   const surpriseMe = () => {
+    const body = randomOption(BODY_SHAPES);
+    const legs =
+      body === "biped" || body === "avian"
+        ? 2
+        : body === "pig" || body === "rhino"
+          ? 4
+          : body === "slug" || body === "aquatic"
+            ? randomOption([0, 2, 4] as const)
+            : randomOption(LEG_COUNTS);
+    const breathing =
+      body === "aquatic"
+        ? randomOption(["gills", "both"] as const)
+        : randomOption(RESPIRATIONS);
+    const adaptation =
+      body === "avian"
+        ? "wings"
+        : body === "aquatic"
+          ? "fins"
+          : randomOption(ADAPTATIONS);
     updateDraft({
-      body: randomOption(BODY_SHAPES),
-      legs: randomOption(LEG_COUNTS),
-      legShape: randomOption(LEG_SHAPES),
+      body,
+      legs,
+      legShape: legs === 0 ? "stubby" : randomOption(LEG_SHAPES),
       eyes: randomOption(EYE_COUNTS),
       mouth: randomOption(MOUTH_SHAPES),
       size: randomOption(MONSTER_SIZES),
@@ -219,9 +266,9 @@ export function MonsterCreator({
       horns: randomOption(SMOOTH_HORN_SHAPES),
       ears: randomOption(EAR_SHAPES),
       tail: randomOption(TAIL_SHAPES),
-      adaptation: randomOption(ADAPTATIONS),
+      adaptation,
       diet: randomOption(DIETS),
-      breathing: randomOption(RESPIRATIONS),
+      breathing,
       social: randomOption(SOCIAL_BEHAVIORS),
       mesh: "smooth",
     });
@@ -248,11 +295,11 @@ export function MonsterCreator({
             <h2 id="creator-title">{t("creator.title")}</h2>
           </div>
           <div className="creator-header-actions">
-            <LanguageSwitcher className="creator-language-switcher" />
             <button
               type="button"
               className="creator-close"
               onClick={onClose}
+              disabled={saving}
               aria-label={t("creator.close")}
             >
               <X size={20} />
@@ -263,7 +310,11 @@ export function MonsterCreator({
         <div className="creator-layout">
           <div className="creator-stage" data-live-label={t("creator.live")}>
             <div className="creator-canvas">
-              <Canvas shadows camera={{ fov: 42, position: [4.2, 2.8, -5.2] }}>
+              <Canvas
+                shadows="percentage"
+                dpr={[1, 1.5]}
+                camera={{ fov: 42, position: [4.2, 2.8, -5.2] }}
+              >
                 <color attach="background" args={["#B9DFD8"]} />
                 <hemisphereLight
                   intensity={1.75}
@@ -340,153 +391,194 @@ export function MonsterCreator({
 
             <ArchetypeGuide activeId={activeArchetype} onChoose={updateDraft} />
 
-            <div className="gene-grid">
-              <label className="monster-name-field">
-                <span>{t("creator.name")}</span>
-                <input
-                  value={draftName}
-                  maxLength={24}
-                  placeholder={t("creator.namePlaceholder")}
-                  onChange={(event) => setDraftName(event.target.value)}
+            <label className="monster-name-field">
+              <span>{t("creator.name")}</span>
+              <input
+                value={draftName}
+                maxLength={24}
+                placeholder={t("creator.namePlaceholder")}
+                onChange={(event) => setDraftName(event.target.value)}
+              />
+            </label>
+
+            <div className="gene-sections">
+              <TraitSection index="01" title={t("creator.sectionForm")}>
+                <GeneChoices
+                  label={t("creator.body")}
+                  value={draft.body}
+                  options={BODY_SHAPES}
+                  onChange={(value) => changeGene("body", value)}
+                  featured
                 />
-              </label>
-              <GeneChoices
-                label={t("creator.body")}
-                value={draft.body}
-                options={BODY_SHAPES}
-                onChange={(value) => changeGene("body", value)}
-                featured
-              />
-              <GeneChoices
-                label={t("creator.diet")}
-                value={draft.diet}
-                options={DIETS}
-                onChange={(value) => changeGene("diet", value)}
-              />
-              <GeneChoices
-                label={t("creator.breathing")}
-                value={draft.breathing}
-                options={RESPIRATIONS}
-                onChange={(value) => changeGene("breathing", value)}
-              />
-              <GeneChoices
-                label={t("creator.social")}
-                value={draft.social}
-                options={SOCIAL_BEHAVIORS}
-                onChange={(value) => changeGene("social", value)}
-              />
-              <GeneChoices
-                label={t("creator.size")}
-                value={draft.size}
-                options={MONSTER_SIZES}
-                onChange={(value) => changeGene("size", value)}
-              />
-              <GeneChoices
-                label={t("creator.build")}
-                value={draft.build}
-                options={MONSTER_BUILDS}
-                onChange={(value) => changeGene("build", value)}
-              />
-              <GeneChoices
-                label={t("creator.legCount")}
-                value={draft.legs}
-                options={LEG_COUNTS}
-                onChange={(value) => changeGene("legs", value)}
-              />
-              <GeneChoices
-                label={t("creator.legShape")}
-                value={draft.legShape}
-                options={LEG_SHAPES}
-                onChange={(value) => changeGene("legShape", value)}
-              />
-              <GeneChoices
-                label={t("creator.eyeCount")}
-                value={draft.eyes}
-                options={EYE_COUNTS}
-                onChange={(value) => changeGene("eyes", value)}
-              />
-              <GeneChoices
-                label={t("creator.mouth")}
-                value={draft.mouth}
-                options={MOUTH_SHAPES}
-                onChange={(value) => changeGene("mouth", value)}
-              />
-              <GeneChoices
-                label={t("creator.pattern")}
-                value={draft.pattern}
-                options={SMOOTH_PATTERNS}
-                onChange={(value) => changeGene("pattern", value)}
-              />
-              <GeneChoices
-                label={t("creator.horns")}
-                value={draft.horns}
-                options={SMOOTH_HORN_SHAPES}
-                onChange={(value) => changeGene("horns", value)}
-              />
-              <GeneChoices
-                label={t("creator.ears")}
-                value={draft.ears}
-                options={EAR_SHAPES}
-                onChange={(value) => changeGene("ears", value)}
-              />
-              <GeneChoices
-                label={t("creator.tail")}
-                value={draft.tail}
-                options={TAIL_SHAPES}
-                onChange={(value) => changeGene("tail", value)}
-              />
-              <GeneChoices
-                label={t("creator.adaptation")}
-                value={draft.adaptation}
-                options={ADAPTATIONS}
-                onChange={(value) => changeGene("adaptation", value)}
-              />
-              <ColorChoices
-                label={t("creator.bodyColor")}
-                value={draft.color}
-                options={MONSTER_COLORS}
-                onChange={(value) =>
-                  changeGene("color", value as MonsterDna["color"])
-                }
-              />
-              <ColorChoices
-                label={t("creator.accentColor")}
-                value={draft.accent}
-                options={ACCENT_COLORS}
-                onChange={(value) =>
-                  changeGene("accent", value as MonsterDna["accent"])
-                }
-              />
+                <GeneChoices
+                  label={t("creator.size")}
+                  value={draft.size}
+                  options={MONSTER_SIZES}
+                  onChange={(value) => changeGene("size", value)}
+                />
+                <GeneChoices
+                  label={t("creator.build")}
+                  value={draft.build}
+                  options={MONSTER_BUILDS}
+                  onChange={(value) => changeGene("build", value)}
+                />
+                <GeneChoices
+                  label={t("creator.legCount")}
+                  value={draft.legs}
+                  options={LEG_COUNTS}
+                  onChange={(value) =>
+                    updateDraft({
+                      ...draft,
+                      legs: value,
+                      legShape: value === 0 ? "stubby" : draft.legShape,
+                    })
+                  }
+                />
+                <GeneChoices
+                  label={t("creator.legShape")}
+                  value={draft.legShape}
+                  options={LEG_SHAPES}
+                  disabled={draft.legs === 0}
+                  hint={draft.legs === 0 ? t("creator.noLegShape") : undefined}
+                  onChange={(value) => changeGene("legShape", value)}
+                />
+                <GeneChoices
+                  label={t("creator.tail")}
+                  value={draft.tail}
+                  options={TAIL_SHAPES}
+                  onChange={(value) => changeGene("tail", value)}
+                />
+              </TraitSection>
+
+              <TraitSection index="02" title={t("creator.sectionFace")}>
+                <GeneChoices
+                  label={t("creator.eyeCount")}
+                  value={draft.eyes}
+                  options={EYE_COUNTS}
+                  onChange={(value) => changeGene("eyes", value)}
+                />
+                <GeneChoices
+                  label={t("creator.mouth")}
+                  value={draft.mouth}
+                  options={MOUTH_SHAPES}
+                  onChange={(value) => changeGene("mouth", value)}
+                />
+                <GeneChoices
+                  label={t("creator.horns")}
+                  value={draft.horns}
+                  options={SMOOTH_HORN_SHAPES}
+                  onChange={(value) => changeGene("horns", value)}
+                />
+                <GeneChoices
+                  label={t("creator.ears")}
+                  value={draft.ears}
+                  options={EAR_SHAPES}
+                  onChange={(value) => changeGene("ears", value)}
+                />
+              </TraitSection>
+
+              <TraitSection index="03" title={t("creator.sectionSurface")}>
+                <GeneChoices
+                  label={t("creator.pattern")}
+                  value={draft.pattern}
+                  options={SMOOTH_PATTERNS}
+                  onChange={(value) => changeGene("pattern", value)}
+                />
+                <ColorChoices
+                  label={t("creator.bodyColor")}
+                  value={draft.color}
+                  options={MONSTER_COLORS}
+                  onChange={(value) =>
+                    changeGene("color", value as MonsterDna["color"])
+                  }
+                />
+                <ColorChoices
+                  label={t("creator.accentColor")}
+                  value={draft.accent}
+                  options={ACCENT_COLORS}
+                  onChange={(value) =>
+                    changeGene("accent", value as MonsterDna["accent"])
+                  }
+                />
+              </TraitSection>
+
+              <TraitSection index="04" title={t("creator.sectionAbilities")}>
+                <GeneChoices
+                  label={t("creator.adaptation")}
+                  value={draft.adaptation}
+                  options={ADAPTATIONS}
+                  onChange={(value) => changeGene("adaptation", value)}
+                />
+                <GeneChoices
+                  label={t("creator.breathing")}
+                  value={draft.breathing}
+                  options={RESPIRATIONS}
+                  onChange={(value) => changeGene("breathing", value)}
+                />
+              </TraitSection>
+
+              <TraitSection index="05" title={t("creator.sectionInstincts")}>
+                <GeneChoices
+                  label={t("creator.diet")}
+                  value={draft.diet}
+                  options={DIETS}
+                  onChange={(value) => changeGene("diet", value)}
+                />
+                <GeneChoices
+                  label={t("creator.social")}
+                  value={draft.social}
+                  options={SOCIAL_BEHAVIORS}
+                  hint={t("creator.behaviorGene")}
+                  onChange={(value) => changeGene("social", value)}
+                />
+              </TraitSection>
             </div>
 
-            <label className={`dna-tape${dnaError ? " invalid" : ""}`}>
-              <span>
-                <Dna size={14} /> {t("creator.directDna")}
-              </span>
-              <textarea
-                value={dnaText}
-                rows={4}
-                spellCheck={false}
-                aria-invalid={Boolean(dnaError)}
-                onChange={(event) => editDna(event.target.value)}
-              />
-              <small>{dnaError ?? t("creator.dnaHelp")}</small>
-            </label>
+            <details className="dna-drawer">
+              <summary>
+                <Dna size={15} />
+                <span>
+                  {t("creator.advanced")}
+                  <small>{t("creator.advancedHint")}</small>
+                </span>
+              </summary>
+              <label className={`dna-tape${dnaError ? " invalid" : ""}`}>
+                <span>{t("creator.directDna")}</span>
+                <textarea
+                  value={dnaText}
+                  rows={4}
+                  spellCheck={false}
+                  aria-invalid={Boolean(dnaError)}
+                  onChange={(event) => editDna(event.target.value)}
+                />
+                <small>{dnaError ?? t("creator.dnaHelp")}</small>
+              </label>
+            </details>
           </div>
         </div>
 
         <footer className="creator-footer">
-          <span className={error ? "creator-save-error" : undefined}>
+          <span
+            className={error ? "creator-save-error" : undefined}
+            role={error ? "alert" : undefined}
+            aria-live="polite"
+          >
             {error ?? t("creator.footer")}
           </span>
           <div>
-            <button type="button" className="creator-cancel" onClick={onClose}>
+            <button
+              type="button"
+              className="creator-cancel"
+              onClick={onClose}
+              disabled={saving}
+            >
               {t("creator.keep")}
             </button>
             <button
               type="button"
               className="creator-apply"
-              disabled={Boolean(dnaError) || !draftName.trim()}
+              disabled={saving || Boolean(dnaError) || !draftName.trim()}
+              aria-busy={saving}
               onClick={() => onApply(draft, draftName.trim())}
             >
               <Check size={17} /> {t("creator.apply")}

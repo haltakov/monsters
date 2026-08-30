@@ -29,6 +29,7 @@ export const MOUTH_SHAPES = [
   "tusks",
   "mandibles",
   "tongue",
+  "grin",
 ] as const;
 export const MONSTER_SIZES = [
   "tiny",
@@ -46,6 +47,8 @@ export const PATTERNS = [
   "scales",
   "rings",
   "belly",
+  "freckles",
+  "saddle",
 ] as const;
 export const HORN_SHAPES = [
   "none",
@@ -55,6 +58,7 @@ export const HORN_SHAPES = [
   "antlers",
   "single",
   "ram",
+  "crown",
 ] as const;
 
 /**
@@ -73,6 +77,7 @@ export const EAR_SHAPES = [
   "pointed",
   "floppy",
   "fan",
+  "long-ear",
 ] as const;
 export const TAIL_SHAPES = [
   "none",
@@ -91,6 +96,7 @@ export const ADAPTATIONS = [
   "plates",
   "mane",
   "antennae",
+  "spines",
 ] as const;
 export const DIETS = ["herbivore", "carnivore", "omnivore"] as const;
 export const RESPIRATIONS = ["lungs", "gills", "both"] as const;
@@ -119,6 +125,10 @@ export const MONSTER_COLORS = [
   { id: "ocean", label: "Ocean", hex: "#357FB8", dark: "#234F78" },
   { id: "plum", label: "Plum", hex: "#87537E", dark: "#573650" },
   { id: "rust", label: "Rust", hex: "#B75F3A", dark: "#743820" },
+  { id: "jade", label: "Jade", hex: "#3B9B73", dark: "#23654D" },
+  { id: "lilac", label: "Lilac", hex: "#A99BDD", dark: "#6B609F" },
+  { id: "sun", label: "Sun", hex: "#F2D34F", dark: "#B48F20" },
+  { id: "rose", label: "Rose", hex: "#D96C8A", dark: "#95445D" },
 ] as const;
 
 export const ACCENT_COLORS = [
@@ -136,6 +146,9 @@ export const ACCENT_COLORS = [
   { id: "silver", label: "Silver", hex: "#C3CBD1" },
   { id: "orange", label: "Orange", hex: "#F28A3C" },
   { id: "teal", label: "Teal", hex: "#2B9B91" },
+  { id: "lavender", label: "Lavender", hex: "#D1B8F2" },
+  { id: "chartreuse", label: "Chartreuse", hex: "#CDEB72" },
+  { id: "copper", label: "Copper", hex: "#C8794A" },
 ] as const;
 
 export type BodyShape = (typeof BODY_SHAPES)[number];

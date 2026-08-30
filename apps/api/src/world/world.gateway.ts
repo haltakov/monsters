@@ -244,6 +244,25 @@ export class WorldGateway
       requestedId,
     );
 
+    // A socket may switch between monsters without disconnecting. Release its
+    // previous entity before assigning the next one; otherwise the old entity
+    // keeps the socket id (and its last movement input) forever. The controller
+    // map check preserves takeover semantics when this session had already
+    // been demoted by a newer socket.
+    const previousEntityId = session.entityId;
+    if (previousEntityId && previousEntityId !== monster?.id) {
+      if (this.controllers.get(previousEntityId) === socket.id) {
+        this.controllers.delete(previousEntityId);
+        this.runner.enqueue({
+          type: 'detach',
+          entityId: previousEntityId,
+          connectionId: socket.id,
+        });
+      }
+      session.entityId = null;
+      session.isController = false;
+    }
+
     if (!monster) {
       session.entityId = null;
       session.isController = false;

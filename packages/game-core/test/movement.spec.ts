@@ -52,6 +52,33 @@ describe("authoritative movement", () => {
     expect(travelled).toBeGreaterThan(PLAYER_WALK_SPEED);
   });
 
+  it("uses DNA to make agile players faster than heavy ones", () => {
+    const state = emptyWorld();
+    const agile = makePlayer("agile", {
+      x: -20,
+      dna: withDna({
+        size: "tiny",
+        build: "lean",
+        legShape: "springy",
+      }),
+    });
+    const heavy = makePlayer("heavy", {
+      x: 20,
+      dna: withDna({ size: "huge", build: "sturdy", legShape: "stubby" }),
+    });
+    state.entities.push(agile, heavy);
+
+    run(state, 10, (tick) =>
+      [agile, heavy].map((player) => ({
+        type: "input" as const,
+        entityId: player.id,
+        input: input(tick + 1, { forward: 1, heading: 0 }),
+      })),
+    );
+
+    expect(Math.abs(agile.z)).toBeGreaterThan(Math.abs(heavy.z) * 1.5);
+  });
+
   it("cannot be pushed past the world radius by extreme input", () => {
     const state = emptyWorld();
     const player = makePlayer("p1", { x: PLAYABLE_RADIUS - 3, z: 0 });
@@ -69,8 +96,75 @@ describe("authoritative movement", () => {
       },
     ]);
 
-    expect(Math.hypot(player.x, player.z)).toBeLessThanOrEqual(WORLD_RADIUS + 1);
+    expect(Math.hypot(player.x, player.z)).toBeLessThanOrEqual(
+      WORLD_RADIUS + 1,
+    );
     expect(isWaterAt(player.x, player.z)).toBe(false);
+  });
+
+  it("keeps flying players inside the simulated ocean boundary", () => {
+    const state = emptyWorld();
+    const player = makePlayer("flyer", {
+      x: WORLD_RADIUS + 18,
+      z: 0,
+      locomotion: "fly",
+      dna: withDna({ adaptation: "wings" }),
+    });
+    state.entities.push(player);
+
+    run(state, 100, (tick) => [
+      {
+        type: "input",
+        entityId: player.id,
+        input: input(tick + 1, { forward: -1, heading: Math.PI / 2 }),
+      },
+    ]);
+
+    expect(Math.hypot(player.x, player.z)).toBeLessThanOrEqual(
+      WORLD_RADIUS + 22.01,
+    );
+  });
+
+  it("lets a persisted flyer beyond the boundary travel back inward", () => {
+    const state = emptyWorld();
+    const player = makePlayer("returning-flyer", {
+      x: WORLD_RADIUS + 30,
+      z: 0,
+      locomotion: "fly",
+      dna: withDna({ adaptation: "wings" }),
+    });
+    const startingRadius = Math.hypot(player.x, player.z);
+    state.entities.push(player);
+
+    run(state, 40, (tick) => [
+      {
+        type: "input",
+        entityId: player.id,
+        input: input(tick + 1, { forward: 1, heading: Math.PI / 2 }),
+      },
+    ]);
+
+    expect(Math.hypot(player.x, player.z)).toBeLessThan(startingRadius);
+    expect(Math.hypot(player.x, player.z)).toBeLessThanOrEqual(
+      WORLD_RADIUS + 22.01,
+    );
+  });
+
+  it("does not strand a non-swimmer by landing it over deep water", () => {
+    const state = emptyWorld();
+    const player = makePlayer("flyer", {
+      x: PLAYABLE_RADIUS + 5,
+      z: 0,
+      locomotion: "fly",
+      dna: withDna({ adaptation: "wings", breathing: "lungs" }),
+    });
+    state.entities.push(player);
+
+    stepWorld(state, TICK_SECONDS, [
+      { type: "locomotion", entityId: player.id, mode: "land" },
+    ]);
+
+    expect(player.locomotion).toBe("fly");
   });
 
   it("blocks a non-swimmer from entering the river", () => {

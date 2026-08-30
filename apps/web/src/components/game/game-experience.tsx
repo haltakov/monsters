@@ -466,6 +466,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   const [pairingSeconds, setPairingSeconds] = useState(0);
   const [creatorDraft, setCreatorDraft] = useState<CreatorDraft | null>(null);
   const [creatorError, setCreatorError] = useState<string | null>(null);
+  const [creatorSaving, setCreatorSaving] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
@@ -1039,6 +1040,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     controls.current.look = { x: 0, y: 0 };
     if (document.pointerLockElement) document.exitPointerLock();
     setCreatorError(null);
+    setCreatorSaving(false);
     setCreatorDraft({
       mode: "edit",
       dna: monsterDna,
@@ -1059,6 +1061,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     controls.current.look = { x: 0, y: 0 };
     if (document.pointerLockElement) document.exitPointerLock();
     setCreatorError(null);
+    setCreatorSaving(false);
     setCreatorDraft({
       mode: "new",
       dna: DEFAULT_MONSTER_DNA,
@@ -1072,14 +1075,17 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     controls.current.keys.clear();
     setCreatorDraft(null);
     setCreatorError(null);
+    setCreatorSaving(false);
   }, []);
 
   const applyMonsterDna = useCallback(
     (nextDna: MonsterDna, name: string) => {
+      if (creatorSaving) return;
       const draft = creatorDraft;
       if (!draft) return;
       const dna = encodeMonsterDna(nextDna);
       const save = async () => {
+        setCreatorSaving(true);
         try {
           if (draft.mode === "new") {
             const monster = await session.createMonster({ name, dna });
@@ -1096,6 +1102,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           setCreatorDraft(null);
           setCreatorError(null);
         } catch (error) {
+          setCreatorSaving(false);
           setCreatorError((error as Error).message);
           setStatus({
             key: "game.saveFailed",
@@ -1105,7 +1112,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       };
       void save();
     },
-    [connection, creatorDraft, session],
+    [connection, creatorDraft, creatorSaving, session],
   );
 
   const openMobileMenu = useCallback(() => {
@@ -1894,7 +1901,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     <main className="game-shell">
       {sceneQuality ? (
         <Canvas
-          shadows={sceneQuality === "desktop"}
+          shadows={sceneQuality === "desktop" ? "percentage" : false}
           dpr={sceneQuality === "mobile" ? 1 : [1, 1.6]}
           camera={{ fov: 48, near: 0.1, far: 420, position: [8, 8, 12] }}
           gl={{
@@ -2694,6 +2701,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           dna={creatorDraft.dna}
           name={creatorDraft.name}
           error={creatorError}
+          saving={creatorSaving}
           onApply={applyMonsterDna}
           onClose={closeCreator}
         />
