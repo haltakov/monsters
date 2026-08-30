@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { ContactShadows, OrbitControls } from "@react-three/drei";
-import { Check, Dna, Rotate3D, Shuffle, Sparkles, X } from "lucide-react";
+import { Check, Dna, Rotate3D, Shuffle, X } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   ACCENT_COLORS,
@@ -14,15 +14,12 @@ import {
   encodeMonsterDna,
   EYE_COUNTS,
   getMonsterFollowerCount,
-  HORN_SHAPES,
   LEG_COUNTS,
   LEG_SHAPES,
-  MESH_STYLES,
   MONSTER_COLORS,
   MONSTER_BUILDS,
   MONSTER_SIZES,
   MOUTH_SHAPES,
-  PATTERNS,
   RESPIRATIONS,
   SOCIAL_BEHAVIORS,
   SMOOTH_HORN_SHAPES,
@@ -169,9 +166,10 @@ export function MonsterCreator({
   error = null,
 }: MonsterCreatorProps) {
   const { t, option } = useI18n();
-  const [draft, setDraft] = useState<MonsterDna>(dna);
+  const initialDna = { ...dna, mesh: "smooth" } as const;
+  const [draft, setDraft] = useState<MonsterDna>(initialDna);
   const [draftName, setDraftName] = useState(name);
-  const [dnaText, setDnaText] = useState(() => encodeMonsterDna(dna));
+  const [dnaText, setDnaText] = useState(() => encodeMonsterDna(initialDna));
   const [dnaError, setDnaError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -183,8 +181,9 @@ export function MonsterCreator({
   }, [onClose]);
 
   const updateDraft = (next: MonsterDna) => {
-    setDraft(next);
-    setDnaText(encodeMonsterDna(next));
+    const smoothed = { ...next, mesh: "smooth" } as const;
+    setDraft(smoothed);
+    setDnaText(encodeMonsterDna(smoothed));
     setDnaError(null);
   };
 
@@ -198,6 +197,7 @@ export function MonsterCreator({
     try {
       const parsed = decodeMonsterDna(source);
       setDraft(parsed);
+      setDnaText(encodeMonsterDna(parsed));
       setDnaError(null);
     } catch {
       setDnaError(t("creator.invalidDna"));
@@ -205,7 +205,6 @@ export function MonsterCreator({
   };
 
   const surpriseMe = () => {
-    const mesh = randomOption(MESH_STYLES);
     updateDraft({
       body: randomOption(BODY_SHAPES),
       legs: randomOption(LEG_COUNTS),
@@ -216,15 +215,15 @@ export function MonsterCreator({
       build: randomOption(MONSTER_BUILDS),
       color: randomOption(MONSTER_COLORS).id,
       accent: randomOption(ACCENT_COLORS).id,
-      pattern: randomOption(mesh === "smooth" ? SMOOTH_PATTERNS : PATTERNS),
-      horns: randomOption(mesh === "smooth" ? SMOOTH_HORN_SHAPES : HORN_SHAPES),
+      pattern: randomOption(SMOOTH_PATTERNS),
+      horns: randomOption(SMOOTH_HORN_SHAPES),
       ears: randomOption(EAR_SHAPES),
       tail: randomOption(TAIL_SHAPES),
       adaptation: randomOption(ADAPTATIONS),
       diet: randomOption(DIETS),
       breathing: randomOption(RESPIRATIONS),
       social: randomOption(SOCIAL_BEHAVIORS),
-      mesh,
+      mesh: "smooth",
     });
   };
 
@@ -263,33 +262,6 @@ export function MonsterCreator({
 
         <div className="creator-layout">
           <div className="creator-stage" data-live-label={t("creator.live")}>
-            <div
-              className="mesh-mode-switch"
-              aria-label={t("creator.meshMode")}
-            >
-              <span>
-                <Sparkles size={12} /> {t("creator.meshExperiment")}
-              </span>
-              <div>
-                <button
-                  type="button"
-                  className={draft.mesh === "classic" ? "selected" : ""}
-                  aria-pressed={draft.mesh === "classic"}
-                  onClick={() => changeGene("mesh", "classic")}
-                >
-                  {t("creator.classicMesh")}
-                </button>
-                <button
-                  type="button"
-                  className={draft.mesh === "smooth" ? "selected" : ""}
-                  aria-pressed={draft.mesh === "smooth"}
-                  onClick={() => changeGene("mesh", "smooth")}
-                >
-                  {t("creator.smoothMesh")}
-                  <small>{t("creator.experimental")}</small>
-                </button>
-              </div>
-            </div>
             <div className="creator-canvas">
               <Canvas shadows camera={{ fov: 42, position: [4.2, 2.8, -5.2] }}>
                 <color attach="background" args={["#B9DFD8"]} />
@@ -347,11 +319,6 @@ export function MonsterCreator({
                 {followerCount
                   ? `${followerCount} ${t("creator.followers")}`
                   : t("creator.solo")}
-              </span>
-              <span>
-                {draft.mesh === "smooth"
-                  ? t("creator.smoothMesh")
-                  : t("creator.classicMesh")}
               </span>
             </div>
           </div>
@@ -447,15 +414,13 @@ export function MonsterCreator({
               <GeneChoices
                 label={t("creator.pattern")}
                 value={draft.pattern}
-                options={draft.mesh === "smooth" ? SMOOTH_PATTERNS : PATTERNS}
+                options={SMOOTH_PATTERNS}
                 onChange={(value) => changeGene("pattern", value)}
               />
               <GeneChoices
                 label={t("creator.horns")}
                 value={draft.horns}
-                options={
-                  draft.mesh === "smooth" ? SMOOTH_HORN_SHAPES : HORN_SHAPES
-                }
+                options={SMOOTH_HORN_SHAPES}
                 onChange={(value) => changeGene("horns", value)}
               />
               <GeneChoices

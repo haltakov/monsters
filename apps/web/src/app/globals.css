@@ -2137,67 +2137,6 @@ kbd {
   letter-spacing: 0.11em;
   pointer-events: none;
 }
-.mesh-mode-switch {
-  position: absolute;
-  z-index: 3;
-  top: 26px;
-  right: 28px;
-  display: grid;
-  justify-items: end;
-  gap: 4px;
-  pointer-events: none;
-}
-.mesh-mode-switch > span {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: #315e53;
-  font-family: var(--font-mono), monospace;
-  font-size: 7px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.mesh-mode-switch > div {
-  padding: 3px;
-  display: flex;
-  gap: 3px;
-  border: 1.5px solid var(--ink);
-  border-radius: 11px;
-  background: rgb(255 249 232 / 90%);
-  box-shadow: 2px 3px 0 rgb(23 63 53 / 17%);
-  pointer-events: auto;
-  backdrop-filter: blur(7px);
-}
-.mesh-mode-switch button {
-  min-height: 30px;
-  padding: 4px 9px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: #315e53;
-  font-family: var(--font-display), sans-serif;
-  font-size: 9px;
-  cursor: pointer;
-}
-.mesh-mode-switch button small {
-  font-family: var(--font-mono), monospace;
-  font-size: 5px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.mesh-mode-switch button.selected {
-  background: #f3c453;
-  color: var(--ink);
-  box-shadow: inset 0 0 0 1px rgb(23 63 53 / 24%);
-}
-.mesh-mode-switch button:focus-visible {
-  outline: 3px solid var(--focus-ring);
-  outline-offset: 2px;
-}
 .creator-canvas {
   min-height: 300px;
   overflow: hidden;
@@ -2787,10 +2726,6 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
     top: 22px;
     left: 22px;
   }
-  .mesh-mode-switch {
-    top: 18px;
-    right: 20px;
-  }
   .creator-canvas {
     min-height: 205px;
   }
@@ -2928,19 +2863,6 @@ button[data-gene-option="aquatic"] .gene-silhouette::after {
   .creator-stage::before {
     top: 16px;
     left: 16px;
-  }
-  .mesh-mode-switch {
-    top: 12px;
-    right: 12px;
-  }
-  .mesh-mode-switch > span {
-    display: none;
-  }
-  .mesh-mode-switch button {
-    min-height: 26px;
-    min-width: 0;
-    padding: 3px 6px;
-    font-size: 7px;
   }
   .creator-canvas {
     min-height: 175px;

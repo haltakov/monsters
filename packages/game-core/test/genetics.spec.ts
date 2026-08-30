@@ -87,6 +87,11 @@ describe("genetics", () => {
   it("round-trips DNA through the versioned codec", () => {
     const dna = withDna({ body: "avian", adaptation: "wings", ears: "fan" });
     expect(decodeMonsterDna(encodeMonsterDna(dna))).toEqual(dna);
+    expect(
+      decodeMonsterDna(
+        encodeMonsterDna(dna).replace("mesh=smooth", "mesh=classic"),
+      ).mesh,
+    ).toBe("smooth");
     expect(() => decodeMonsterDna("M9;body=round")).toThrow();
   });
 });

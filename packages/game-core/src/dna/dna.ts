@@ -95,7 +95,10 @@ export const ADAPTATIONS = [
 export const DIETS = ["herbivore", "carnivore", "omnivore"] as const;
 export const RESPIRATIONS = ["lungs", "gills", "both"] as const;
 export const SOCIAL_BEHAVIORS = ["solitary", "pair", "pack", "army"] as const;
-export const MESH_STYLES = ["classic", "smooth"] as const;
+/** The organic smoothed body is the only supported renderer. */
+export const MESH_STYLES = ["smooth"] as const;
+/** Accepted only while upgrading persisted M5/M6 DNA from the old renderer. */
+const LEGACY_MESH_STYLES = ["classic", "smooth"] as const;
 
 export const MONSTER_COLORS = [
   { id: "moss", label: "Moss", hex: "#8FCB69", dark: "#679D4D" },
@@ -232,6 +235,11 @@ function readOption<T extends string | number>(
   return match;
 }
 
+function readMesh(value: string): MeshStyle {
+  readOption("mesh", value, LEGACY_MESH_STYLES);
+  return "smooth";
+}
+
 function readGenes(
   source: string,
   version: "M1" | "M2" | "M3" | "M4" | "M5" | "M6",
@@ -340,8 +348,8 @@ export function decodeMonsterDna(source: string): MonsterDna {
         : "solitary",
     mesh:
       version === "M5" || version === "M6"
-        ? readOption("mesh", values.get("mesh")!, MESH_STYLES)
-        : "classic",
+        ? readMesh(values.get("mesh")!)
+        : "smooth",
   };
 }
 

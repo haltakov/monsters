@@ -178,16 +178,6 @@ export function PlayerMonster({
 }) {
   const root = useRef<THREE.Group>(null);
   const visual = useRef<THREE.Group>(null);
-  const legs = [
-    useRef<THREE.Group>(null),
-    useRef<THREE.Group>(null),
-    useRef<THREE.Group>(null),
-    useRef<THREE.Group>(null),
-    useRef<THREE.Group>(null),
-    useRef<THREE.Group>(null),
-    useRef<THREE.Group>(null),
-    useRef<THREE.Group>(null),
-  ];
   const wings = [useRef<THREE.Group>(null), useRef<THREE.Group>(null)];
   const motion = useRef<MonsterMotionState>({
     stride: 0,
@@ -344,14 +334,6 @@ export function PlayerMonster({
           : moving
             ? "walk"
             : "idle";
-    legs.forEach((leg, index) => {
-      if (leg.current)
-        leg.current.rotation.x = THREE.MathUtils.lerp(
-          leg.current.rotation.x,
-          stride * (index % 2 ? -1 : 1),
-          delta * 10,
-        );
-    });
     wings.forEach((wing, index) => {
       if (wing.current) {
         const side = index === 0 ? -1 : 1;
@@ -470,12 +452,7 @@ export function PlayerMonster({
   return (
     <group ref={root}>
       <group ref={visual}>
-        <MonsterVisual
-          dna={dna}
-          legRefs={legs}
-          wingRefs={wings}
-          motionRef={motion}
-        />
+        <MonsterVisual dna={dna} wingRefs={wings} motionRef={motion} />
       </group>
       <MonsterNameLabel
         name={name}
