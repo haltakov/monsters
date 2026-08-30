@@ -253,6 +253,14 @@ const en = {
   "game.new": "New",
   "game.edit": "Edit monster",
   "game.openMenu": "Open game menu",
+  "game.settings": "Settings",
+  "game.agentArena": "Agent arena",
+  "game.controlsHelp": "Controls",
+  "game.controlsHint": "Press ? for controls",
+  "game.activity": "Island activity",
+  "game.spectating": "Spectating",
+  "game.spectatorHint":
+    "Fly around with the movement and look controls, then create a monster when you are ready.",
   "game.closeMenu": "Close game menu",
   "game.menuKicker": "ISLAND FIELD KIT",
   "game.menu": "Game menu",
@@ -327,6 +335,7 @@ const en = {
   "game.noPlants": "Carnivores cannot digest plants. Hunt a small critter.",
   "game.energyFull": "Energy is already full.",
   "game.getCloser": "Get closer to a bush or tree to eat.",
+  "game.landToEat": "Land before eating.",
   "game.crunchyBush": "Crunchy bush! +{{energy}} energy",
   "game.tastyTree": "Tasty tree! +{{energy}} energy",
   "game.eggLaid":
@@ -660,6 +669,14 @@ const bg: Record<TranslationKey, string> = {
   "game.new": "Ново",
   "game.edit": "Промени",
   "game.openMenu": "Отвори менюто на играта",
+  "game.settings": "Настройки",
+  "game.agentArena": "Арена за агенти",
+  "game.controlsHelp": "Управление",
+  "game.controlsHint": "Натисни ? за управление",
+  "game.activity": "Събития на острова",
+  "game.spectating": "Наблюдение",
+  "game.spectatorHint":
+    "Лети с бутоните за движение и оглеждане, после създай чудовище, когато си готов.",
   "game.closeMenu": "Затвори менюто на играта",
   "game.menuKicker": "ОСТРОВЕН КОМПЛЕКТ",
   "game.menu": "Меню на играта",
@@ -735,6 +752,7 @@ const bg: Record<TranslationKey, string> = {
     "Месоядните не могат да смилат растения. Намери малко животинче.",
   "game.energyFull": "Енергията вече е пълна.",
   "game.getCloser": "Приближи се до храст или дърво, за да ядеш.",
+  "game.landToEat": "Кацни, преди да ядеш.",
   "game.crunchyBush": "Хрупкав храст! +{{energy}} енергия",
   "game.tastyTree": "Вкусно дърво! +{{energy}} енергия",
   "game.eggLaid": "Сдвои се с {{name}}. Яйцето има {{mutations}} нови мутации!",
@@ -1070,6 +1088,14 @@ const de: Record<TranslationKey, string> = {
   "game.new": "Neu",
   "game.edit": "Bearbeiten",
   "game.openMenu": "Spielmenü öffnen",
+  "game.settings": "Einstellungen",
+  "game.agentArena": "Agenten-Arena",
+  "game.controlsHelp": "Steuerung",
+  "game.controlsHint": "Drücke ? für die Steuerung",
+  "game.activity": "Inselaktivität",
+  "game.spectating": "Zuschauen",
+  "game.spectatorHint":
+    "Fliege mit der Bewegungs- und Blicksteuerung über die Insel und erschaffe dann ein Monster.",
   "game.closeMenu": "Spielmenü schließen",
   "game.menuKicker": "INSEL-AUSRÜSTUNG",
   "game.menu": "Spielmenü",
@@ -1146,6 +1172,7 @@ const de: Record<TranslationKey, string> = {
     "Fleischfresser können Pflanzen nicht verdauen. Jage ein kleines Tier.",
   "game.energyFull": "Die Energie ist bereits voll.",
   "game.getCloser": "Gehe näher an einen Busch oder Baum, um zu fressen.",
+  "game.landToEat": "Lande vor dem Fressen.",
   "game.crunchyBush": "Knackiger Busch! +{{energy}} Energie",
   "game.tastyTree": "Leckerer Baum! +{{energy}} Energie",
   "game.eggLaid":
@@ -1268,7 +1295,7 @@ const LANGUAGE_EVENT = "monsters-language-change";
 
 function getBrowserLocale(): Locale {
   const saved = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return saved && LOCALES.includes(saved as Locale) ? (saved as Locale) : "bg";
+  return saved && LOCALES.includes(saved as Locale) ? (saved as Locale) : "en";
 }
 
 function subscribeToLanguage(onChange: () => void) {
@@ -1281,7 +1308,7 @@ function subscribeToLanguage(onChange: () => void) {
 }
 
 function getServerLocale(): Locale {
-  return "bg";
+  return "en";
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
@@ -1362,5 +1389,26 @@ export function LanguageSwitcher({ className = "" }: { className?: string }) {
         </button>
       ))}
     </div>
+  );
+}
+
+export function LanguageSelect({ className = "" }: { className?: string }) {
+  const { locale, setLocale, t } = useI18n();
+  const choices: Locale[] = ["en", "de", "bg"];
+  return (
+    <label className={`language-select ${className}`.trim()}>
+      <span>{t("language.label")}</span>
+      <select
+        value={locale}
+        aria-label={t("language.label")}
+        onChange={(event) => setLocale(event.target.value as Locale)}
+      >
+        {choices.map((candidate) => (
+          <option key={candidate} value={candidate}>
+            {t(`language.${candidate}` as TranslationKey)}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

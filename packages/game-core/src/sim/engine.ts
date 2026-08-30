@@ -198,10 +198,8 @@ function settleHabitat(entity: SimEntity, index = 0) {
     entity.z = Math.sin(angle) * radius;
     attempts += 1;
   }
-  entity.y =
-    terrainHeight(entity.x, entity.z) +
-    (entity.dna.adaptation === "wings" ? 4.2 : 0);
-  entity.locomotion = entity.dna.adaptation === "wings" ? "fly" : "land";
+  entity.y = terrainHeight(entity.x, entity.z);
+  entity.locomotion = "land";
   return entity;
 }
 
@@ -550,15 +548,16 @@ export function applyPlayerMovement(entity: SimEntity, dt: number) {
   entity.locomotion = resolveLocomotion(entity, entity.locomotion);
   entity.y = locomotionHeight(entity, entity.locomotion);
 
-  if (moved) {
+  if (entity.locomotion === "fly") {
+    const rate = FLY_ENERGY_PER_SECOND * (moved && sprinting ? 1.65 : 1);
+    entity.energy = Math.max(0, entity.energy - rate * dt);
+  } else if (moved) {
     const rate =
-      entity.locomotion === "fly"
-        ? FLY_ENERGY_PER_SECOND * (sprinting ? 1.75 : 1)
-        : entity.locomotion === "swim" || entity.locomotion === "dive"
-          ? SWIM_ENERGY_PER_SECOND * (sprinting ? 1.6 : 1)
-          : sprinting
-            ? SPRINT_ENERGY_PER_SECOND
-            : WALK_ENERGY_PER_SECOND;
+      entity.locomotion === "swim" || entity.locomotion === "dive"
+        ? SWIM_ENERGY_PER_SECOND * (sprinting ? 1.6 : 1)
+        : sprinting
+          ? SPRINT_ENERGY_PER_SECOND
+          : WALK_ENERGY_PER_SECOND;
     entity.energy = Math.max(0, entity.energy - rate * dt);
   }
   entity.intent = moved ? "wander" : "rest";
@@ -584,6 +583,15 @@ function performEat(
   entity: SimEntity,
   events: SimEvent[],
 ) {
+  if (entity.locomotion === "fly") {
+    events.push({
+      type: "feedFailed",
+      tick: state.tick,
+      entityId: entity.id,
+      reason: "airborne",
+    });
+    return;
+  }
   if (!canMonsterEatPlants(entity.dna)) {
     events.push({
       type: "feedFailed",
@@ -679,7 +687,7 @@ function performAttack(
     let energyReward = 0;
     if (defeated) {
       killEntity(state, nearest, "health", entity.id, events);
-      if (canMonsterHunt(entity.dna)) {
+      if (canMonsterHunt(entity.dna) && entity.locomotion !== "fly") {
         energyReward = entity.dna.diet === "carnivore" ? 34 : 20;
         entity.energy = Math.min(100, entity.energy + energyReward);
       }
@@ -698,7 +706,7 @@ function performAttack(
     return;
   }
 
-  if (canMonsterHunt(entity.dna)) {
+  if (canMonsterHunt(entity.dna) && entity.locomotion !== "fly") {
     for (const prey of PREY) {
       if (!isResourceAvailable(state, prey.id)) continue;
       const distance = Math.hypot(prey.x - entity.x, prey.z - entity.z);
@@ -923,6 +931,27 @@ function applyCommand(
 ) {
   if (command.type === "spawn") {
     if (findEntity(state, command.entity.id)) return;
+    // A human must never be locked out by autonomous population growth. Wild
+    // creatures are replaceable; owned creatures are durable player history.
+    if (
+      command.entity.ownerGuestId !== null &&
+      livingCount(state) + state.eggs.length >= state.settings.maxPopulation
+    ) {
+      const wildVictim = state.entities
+        .filter(
+          (candidate) =>
+            candidate.alive &&
+            candidate.ownerGuestId === null &&
+            candidate.controllerId === null,
+        )
+        .sort(
+          (first, second) =>
+            first.health - second.health ||
+            first.energy - second.energy ||
+            first.id.localeCompare(second.id),
+        )[0];
+      if (wildVictim) killEntity(state, wildVictim, "health", null, events);
+    }
     const random = randomFn(state.rng);
     const entity = blankEntity(command.entity, random);
     if (command.entity.x === undefined || command.entity.z === undefined) {
@@ -1187,7 +1216,11 @@ function updateAiEntity(
     }
   }
 
-  if (canMonsterEatPlants(entity.dna) && hunger > 0.05) {
+  if (
+    entity.locomotion !== "fly" &&
+    canMonsterEatPlants(entity.dna) &&
+    hunger > 0.05
+  ) {
     let nearestFood: Edible | null = null;
     let foodDistance = 52;
     for (const edible of EDIBLES) {
@@ -1255,7 +1288,7 @@ function updateAiEntity(
     combatTarget =
       living.find((other) => other.id === entity.lastAttackerId) ?? null;
   }
-  if (combatTarget) {
+  if (combatTarget && entity.locomotion !== "fly") {
     const towardTarget = direction(
       entity.x,
       entity.z,
@@ -1311,7 +1344,7 @@ function updateAiEntity(
     entity.health >= 62 &&
     entity.mateCooldownUntil <= now &&
     living.length + state.eggs.length < state.settings.maxPopulation;
-  if (readyToMate) {
+  if (readyToMate && entity.locomotion !== "fly") {
     const partner = living
       .filter(
         (other) =>
@@ -1375,6 +1408,16 @@ function updateAiEntity(
   const length = Math.hypot(steerX, steerZ);
   const dominant = scores.sort((first, second) => second[1] - first[1])[0];
   entity.intent = dominant?.[0] ?? "wander";
+  // Wings are an escape tool, not an always-on habitat. AI takes off only
+  // while actively fleeing and lands again before feeding, fighting or mating.
+  const shouldFly =
+    entity.dna.adaptation === "wings" &&
+    entity.intent === "flee" &&
+    entity.energy > 32;
+  const blend = canMonsterSwim(entity.dna)
+    ? waterBlendAt(entity.x, entity.z)
+    : 0;
+  entity.locomotion = shouldFly ? "fly" : blend > 0.52 ? "swim" : "land";
   if (length > 0.0001) {
     const speedScale =
       entity.intent === "flee"
@@ -1389,33 +1432,40 @@ function updateAiEntity(
     const moveZ = (steerZ / length) * speed * dt;
     const nextX = entity.x + moveX;
     const nextZ = entity.z + moveZ;
-    const blocked = isBlockedByWater(nextX, nextZ, canMonsterSwim(entity.dna));
+    const blocked =
+      !shouldFly && isBlockedByWater(nextX, nextZ, canMonsterSwim(entity.dna));
     if (!blocked) {
       entity.x = nextX;
       entity.z = nextZ;
       entity.yaw = Math.atan2(-moveX, -moveZ);
-      entity.energy = Math.max(
-        0,
-        entity.energy -
-          (entity.intent === "flee" || entity.intent === "hunt" ? 0.42 : 0.2) *
-            dt,
-      );
+      if (!shouldFly) {
+        entity.energy = Math.max(
+          0,
+          entity.energy -
+            (entity.intent === "flee" || entity.intent === "hunt"
+              ? 0.42
+              : 0.2) *
+              dt,
+        );
+      }
     } else {
       entity.wanderAngle += Math.PI * (0.45 + random() * 0.4);
     }
   }
 
-  const blend = canMonsterSwim(entity.dna)
-    ? waterBlendAt(entity.x, entity.z)
-    : 0;
-  entity.locomotion =
-    entity.dna.adaptation === "wings" ? "fly" : blend > 0.52 ? "swim" : "land";
-  entity.y =
-    entity.dna.adaptation === "wings"
-      ? terrainHeight(entity.x, entity.z) + 4.2
-      : blend > 0.52
-        ? -0.72
-        : terrainHeight(entity.x, entity.z);
+  if (shouldFly) {
+    entity.energy = Math.max(0, entity.energy - FLY_ENERGY_PER_SECOND * dt);
+    if (entity.energy <= 0) {
+      killEntity(state, entity, "energy", null, events);
+      return;
+    }
+  }
+  const targetY = shouldFly
+    ? terrainHeight(entity.x, entity.z) + 4.2
+    : blend > 0.52
+      ? -0.72
+      : terrainHeight(entity.x, entity.z);
+  entity.y += (targetY - entity.y) * clamp(dt * 2.8, 0, 1);
 }
 
 function hatchEggs(state: WorldSimState, events: SimEvent[]) {

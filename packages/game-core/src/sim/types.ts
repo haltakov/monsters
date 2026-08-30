@@ -183,7 +183,7 @@ export type SimEvent =
       type: "feedFailed";
       tick: number;
       entityId: string;
-      reason: "noResource" | "full" | "diet";
+      reason: "noResource" | "full" | "diet" | "airborne";
     }
   | {
       type: "pairRequested";

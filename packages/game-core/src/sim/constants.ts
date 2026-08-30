@@ -6,7 +6,8 @@ export const TICK_SECONDS = 1 / TICK_RATE;
 export const WALK_ENERGY_PER_SECOND = 1.2;
 export const SPRINT_ENERGY_PER_SECOND = 3.8;
 export const SWIM_ENERGY_PER_SECOND = 1.7;
-export const FLY_ENERGY_PER_SECOND = 2.6;
+/** Flight is powerful, but sustained lift should be a deliberate choice. */
+export const FLY_ENERGY_PER_SECOND = 5.2;
 export const ATTACK_ENERGY_COST = 7;
 export const MATE_ENERGY_COST = 18;
 export const AI_IDLE_ENERGY_PER_SECOND = 0.045;
@@ -39,7 +40,6 @@ export const TURN_RATE_PER_SECOND = 1.75;
 export const FINE_CATCHUP_SECONDS = 30;
 export const COARSE_CATCHUP_DT = 1;
 export const MAX_COARSE_CATCHUP_STEPS = 1800;
-export const MAX_CATCHUP_SECONDS =
-  COARSE_CATCHUP_DT * MAX_COARSE_CATCHUP_STEPS;
+export const MAX_CATCHUP_SECONDS = COARSE_CATCHUP_DT * MAX_COARSE_CATCHUP_STEPS;
 /** Hard cap on ticks a single live update may replay after a stall. */
 export const MAX_TICKS_PER_UPDATE = 20;

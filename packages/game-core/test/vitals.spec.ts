@@ -39,6 +39,63 @@ describe("energy, feeding and health", () => {
     expect(state.depletedResources[tree.id]).toBeUndefined();
   });
 
+  it("charges for hovering and refuses to eat while airborne", () => {
+    const state = emptyWorld();
+    const flyer = makePlayer("flyer", {
+      x: tree.x,
+      z: tree.z,
+      energy: 50,
+      locomotion: "fly",
+      dna: withDna({ adaptation: "wings" }),
+    });
+    state.entities.push(flyer);
+
+    const events = stepWorld(state, TICK_SECONDS, [
+      { type: "action", entityId: flyer.id, action: "eat" },
+    ]);
+
+    expect(flyer.energy).toBeLessThan(50);
+    expect(state.depletedResources[tree.id]).toBeUndefined();
+    expect(
+      events.some(
+        (event) => event.type === "feedFailed" && event.reason === "airborne",
+      ),
+    ).toBe(true);
+  });
+
+  it("always admits an owned monster by removing a wild one at capacity", () => {
+    const state = emptyWorld();
+    state.settings.maxPopulation = 2;
+    state.entities.push(
+      makeEntity("wild-weak", { health: 25 }),
+      makeEntity("wild-strong", { health: 90 }),
+    );
+
+    const events = stepWorld(state, TICK_SECONDS, [
+      {
+        type: "spawn",
+        entity: {
+          id: "player-new",
+          name: "Player New",
+          dna: withDna({}),
+          ownerGuestId: "guest-new",
+        },
+      },
+    ]);
+
+    expect(
+      state.entities.find((entity) => entity.id === "player-new")?.alive,
+    ).toBe(true);
+    expect(
+      state.entities.find((entity) => entity.id === "wild-weak")?.alive,
+    ).toBe(false);
+    expect(
+      events.some(
+        (event) => event.type === "death" && event.entityId === "wild-weak",
+      ),
+    ).toBe(true);
+  });
+
   it("halves plant energy for omnivores and refuses carnivores", () => {
     const state = emptyWorld();
     const omnivore = makePlayer("omni", {
@@ -157,7 +214,9 @@ describe("energy, feeding and health", () => {
     expect(player.alive).toBe(false);
     expect(state.stats.deaths).toBe(1);
     expect(
-      events.some((event) => event.type === "death" && event.cause === "energy"),
+      events.some(
+        (event) => event.type === "death" && event.cause === "energy",
+      ),
     ).toBe(true);
   });
 
@@ -189,7 +248,18 @@ describe("energy, feeding and health", () => {
 
     stepWorld(state, TICK_SECONDS, [
       { type: "action", entityId: "p1", action: "attack" },
-      { type: "input", entityId: "p1", input: { forward: 1, strafe: 0, turn: 0, heading: 0, sprint: true, seq: 1 } },
+      {
+        type: "input",
+        entityId: "p1",
+        input: {
+          forward: 1,
+          strafe: 0,
+          turn: 0,
+          heading: 0,
+          sprint: true,
+          seq: 1,
+        },
+      },
     ]);
 
     expect(target.health).toBe(100);

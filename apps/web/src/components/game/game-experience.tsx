@@ -2,23 +2,26 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { Float, Sky, Sparkles } from "@react-three/drei";
 import {
   Activity,
   ArrowLeft,
-  Crosshair,
-  Dna,
+  Bot,
+  CircleHelp,
   Egg,
+  Eye,
   Heart,
   Leaf,
   Menu,
   MousePointer2,
   Pencil,
   Plus,
+  Settings,
   Swords,
   Waves,
   Wind,
+  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -84,7 +87,7 @@ import {
   type ConnectionPhase,
 } from "@/lib/net/world-connection";
 import {
-  LanguageSwitcher,
+  LanguageSelect,
   useI18n,
   type TranslationKey,
 } from "@/components/i18n";
@@ -237,8 +240,66 @@ function World({
           onFrame={onPlayerFrame}
         />
       )}
+      {!selfEntityId && <SpectatorCamera controls={controls} />}
     </>
   );
+}
+
+function SpectatorCamera({
+  controls,
+}: {
+  controls: React.RefObject<ControlState>;
+}) {
+  const initialized = useRef(false);
+  const forward = useMemo(() => new THREE.Vector3(), []);
+  const right = useMemo(() => new THREE.Vector3(), []);
+  const movement = useMemo(() => new THREE.Vector3(), []);
+  const target = useMemo(() => new THREE.Vector3(), []);
+
+  useFrame(({ camera }, delta) => {
+    const state = controls.current;
+    if (!initialized.current) {
+      initialized.current = true;
+      camera.position.set(22, 18, 22);
+    }
+
+    const horizontal = Math.cos(state.cameraPitch);
+    forward.set(
+      -Math.sin(state.cameraYaw) * horizontal,
+      -Math.sin(state.cameraPitch),
+      -Math.cos(state.cameraYaw) * horizontal,
+    );
+    right.set(Math.cos(state.cameraYaw), 0, -Math.sin(state.cameraYaw));
+
+    const forwardInput =
+      (state.keys.has("KeyW") || state.keys.has("ArrowUp") ? 1 : 0) -
+      (state.keys.has("KeyS") || state.keys.has("ArrowDown") ? 1 : 0) +
+      state.move.y;
+    const strafeInput =
+      (state.keys.has("KeyD") ? 1 : 0) -
+      (state.keys.has("KeyA") ? 1 : 0) +
+      state.move.x;
+    movement
+      .copy(forward)
+      .multiplyScalar(forwardInput)
+      .addScaledVector(right, strafeInput);
+    if (!state.paused && movement.lengthSq() > 0.001) {
+      movement.normalize();
+      const speed = state.keys.has("ShiftLeft") ? 34 : 20;
+      camera.position.addScaledVector(movement, speed * delta);
+      const radius = Math.hypot(camera.position.x, camera.position.z);
+      const limit = PLAYABLE_RADIUS + 42;
+      if (radius > limit) {
+        camera.position.x *= limit / radius;
+        camera.position.z *= limit / radius;
+      }
+      camera.position.y = THREE.MathUtils.clamp(camera.position.y, 2.5, 58);
+    }
+    target.copy(camera.position).add(forward);
+    camera.lookAt(target);
+  });
+
+  return null;
 }
 
 function Joystick({
@@ -341,7 +402,7 @@ export function GameExperience() {
 type SessionApi = ReturnType<typeof useGuestSession>;
 
 function ConnectedGame({ session }: { session: SessionApi }) {
-  const { t, option } = useI18n();
+  const { t } = useI18n();
   const token = session.token!;
 
   const controls = useRef<ControlState>({
@@ -382,7 +443,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   const [phase, setPhase] = useState<ConnectionPhase>("idle");
   const [isController, setIsController] = useState(false);
   const [selfEntityId, setSelfEntityId] = useState<string | null>(null);
-  const [status, setStatus] = useState<StatusMessage>({ key: "game.welcome" });
+  const [status, setStatus] = useState<StatusMessage | null>(null);
   const [energy, setEnergy] = useState(100);
   const [health, setHealth] = useState(100);
   const [matingCooldown, setMatingCooldown] = useState(0);
@@ -406,6 +467,10 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   const [creatorDraft, setCreatorDraft] = useState<CreatorDraft | null>(null);
   const [creatorError, setCreatorError] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [controlsHelpOpen, setControlsHelpOpen] = useState(false);
+  const [mouseHintDismissed, setMouseHintDismissed] = useState(false);
   const [agentScoreNow, setAgentScoreNow] = useState(0);
   const [agentArena, setAgentArenaState] =
     useState<AgentArenaState>(EMPTY_AGENT_ARENA);
@@ -580,11 +645,13 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             if (event.entityId !== selfId) break;
             setStatus({
               key:
-                event.reason === "diet"
-                  ? "game.noPlants"
-                  : event.reason === "full"
-                    ? "game.energyFull"
-                    : "game.getCloser",
+                event.reason === "airborne"
+                  ? "game.landToEat"
+                  : event.reason === "diet"
+                    ? "game.noPlants"
+                    : event.reason === "full"
+                      ? "game.energyFull"
+                      : "game.getCloser",
             });
             break;
           }
@@ -856,6 +923,10 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     (action: "eat" | "attack") => {
       if (controls.current.isDead || controls.current.paused) return;
       if (!connection.isController) return;
+      if (action === "eat" && controls.current.locomotionMode === "fly") {
+        setStatus({ key: "game.landToEat" });
+        return;
+      }
       controls.current.action = action;
       controls.current.actionStarted = performance.now();
       connection.sendAction(action);
@@ -1079,12 +1150,22 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       );
       controls.current.cameraPitch = THREE.MathUtils.clamp(
         controls.current.cameraPitch + controls.current.look.y * 1.25 * delta,
-        0.12,
+        selfEntityId ? 0.12 : -0.72,
         0.72,
       );
       animationFrame = window.requestAnimationFrame(updateLook);
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Slash" && event.shiftKey && !event.repeat) {
+        event.preventDefault();
+        setControlsHelpOpen((open) => !open);
+        return;
+      }
+      if (event.code === "Escape") {
+        setControlsHelpOpen(false);
+        setSettingsOpen(false);
+        setAgentPanelOpen(false);
+      }
       if (controls.current.paused) return;
       controls.current.keys.add(event.code);
       if (
@@ -1108,7 +1189,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       );
       controls.current.cameraPitch = THREE.MathUtils.clamp(
         controls.current.cameraPitch + event.movementY * 0.0018,
-        0.12,
+        selfEntityId ? 0.12 : -0.72,
         0.72,
       );
     };
@@ -1129,7 +1210,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       document.removeEventListener("pointerlockchange", onPointerLock);
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [toggleDive, toggleFlight, triggerAction, triggerMate]);
+  }, [selfEntityId, toggleDive, toggleFlight, triggerAction, triggerMate]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -1548,6 +1629,14 @@ function ConnectedGame({ session }: { session: SessionApi }) {
         },
         execute: async (input, context) => {
           const self = ensureAgentArena();
+          if (self.loco === "fly") {
+            connection.sendLocomotion("land");
+            updateAgentArena((current) => ({
+              ...current,
+              lastAction: "Landing before eating",
+            }));
+            await waitForAgentAction(0.45, context.signal);
+          }
           const dna = connection.self!.dna;
           const candidates = [
             ...(dna.diet !== "carnivore"
@@ -1793,7 +1882,8 @@ function ConnectedGame({ session }: { session: SessionApi }) {
 
   const monsterName = activeMonster?.name ?? t("game.genericMonster");
   const canPlay = Boolean(selfEntityId) && isController && !isDead;
-  const needsFirstMonster = session.monsters.length === 0 && !creatorDraft;
+  const isSpectating =
+    phase === "connected" && !selfEntityId && !creatorDraft && !isDead;
   const dominationScore = scoreAgentArena(
     agentArena,
     agentScoreNow || agentArena.startedAt,
@@ -1812,6 +1902,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             powerPreference: "high-performance",
           }}
           onPointerDown={(event) => {
+            setMouseHintDismissed(true);
             if (
               event.pointerType === "mouse" &&
               event.target instanceof HTMLCanvasElement &&
@@ -1851,32 +1942,34 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           onCopy={copyMonster}
         />
         <div className="mobile-compact-hud">
-          <div className="mobile-player-status">
-            <MonsterMark className="mobile-player-mark" />
-            <div className="mobile-player-vitals">
-              <strong>{monsterName}</strong>
-              <div className="mobile-vital-row">
-                <Heart size={13} aria-hidden="true" />
-                <div
-                  className={`mobile-vital-track health${health <= 25 ? " low" : ""}`}
-                  title={`${t("game.health")} ${health}`}
-                >
-                  <i style={{ width: `${health}%` }} />
+          {activeMonster && selfEntityId && (
+            <div className="mobile-player-status">
+              <MonsterMark className="mobile-player-mark" />
+              <div className="mobile-player-vitals">
+                <strong>{monsterName}</strong>
+                <div className="mobile-vital-row">
+                  <Heart size={13} aria-hidden="true" />
+                  <div
+                    className={`mobile-vital-track health${health <= 25 ? " low" : ""}`}
+                    title={`${t("game.health")} ${health}`}
+                  >
+                    <i style={{ width: `${health}%` }} />
+                  </div>
+                  <span>{health}</span>
                 </div>
-                <span>{health}</span>
-              </div>
-              <div className="mobile-vital-row">
-                <Activity size={13} aria-hidden="true" />
-                <div
-                  className={`mobile-vital-track energy${energy <= 25 ? " low" : ""}`}
-                  title={`${t("game.energy")} ${energy}`}
-                >
-                  <i style={{ width: `${energy}%` }} />
+                <div className="mobile-vital-row">
+                  <Activity size={13} aria-hidden="true" />
+                  <div
+                    className={`mobile-vital-track energy${energy <= 25 ? " low" : ""}`}
+                    title={`${t("game.energy")} ${energy}`}
+                  >
+                    <i style={{ width: `${energy}%` }} />
+                  </div>
+                  <span>{energy}</span>
                 </div>
-                <span>{energy}</span>
               </div>
             </div>
-          </div>
+          )}
           <button
             type="button"
             className="mobile-menu-toggle"
@@ -1892,28 +1985,36 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           <Link href="/" className="back-button" aria-label={t("game.home")}>
             <ArrowLeft size={19} />
           </Link>
-          <div className="monster-card">
-            <MonsterMark className="hud-monster" />
-            <div>
-              <span>{monsterName.toUpperCase()}</span>
-              <strong>
-                {option(monsterDna.diet)} · {t("game.explorer")}
-              </strong>
-            </div>
-          </div>
           <ConnectionBadge phase={phase} />
-          <LanguageSwitcher className="game-language-switcher" />
+          <button
+            type="button"
+            className="hud-utility-button"
+            aria-label={t("game.agentArena")}
+            aria-expanded={agentPanelOpen}
+            onClick={() => {
+              controls.current.keys.clear();
+              setAgentPanelOpen((open) => !open);
+              setSettingsOpen(false);
+            }}
+          >
+            <Bot size={18} />
+          </button>
+          <button
+            type="button"
+            className="hud-utility-button"
+            aria-label={t("game.settings")}
+            aria-expanded={settingsOpen}
+            onClick={() => {
+              controls.current.keys.clear();
+              setSettingsOpen((open) => !open);
+              setAgentPanelOpen(false);
+            }}
+          >
+            <Settings size={18} />
+          </button>
         </div>
         <div className="hud-top-right">
           <div className="dna-hud-row">
-            <div className="dna-chip">
-              <Dna size={16} />
-              <span>
-                {monsterDna.eyes}{" "}
-                {monsterDna.eyes === 1 ? t("creator.eye") : t("creator.eyes")} ·{" "}
-                {option(monsterDna.diet)} · {option(monsterDna.social)}
-              </span>
-            </div>
             <label className="family-picker">
               <span>{t("game.monster")}</span>
               <select
@@ -1952,32 +2053,35 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               {t("game.edit")}
             </button>
           </div>
-          <div className="survival-bars">
-            <div
-              className={`health-bar${health <= 25 ? " health-low" : ""}${isDead && deathReason === "health" ? " health-empty" : ""}`}
-            >
-              <i style={{ width: `${health}%` }} />
-              <span>
-                {t("game.health")} {health}
-              </span>
+          {selfEntityId && (
+            <div className="survival-bars">
+              <div
+                className={`health-bar${health <= 25 ? " health-low" : ""}${isDead && deathReason === "health" ? " health-empty" : ""}`}
+              >
+                <i style={{ width: `${health}%` }} />
+                <span>
+                  {t("game.health")} {health}
+                </span>
+              </div>
+              <div
+                className={`energy-bar${energy <= 25 ? " energy-low" : ""}${isDead && deathReason === "energy" ? " energy-empty" : ""}`}
+              >
+                <i style={{ width: `${energy}%` }} />
+                <span>
+                  {t("game.energy")} {energy}
+                </span>
+              </div>
             </div>
-            <div
-              className={`energy-bar${energy <= 25 ? " energy-low" : ""}${isDead && deathReason === "energy" ? " energy-empty" : ""}`}
-            >
-              <i style={{ width: `${energy}%` }} />
-              <span>
-                {t("game.energy")} {energy}
-              </span>
+          )}
+          {selfEntityId && (
+            <div className="locomotion-chip" data-mode={locomotionMode}>
+              <span>{t("game.movementMode")}</span>
+              <strong>
+                {t(`game.mode.${locomotionMode}` as TranslationKey)}
+              </strong>
             </div>
-          </div>
-          <div className="locomotion-chip" data-mode={locomotionMode}>
-            <span>{t("game.movementMode")}</span>
-            <strong>
-              {t(`game.mode.${locomotionMode}` as TranslationKey)}
-            </strong>
-          </div>
+          )}
         </div>
-        <div className="status-bubble">{t(status.key, status.values)}</div>
         <div className="ecosystem-pulse">
           <span className="ecosystem-live">
             <Activity size={13} /> {t("game.ecosystem")}
@@ -1988,108 +2092,156 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           <Egg size={13} />
           <strong>{population.eggs}</strong>
           <span>{t("game.eggs")}</span>
-          <small>{t(ecosystemEvent.key, ecosystemEvent.values)}</small>
         </div>
 
-        <aside
-          className={`agent-arena-panel status-${agentArena.status}`}
-          aria-label="Visiting agent arena"
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <header>
-            <div>
-              <span>WEBMCP AGENT ARENA</span>
-              <strong>
-                {agentArena.status === "idle"
-                  ? "Ready for an agent"
-                  : agentArena.status === "dead" ||
-                      agentArena.status === "ended"
-                    ? "Final domination score"
-                    : agentArena.status === "paused"
-                      ? "Coach has control"
-                      : "Agent is competing"}
-              </strong>
-            </div>
-            <b>{dominationScore.dominationScore}</b>
-          </header>
-          <p>{agentArena.lastAction}</p>
-          <div className="agent-score-grid">
-            <span>
-              <b>{dominationScore.survivalSeconds}s</b> survived
-            </span>
-            <span>
-              <b>{dominationScore.foodConsumed}</b> food
-            </span>
-            <span>
-              <b>{dominationScore.fightsWon}</b> wins
-            </span>
-            <span>
-              <b>{dominationScore.offspring}</b> offspring
-            </span>
-            <span>
-              <b>{dominationScore.generations}</b> generations
-            </span>
-            <span>
-              <b>{Math.round(dominationScore.populationShare * 100)}%</b> share
-            </span>
-          </div>
-          <label>
-            <span>Coach the visiting agent</span>
-            <input
-              value={agentArena.coachNote}
-              maxLength={180}
-              onChange={(event) =>
-                updateAgentArena((current) => ({
-                  ...current,
-                  coachNote: event.target.value,
-                }))
-              }
-              placeholder="Stay near water, avoid carnivores…"
-            />
-          </label>
-          <div className="agent-arena-actions">
+        {settingsOpen && (
+          <section
+            className="settings-popover"
+            aria-label={t("game.settings")}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <strong>{t("game.settings")}</strong>
+              <button
+                type="button"
+                aria-label={t("game.closeMenu")}
+                onClick={() => setSettingsOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </header>
+            <LanguageSelect />
             <button
               type="button"
-              disabled={
-                agentArena.status === "idle" ||
-                agentArena.status === "dead" ||
-                agentArena.status === "ended"
-              }
+              className="settings-controls-button"
               onClick={() => {
-                const pause = agentArenaRef.current.status !== "paused";
-                controls.current.agent.enabled = false;
-                updateAgentArena((current) => ({
-                  ...current,
-                  status: pause ? "paused" : "active",
-                  lastAction: pause
-                    ? "Human coach took control"
-                    : "Agent control resumed",
-                }));
+                setControlsHelpOpen(true);
+                setSettingsOpen(false);
               }}
             >
-              {agentArena.status === "paused" ? "Resume agent" : "Take control"}
+              <CircleHelp size={16} /> {t("game.controlsHelp")}
             </button>
-            <button
-              type="button"
-              disabled={
-                agentArena.status === "idle" ||
-                agentArena.status === "dead" ||
-                agentArena.status === "ended"
-              }
-              onClick={() => {
-                controls.current.agent.enabled = false;
-                updateAgentArena((current) => ({
-                  ...current,
-                  status: "ended",
-                  endedAt: Date.now() / 1000,
-                  lastAction: "Run ended by the human coach",
-                }));
-              }}
-            >
-              End run
-            </button>
-          </div>
+          </section>
+        )}
+
+        <aside className="activity-feed" aria-label={t("game.activity")}>
+          <span>{t("game.activity")}</span>
+          {status && <p>{t(status.key, status.values)}</p>}
+          <p>{t(ecosystemEvent.key, ecosystemEvent.values)}</p>
         </aside>
+
+        {agentPanelOpen && (
+          <aside
+            className={`agent-arena-panel status-${agentArena.status}`}
+            aria-label="Visiting agent arena"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <span>WEBMCP AGENT ARENA</span>
+                <strong>
+                  {agentArena.status === "idle"
+                    ? "Ready for an agent"
+                    : agentArena.status === "dead" ||
+                        agentArena.status === "ended"
+                      ? "Final domination score"
+                      : agentArena.status === "paused"
+                        ? "Coach has control"
+                        : "Agent is competing"}
+                </strong>
+              </div>
+              <b>{dominationScore.dominationScore}</b>
+              <button
+                type="button"
+                className="agent-panel-close"
+                aria-label={t("game.closeMenu")}
+                onClick={() => setAgentPanelOpen(false)}
+              >
+                <X size={15} />
+              </button>
+            </header>
+            <p>{agentArena.lastAction}</p>
+            <div className="agent-score-grid">
+              <span>
+                <b>{dominationScore.survivalSeconds}s</b> survived
+              </span>
+              <span>
+                <b>{dominationScore.foodConsumed}</b> food
+              </span>
+              <span>
+                <b>{dominationScore.fightsWon}</b> wins
+              </span>
+              <span>
+                <b>{dominationScore.offspring}</b> offspring
+              </span>
+              <span>
+                <b>{dominationScore.generations}</b> generations
+              </span>
+              <span>
+                <b>{Math.round(dominationScore.populationShare * 100)}%</b>{" "}
+                share
+              </span>
+            </div>
+            <label>
+              <span>Coach the visiting agent</span>
+              <input
+                value={agentArena.coachNote}
+                maxLength={180}
+                onChange={(event) =>
+                  updateAgentArena((current) => ({
+                    ...current,
+                    coachNote: event.target.value,
+                  }))
+                }
+                placeholder="Stay near water, avoid carnivores…"
+              />
+            </label>
+            <div className="agent-arena-actions">
+              <button
+                type="button"
+                disabled={
+                  agentArena.status === "idle" ||
+                  agentArena.status === "dead" ||
+                  agentArena.status === "ended"
+                }
+                onClick={() => {
+                  const pause = agentArenaRef.current.status !== "paused";
+                  controls.current.agent.enabled = false;
+                  updateAgentArena((current) => ({
+                    ...current,
+                    status: pause ? "paused" : "active",
+                    lastAction: pause
+                      ? "Human coach took control"
+                      : "Agent control resumed",
+                  }));
+                }}
+              >
+                {agentArena.status === "paused"
+                  ? "Resume agent"
+                  : "Take control"}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  agentArena.status === "idle" ||
+                  agentArena.status === "dead" ||
+                  agentArena.status === "ended"
+                }
+                onClick={() => {
+                  controls.current.agent.enabled = false;
+                  updateAgentArena((current) => ({
+                    ...current,
+                    status: "ended",
+                    endedAt: Date.now() / 1000,
+                    lastAction: "Run ended by the human coach",
+                  }));
+                }}
+              >
+                End run
+              </button>
+            </div>
+          </aside>
+        )}
 
         {pairing && (
           <PairingRequestCard
@@ -2134,13 +2286,6 @@ function ConnectedGame({ session }: { session: SessionApi }) {
                 <div>
                   <span>{t("game.yourMonster")}</span>
                   <strong>{monsterName}</strong>
-                  <small>
-                    {option(monsterDna.diet)} · {option(monsterDna.social)} ·{" "}
-                    {monsterDna.eyes}{" "}
-                    {monsterDna.eyes === 1
-                      ? t("creator.eye")
-                      : t("creator.eyes")}
-                  </small>
                 </div>
                 <div className="mobile-menu-mode" data-mode={locomotionMode}>
                   {t(`game.mode.${locomotionMode}` as TranslationKey)}
@@ -2207,10 +2352,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
                   </div>
                 </div>
                 <div className="mobile-menu-section mobile-language-section">
-                  <span className="mobile-menu-label">
-                    {t("language.label")}
-                  </span>
-                  <LanguageSwitcher className="mobile-menu-language" />
+                  <LanguageSelect className="mobile-menu-language" />
                 </div>
               </div>
 
@@ -2278,79 +2420,17 @@ function ConnectedGame({ session }: { session: SessionApi }) {
                 </p>
               </div>
 
-              <div className="mobile-menu-section mobile-agent-arena">
-                <span className="mobile-menu-label">WebMCP agent arena</span>
-                <div className="mobile-agent-score">
-                  <strong>{dominationScore.dominationScore}</strong>
-                  <span>{agentArena.lastAction}</span>
-                </div>
-                <div className="mobile-agent-metrics">
-                  <span>{dominationScore.survivalSeconds}s survived</span>
-                  <span>{dominationScore.foodConsumed} food</span>
-                  <span>{dominationScore.fightsWon} wins</span>
-                  <span>{dominationScore.offspring} offspring</span>
-                  <span>{dominationScore.generations} generations</span>
-                  <span>
-                    {Math.round(dominationScore.populationShare * 100)}% share
-                  </span>
-                </div>
-                <label className="mobile-agent-coach">
-                  <span>Strategy note for the agent</span>
-                  <input
-                    value={agentArena.coachNote}
-                    maxLength={180}
-                    onChange={(event) =>
-                      updateAgentArena((current) => ({
-                        ...current,
-                        coachNote: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <div className="agent-arena-actions">
-                  <button
-                    type="button"
-                    disabled={
-                      agentArena.status === "idle" ||
-                      agentArena.status === "dead" ||
-                      agentArena.status === "ended"
-                    }
-                    onClick={() => {
-                      const pause = agentArenaRef.current.status !== "paused";
-                      controls.current.agent.enabled = false;
-                      updateAgentArena((current) => ({
-                        ...current,
-                        status: pause ? "paused" : "active",
-                        lastAction: pause
-                          ? "Human coach took control"
-                          : "Agent control resumed",
-                      }));
-                    }}
-                  >
-                    {agentArena.status === "paused"
-                      ? "Resume agent"
-                      : "Take control"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={
-                      agentArena.status === "idle" ||
-                      agentArena.status === "dead" ||
-                      agentArena.status === "ended"
-                    }
-                    onClick={() => {
-                      controls.current.agent.enabled = false;
-                      updateAgentArena((current) => ({
-                        ...current,
-                        status: "ended",
-                        endedAt: Date.now() / 1000,
-                        lastAction: "Run ended by the human coach",
-                      }));
-                    }}
-                  >
-                    End run
-                  </button>
-                </div>
+              <div className="mobile-menu-section">
+                <button
+                  type="button"
+                  className="mobile-agent-launch"
+                  onClick={() => {
+                    closeMobileMenu();
+                    setAgentPanelOpen(true);
+                  }}
+                >
+                  <Bot size={18} /> {t("game.agentArena")}
+                </button>
               </div>
 
               <div className="mobile-menu-footer">
@@ -2369,15 +2449,16 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           </div>
         )}
 
-        {needsFirstMonster && (
-          <div className="death-card" role="dialog" aria-modal="false">
-            <span>{t("net.observer")}</span>
-            <strong>{t("game.createFirst")}</strong>
-            <div className="death-actions">
-              <button type="button" onClick={openNewMonster}>
-                <Plus size={15} /> {t("game.new")}
-              </button>
+        {isSpectating && (
+          <div className="spectator-strip">
+            <Eye size={17} />
+            <div>
+              <strong>{t("game.spectating")}</strong>
+              <span>{t("game.spectatorHint")}</span>
             </div>
+            <button type="button" onClick={openNewMonster}>
+              <Plus size={15} /> {t("game.createFirst")}
+            </button>
           </div>
         )}
 
@@ -2420,55 +2501,81 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           </div>
         )}
 
-        {!pointerLocked && (
-          <div className="mouse-hint">
-            <MousePointer2 size={18} />
-            <span>{t("game.mouseHint")}</span>
+        {!pointerLocked &&
+          !mouseHintDismissed &&
+          sceneQuality === "desktop" && (
+            <div className="mouse-hint">
+              <MousePointer2 size={18} />
+              <span>{t("game.mouseHint")}</span>
+            </div>
+          )}
+
+        <button
+          type="button"
+          className="controls-hint-button"
+          aria-label={t("game.controlsHint")}
+          onClick={() => setControlsHelpOpen((open) => !open)}
+        >
+          <CircleHelp size={16} />
+          <span>{t("game.controlsHint")}</span>
+        </button>
+
+        {controlsHelpOpen && (
+          <div
+            className="desktop-controls"
+            role="dialog"
+            aria-label={t("game.controlsHelp")}
+          >
+            <button
+              type="button"
+              className="controls-close"
+              aria-label={t("game.closeMenu")}
+              onClick={() => setControlsHelpOpen(false)}
+            >
+              <X size={15} />
+            </button>
+            <div>
+              <kbd>W</kbd>
+              <kbd>S</kbd>
+              <span>{t("game.forwardBack")}</span>
+            </div>
+            <div>
+              <kbd>A</kbd>
+              <kbd>D</kbd>
+              <span>{t("game.sideways")}</span>
+            </div>
+            <div>
+              <MousePointer2 size={16} />
+              <span>{t("game.camera")}</span>
+            </div>
+            <div>
+              <kbd>←</kbd>
+              <kbd>→</kbd>
+              <span>{t("game.turnCamera")}</span>
+            </div>
+            <div>
+              <kbd>↑</kbd>
+              <kbd>↓</kbd>
+              <span>{t("game.forwardBack")}</span>
+            </div>
+            <div>
+              <kbd>E</kbd>
+              <span>{t("game.eat")}</span>
+            </div>
+            <div>
+              <kbd>SPACE</kbd>
+              <span>{t("game.attack")}</span>
+            </div>
+            <div>
+              <kbd>M</kbd>
+              <span>{t("game.mate")}</span>
+            </div>
+            <div>
+              <kbd>SHIFT</kbd>
+              <span>{t("game.sprint")}</span>
+            </div>
           </div>
         )}
-
-        <div className="desktop-controls">
-          <div>
-            <kbd>W</kbd>
-            <kbd>S</kbd>
-            <span>{t("game.forwardBack")}</span>
-          </div>
-          <div>
-            <kbd>A</kbd>
-            <kbd>D</kbd>
-            <span>{t("game.sideways")}</span>
-          </div>
-          <div>
-            <MousePointer2 size={16} />
-            <span>{t("game.camera")}</span>
-          </div>
-          <div>
-            <kbd>←</kbd>
-            <kbd>→</kbd>
-            <span>{t("game.turnCamera")}</span>
-          </div>
-          <div>
-            <kbd>↑</kbd>
-            <kbd>↓</kbd>
-            <span>{t("game.forwardBack")}</span>
-          </div>
-          <div>
-            <kbd>E</kbd>
-            <span>{t("game.eat")}</span>
-          </div>
-          <div>
-            <kbd>SPACE</kbd>
-            <span>{t("game.attack")}</span>
-          </div>
-          <div>
-            <kbd>M</kbd>
-            <span>{t("game.mate")}</span>
-          </div>
-          <div>
-            <kbd>SHIFT</kbd>
-            <span>{t("game.sprint")}</span>
-          </div>
-        </div>
 
         <div className="mobile-controls">
           <Joystick
@@ -2485,107 +2592,101 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           />
         </div>
 
-        <div className="action-controls">
-          <button
-            type="button"
-            className="action-button eat-button"
-            disabled={!canPlay}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              triggerAction("eat");
-            }}
-          >
-            <Leaf size={25} />
-            <span>{t("game.eatButton")}</span>
-            <small>E</small>
-          </button>
-          <button
-            type="button"
-            className="action-button attack-button"
-            disabled={!canPlay}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              triggerAction("attack");
-            }}
-          >
-            <Swords size={25} />
-            <span>
-              {canMonsterHunt(monsterDna)
-                ? t("game.huntButton")
-                : t("game.attackButton")}
-            </span>
-            <small>{t("game.space")}</small>
-          </button>
-          <button
-            type="button"
-            className="action-button mate-button"
-            disabled={!canPlay || matingCooldown > 0}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              triggerMate();
-            }}
-          >
-            {matingCooldown > 0 ? <Egg size={24} /> : <Heart size={24} />}
-            <span>
-              {matingCooldown > 0
-                ? t("game.mateReadyIn", { seconds: matingCooldown })
-                : t("game.mateButton")}
-            </span>
-            <small>M</small>
-          </button>
-        </div>
-
-        {(monsterDna.adaptation === "wings" || canMonsterSwim(monsterDna)) && (
-          <div className="ability-controls">
-            {monsterDna.adaptation === "wings" && (
-              <button
-                type="button"
-                className={`ability-button${locomotionMode === "fly" ? " active" : ""}`}
-                disabled={!canPlay}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  toggleFlight();
-                }}
-              >
-                <Wind size={18} />
-                <span>
-                  {locomotionMode === "fly"
-                    ? t("game.landButton")
-                    : t("game.flyButton")}
-                </span>
-                <small>F</small>
-              </button>
-            )}
-            {canMonsterSwim(monsterDna) && (
-              <button
-                type="button"
-                className={`ability-button${locomotionMode === "dive" ? " active" : ""}`}
-                disabled={!canPlay}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  toggleDive();
-                }}
-              >
-                <Waves size={18} />
-                <span>
-                  {locomotionMode === "dive"
-                    ? t("game.surfaceButton")
-                    : t("game.diveButton")}
-                </span>
-                <small>C</small>
-              </button>
-            )}
+        {canPlay && (
+          <div className="action-controls">
+            <button
+              type="button"
+              className="action-button eat-button"
+              disabled={locomotionMode === "fly"}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                triggerAction("eat");
+              }}
+            >
+              <Leaf size={25} />
+              <span>{t("game.eatButton")}</span>
+              <small>E</small>
+            </button>
+            <button
+              type="button"
+              className="action-button attack-button"
+              disabled={!canPlay}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                triggerAction("attack");
+              }}
+            >
+              <Swords size={25} />
+              <span>
+                {canMonsterHunt(monsterDna)
+                  ? t("game.huntButton")
+                  : t("game.attackButton")}
+              </span>
+              <small>{t("game.space")}</small>
+            </button>
+            <button
+              type="button"
+              className="action-button mate-button"
+              disabled={!canPlay || matingCooldown > 0}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                triggerMate();
+              }}
+            >
+              {matingCooldown > 0 ? <Egg size={24} /> : <Heart size={24} />}
+              <span>
+                {matingCooldown > 0
+                  ? t("game.mateReadyIn", { seconds: matingCooldown })
+                  : t("game.mateButton")}
+              </span>
+              <small>M</small>
+            </button>
           </div>
         )}
 
-        <div className="water-rule">
-          <Crosshair size={14} />
-          <span>
-            {canMonsterSwim(monsterDna)
-              ? t("game.waterOpen")
-              : t("game.waterClosed")}
-          </span>
-        </div>
+        {canPlay &&
+          (monsterDna.adaptation === "wings" || canMonsterSwim(monsterDna)) && (
+            <div className="ability-controls">
+              {monsterDna.adaptation === "wings" && (
+                <button
+                  type="button"
+                  className={`ability-button${locomotionMode === "fly" ? " active" : ""}`}
+                  disabled={!canPlay}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    toggleFlight();
+                  }}
+                >
+                  <Wind size={18} />
+                  <span>
+                    {locomotionMode === "fly"
+                      ? t("game.landButton")
+                      : t("game.flyButton")}
+                  </span>
+                  <small>F</small>
+                </button>
+              )}
+              {canMonsterSwim(monsterDna) && (
+                <button
+                  type="button"
+                  className={`ability-button${locomotionMode === "dive" ? " active" : ""}`}
+                  disabled={!canPlay}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    toggleDive();
+                  }}
+                >
+                  <Waves size={18} />
+                  <span>
+                    {locomotionMode === "dive"
+                      ? t("game.surfaceButton")
+                      : t("game.diveButton")}
+                  </span>
+                  <small>C</small>
+                </button>
+              )}
+            </div>
+          )}
       </div>
       {creatorDraft && (
         <MonsterCreator

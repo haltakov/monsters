@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { TICK_SECONDS } from "../src/sim/constants";
 import { createWorldState, stepWorld } from "../src/sim/engine";
 import { EDIBLES } from "../src/world/resources";
-import { emptyWorld, makeEntity, makePlayer, run, SEED, withDna } from "./helpers";
+import {
+  emptyWorld,
+  makeEntity,
+  makePlayer,
+  run,
+  SEED,
+  withDna,
+} from "./helpers";
 
 const tree = EDIBLES[0];
 
@@ -51,6 +58,35 @@ describe("AI objective selection", () => {
     expect(Math.hypot(prey.x - hunter.x, prey.z - hunter.z)).toBeGreaterThan(6);
   });
 
+  it("keeps winged AI grounded unless it is actively fleeing", () => {
+    const state = emptyWorld();
+    const flyer = makeEntity("flyer", {
+      x: 0,
+      z: 0,
+      energy: 90,
+      mateCooldownUntil: 9999,
+      dna: withDna({
+        adaptation: "wings",
+        diet: "herbivore",
+        size: "small",
+      }),
+    });
+    state.entities.push(flyer);
+    run(state, 2);
+    expect(flyer.locomotion).toBe("land");
+
+    const threat = makeEntity("threat", {
+      x: 5,
+      z: 0,
+      mateCooldownUntil: 9999,
+      dna: withDna({ diet: "carnivore", size: "huge", mouth: "fangs" }),
+    });
+    state.entities.push(threat);
+    run(state, 2);
+    expect(flyer.intent).toBe("flee");
+    expect(flyer.locomotion).toBe("fly");
+  });
+
   it("hunts when a carnivore is hungry and the target is weaker", () => {
     const state = emptyWorld();
     const hunter = makeEntity("hunter", {
@@ -91,7 +127,9 @@ describe("AI objective selection", () => {
     });
     solitary.entities.push(loner, neighbour);
     run(solitary, 20);
-    expect(Math.hypot(loner.x - neighbour.x, loner.z - neighbour.z)).toBeGreaterThan(3);
+    expect(
+      Math.hypot(loner.x - neighbour.x, loner.z - neighbour.z),
+    ).toBeGreaterThan(3);
 
     const pack = emptyWorld();
     const first = makeEntity("first", {
@@ -136,12 +174,16 @@ describe("AI objective selection", () => {
 
   it("keeps the seeded world alive and moving without any players", () => {
     const state = createWorldState({ seed: SEED });
-    const before = state.entities.map((entity) => ({ x: entity.x, z: entity.z }));
+    const before = state.entities.map((entity) => ({
+      x: entity.x,
+      z: entity.z,
+    }));
     run(state, 100);
     const moved = state.entities.filter(
       (entity, index) =>
         before[index] &&
-        Math.hypot(entity.x - before[index].x, entity.z - before[index].z) > 0.5,
+        Math.hypot(entity.x - before[index].x, entity.z - before[index].z) >
+          0.5,
     );
     expect(state.entities.length).toBeGreaterThanOrEqual(10);
     expect(moved.length).toBeGreaterThan(5);
