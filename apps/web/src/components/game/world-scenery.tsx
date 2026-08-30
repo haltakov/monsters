@@ -308,14 +308,42 @@ function Tree({
   quality: SceneQuality;
 }) {
   const castsShadow = quality === "desktop";
+  const branchSegments = quality === "mobile" ? 8 : 12;
   return (
     <group position={[x, terrainHeight(x, z), z]} scale={scale}>
+      {[-0.62, 0, 0.62].map((rotation, index) => (
+        <mesh
+          key={rotation}
+          position={[Math.sin(rotation) * 0.22, 0.18, Math.cos(rotation) * 0.2]}
+          rotation={[0, rotation, index === 1 ? 0 : rotation * 0.42]}
+          scale={[1, 0.72, 1]}
+          castShadow={castsShadow}
+        >
+          <capsuleGeometry args={[0.17, 0.65, 3, branchSegments]} />
+          <meshStandardMaterial color="#68402D" roughness={1} />
+        </mesh>
+      ))}
       <mesh position={[0, 1.25, 0]} castShadow={castsShadow}>
         <cylinderGeometry
           args={[0.28, 0.42, 2.5, quality === "mobile" ? 10 : 18]}
         />
         <meshStandardMaterial color="#855333" roughness={1} />
       </mesh>
+      {[
+        { position: [-0.35, 2.03, 0], rotation: [0, 0, -0.83] },
+        { position: [0.32, 2.28, 0.08], rotation: [0.1, 0, 0.78] },
+        { position: [0.02, 2.5, 0.28], rotation: [0.82, 0, 0.08] },
+      ].map((branch, index) => (
+        <mesh
+          key={index}
+          position={branch.position as [number, number, number]}
+          rotation={branch.rotation as [number, number, number]}
+          castShadow={castsShadow}
+        >
+          <cylinderGeometry args={[0.08, 0.16, 1.2, branchSegments]} />
+          <meshStandardMaterial color="#7B4A30" roughness={1} />
+        </mesh>
+      ))}
       <mesh
         position={[0, 3.15, 0]}
         scale={[1, 1.05, 0.96]}
@@ -350,6 +378,37 @@ function Tree({
         />
         <meshStandardMaterial color="#4BA15A" roughness={1} />
       </mesh>
+      <mesh
+        position={[0.18, 3.9, 0.1]}
+        scale={[0.72, 0.58, 0.68]}
+        castShadow={castsShadow}
+      >
+        <sphereGeometry
+          args={[
+            1.05,
+            quality === "mobile" ? 12 : 20,
+            quality === "mobile" ? 9 : 15,
+          ]}
+        />
+        <meshStandardMaterial color="#397F43" roughness={0.98} />
+      </mesh>
+      {[
+        [-0.82, 3.08, -0.72],
+        [0.62, 3.28, -0.82],
+        [0.1, 2.68, -1.2],
+      ].map((position, index) => (
+        <mesh
+          key={index}
+          position={position as [number, number, number]}
+          castShadow={castsShadow}
+        >
+          <sphereGeometry args={[0.13, 9, 7]} />
+          <meshStandardMaterial
+            color={index === 1 ? "#E6B443" : "#D97843"}
+            roughness={0.8}
+          />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -369,6 +428,10 @@ function Bush({
   const segments: [number, number] = quality === "mobile" ? [10, 8] : [20, 14];
   return (
     <group position={[x, terrainHeight(x, z) + 0.48 * scale, z]} scale={scale}>
+      <mesh position={[0, -0.18, 0]} castShadow={castsShadow}>
+        <cylinderGeometry args={[0.08, 0.13, 1.15, 9]} />
+        <meshStandardMaterial color="#5E5631" roughness={1} />
+      </mesh>
       <mesh
         position={[-0.48, 0, 0]}
         scale={[1, 0.9, 1.05]}
@@ -397,6 +460,39 @@ function Bush({
         <sphereGeometry args={[0.1, 8, 8]} />
         <meshStandardMaterial color="#F4CF5A" />
       </mesh>
+      {[
+        [-0.65, 0.05, -0.65, -0.65],
+        [0.58, 0.18, -0.7, 0.72],
+        [-0.12, 0.58, -0.67, -0.08],
+      ].map(([leafX, leafY, leafZ, rotation], index) => (
+        <mesh
+          key={index}
+          position={[leafX, leafY, leafZ]}
+          rotation={[0.18, rotation, 0]}
+          scale={[0.34, 0.12, 0.58]}
+          castShadow={castsShadow}
+        >
+          <sphereGeometry args={[0.62, 10, 7]} />
+          <meshStandardMaterial
+            color={index === 1 ? "#75BF5D" : "#317E46"}
+            roughness={0.94}
+          />
+        </mesh>
+      ))}
+      {[
+        [-0.24, 0.5, -0.68],
+        [0.28, 0.42, -0.72],
+        [0.02, 0.72, -0.52],
+        [0.62, 0.22, -0.5],
+      ].map((position, index) => (
+        <mesh key={index} position={position as [number, number, number]}>
+          <sphereGeometry args={[0.085, 8, 6]} />
+          <meshStandardMaterial
+            color={index % 2 ? "#743D78" : "#B9485C"}
+            roughness={0.72}
+          />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -415,22 +511,33 @@ function Rock({
   quality: SceneQuality;
 }) {
   return (
-    <mesh
-      position={[x, terrainHeight(x, z) + scale * 0.35, z]}
-      rotation={[0.1, rotation, -0.08]}
-      scale={[scale, scale * 0.72, scale * 0.9]}
-      castShadow={quality === "desktop"}
-      receiveShadow={quality === "desktop"}
-    >
-      <sphereGeometry
-        args={[
-          0.9,
-          quality === "mobile" ? 12 : 22,
-          quality === "mobile" ? 9 : 15,
-        ]}
-      />
-      <meshStandardMaterial color="#718A7D" roughness={0.9} />
-    </mesh>
+    <group position={[x, terrainHeight(x, z), z]} rotation={[0, rotation, 0]}>
+      <mesh
+        position={[0, scale * 0.35, 0]}
+        rotation={[0.1, 0, -0.08]}
+        scale={[scale, scale * 0.72, scale * 0.9]}
+        castShadow={quality === "desktop"}
+        receiveShadow={quality === "desktop"}
+      >
+        <sphereGeometry
+          args={[
+            0.9,
+            quality === "mobile" ? 12 : 22,
+            quality === "mobile" ? 9 : 15,
+          ]}
+        />
+        <meshStandardMaterial color="#718A7D" roughness={0.9} />
+      </mesh>
+      <mesh
+        position={[scale * 0.72, scale * 0.18, scale * 0.2]}
+        rotation={[0.2, -0.4, 0.18]}
+        scale={[scale * 0.42, scale * 0.32, scale * 0.5]}
+        castShadow={quality === "desktop"}
+      >
+        <dodecahedronGeometry args={[0.72, quality === "mobile" ? 0 : 1]} />
+        <meshStandardMaterial color="#87998D" roughness={0.94} />
+      </mesh>
+    </group>
   );
 }
 
@@ -467,6 +574,23 @@ function Plant({
         <sphereGeometry args={[0.14, 10, 10]} />
         <meshStandardMaterial color="#F3C453" />
       </mesh>
+      {Array.from({ length: 5 }, (_, index) => {
+        const angle = (index / 5) * Math.PI * 2;
+        return (
+          <mesh
+            key={angle}
+            position={[Math.cos(angle) * 0.17, 0.68, Math.sin(angle) * 0.17]}
+            rotation={[0, -angle, Math.PI / 2]}
+            scale={[1, 0.46, 1]}
+          >
+            <sphereGeometry args={[0.12, 8, 6]} />
+            <meshStandardMaterial
+              color={index % 2 ? "#FFF0A8" : "#F8D873"}
+              roughness={0.82}
+            />
+          </mesh>
+        );
+      })}
     </group>
   );
 }
@@ -503,9 +627,13 @@ function finishInstances(...meshes: Array<THREE.InstancedMesh | null>) {
 
 function MobileTrees({ items }: { items: TreeItem[] }) {
   const trunk = useRef<THREE.InstancedMesh>(null);
+  const branchLeft = useRef<THREE.InstancedMesh>(null);
+  const branchRight = useRef<THREE.InstancedMesh>(null);
   const crown = useRef<THREE.InstancedMesh>(null);
   const crownLeft = useRef<THREE.InstancedMesh>(null);
   const crownRight = useRef<THREE.InstancedMesh>(null);
+  const crownTop = useRef<THREE.InstancedMesh>(null);
+  const fruit = useRef<THREE.InstancedMesh>(null);
 
   useLayoutEffect(() => {
     items.forEach(([x, z, scale], index) => {
@@ -515,6 +643,20 @@ function MobileTrees({ items }: { items: TreeItem[] }) {
         index,
         [x, y + 1.25 * scale, z],
         [scale, scale, scale],
+      );
+      setInstanceTransform(
+        branchLeft.current,
+        index,
+        [x - 0.32 * scale, y + 2.03 * scale, z],
+        [scale, scale, scale],
+        [0, 0, -0.83],
+      );
+      setInstanceTransform(
+        branchRight.current,
+        index,
+        [x + 0.31 * scale, y + 2.27 * scale, z + 0.08 * scale],
+        [scale, scale, scale],
+        [0.1, 0, 0.78],
       );
       setInstanceTransform(
         crown.current,
@@ -534,12 +676,32 @@ function MobileTrees({ items }: { items: TreeItem[] }) {
         [x + 0.78 * scale, y + 2.75 * scale, z + 0.2 * scale],
         [scale, scale, scale],
       );
+      setInstanceTransform(
+        crownTop.current,
+        index,
+        [x + 0.18 * scale, y + 3.9 * scale, z + 0.1 * scale],
+        [scale * 0.76, scale * 0.61, scale * 0.72],
+      );
+      setInstanceTransform(
+        fruit.current,
+        index,
+        [
+          x + (index % 2 ? 0.62 : -0.72) * scale,
+          y + (3.08 + (index % 3) * 0.11) * scale,
+          z - 0.78 * scale,
+        ],
+        [scale, scale, scale],
+      );
     });
     finishInstances(
       trunk.current,
+      branchLeft.current,
+      branchRight.current,
       crown.current,
       crownLeft.current,
       crownRight.current,
+      crownTop.current,
+      fruit.current,
     );
   }, [items]);
 
@@ -548,6 +710,20 @@ function MobileTrees({ items }: { items: TreeItem[] }) {
       <instancedMesh ref={trunk} args={[undefined, undefined, items.length]}>
         <cylinderGeometry args={[0.28, 0.42, 2.5, 10]} />
         <meshLambertMaterial color="#855333" />
+      </instancedMesh>
+      <instancedMesh
+        ref={branchLeft}
+        args={[undefined, undefined, items.length]}
+      >
+        <cylinderGeometry args={[0.08, 0.16, 1.2, 8]} />
+        <meshLambertMaterial color="#75472F" />
+      </instancedMesh>
+      <instancedMesh
+        ref={branchRight}
+        args={[undefined, undefined, items.length]}
+      >
+        <cylinderGeometry args={[0.08, 0.16, 1.2, 8]} />
+        <meshLambertMaterial color="#7B4A30" />
       </instancedMesh>
       <instancedMesh ref={crown} args={[undefined, undefined, items.length]}>
         <sphereGeometry args={[1.45, 12, 9]} />
@@ -567,20 +743,37 @@ function MobileTrees({ items }: { items: TreeItem[] }) {
         <sphereGeometry args={[0.85, 12, 9]} />
         <meshLambertMaterial color="#4BA15A" />
       </instancedMesh>
+      <instancedMesh ref={crownTop} args={[undefined, undefined, items.length]}>
+        <sphereGeometry args={[1.05, 12, 9]} />
+        <meshLambertMaterial color="#397F43" />
+      </instancedMesh>
+      <instancedMesh ref={fruit} args={[undefined, undefined, items.length]}>
+        <sphereGeometry args={[0.13, 8, 6]} />
+        <meshLambertMaterial color="#D97843" />
+      </instancedMesh>
     </>
   );
 }
 
 function MobileBushes({ items }: { items: BushItem[] }) {
+  const stem = useRef<THREE.InstancedMesh>(null);
   const left = useRef<THREE.InstancedMesh>(null);
   const right = useRef<THREE.InstancedMesh>(null);
   const top = useRef<THREE.InstancedMesh>(null);
+  const leaf = useRef<THREE.InstancedMesh>(null);
+  const berries = useRef<THREE.InstancedMesh>(null);
   const flowerLeft = useRef<THREE.InstancedMesh>(null);
   const flowerRight = useRef<THREE.InstancedMesh>(null);
 
   useLayoutEffect(() => {
     items.forEach(([x, z, scale], index) => {
       const y = terrainHeight(x, z) + 0.48 * scale;
+      setInstanceTransform(
+        stem.current,
+        index,
+        [x, y - 0.18 * scale, z],
+        [scale, scale, scale],
+      );
       setInstanceTransform(
         left.current,
         index,
@@ -600,6 +793,27 @@ function MobileBushes({ items }: { items: BushItem[] }) {
         [scale, scale, scale],
       );
       setInstanceTransform(
+        leaf.current,
+        index,
+        [
+          x + (index % 2 ? 0.5 : -0.5) * scale,
+          y + 0.2 * scale,
+          z - 0.67 * scale,
+        ],
+        [scale * 0.34, scale * 0.12, scale * 0.58],
+        [0.18, index % 2 ? 0.72 : -0.65, 0],
+      );
+      setInstanceTransform(
+        berries.current,
+        index,
+        [
+          x + ((index % 3) - 1) * 0.24 * scale,
+          y + 0.52 * scale,
+          z - 0.7 * scale,
+        ],
+        [scale, scale, scale],
+      );
+      setInstanceTransform(
         flowerLeft.current,
         index,
         [x - 0.46 * scale, y + 0.42 * scale, z - 0.48 * scale],
@@ -613,9 +827,12 @@ function MobileBushes({ items }: { items: BushItem[] }) {
       );
     });
     finishInstances(
+      stem.current,
       left.current,
       right.current,
       top.current,
+      leaf.current,
+      berries.current,
       flowerLeft.current,
       flowerRight.current,
     );
@@ -623,6 +840,10 @@ function MobileBushes({ items }: { items: BushItem[] }) {
 
   return (
     <>
+      <instancedMesh ref={stem} args={[undefined, undefined, items.length]}>
+        <cylinderGeometry args={[0.08, 0.13, 1.15, 8]} />
+        <meshLambertMaterial color="#5E5631" />
+      </instancedMesh>
       <instancedMesh ref={left} args={[undefined, undefined, items.length]}>
         <sphereGeometry args={[0.7, 10, 8]} />
         <meshLambertMaterial color="#3F9850" />
@@ -634,6 +855,14 @@ function MobileBushes({ items }: { items: BushItem[] }) {
       <instancedMesh ref={top} args={[undefined, undefined, items.length]}>
         <sphereGeometry args={[0.72, 10, 8]} />
         <meshLambertMaterial color="#68B95C" />
+      </instancedMesh>
+      <instancedMesh ref={leaf} args={[undefined, undefined, items.length]}>
+        <sphereGeometry args={[0.62, 10, 7]} />
+        <meshLambertMaterial color="#317E46" />
+      </instancedMesh>
+      <instancedMesh ref={berries} args={[undefined, undefined, items.length]}>
+        <sphereGeometry args={[0.09, 7, 5]} />
+        <meshLambertMaterial color="#B9485C" />
       </instancedMesh>
       <instancedMesh
         ref={flowerLeft}
@@ -655,6 +884,7 @@ function MobileBushes({ items }: { items: BushItem[] }) {
 
 function MobileRocks({ items }: { items: RockItem[] }) {
   const rocks = useRef<THREE.InstancedMesh>(null);
+  const pebbles = useRef<THREE.InstancedMesh>(null);
   useLayoutEffect(() => {
     items.forEach(([x, z, scale, rotation], index) => {
       setInstanceTransform(
@@ -664,14 +894,31 @@ function MobileRocks({ items }: { items: RockItem[] }) {
         [scale, scale * 0.72, scale * 0.9],
         [0.1, rotation, -0.08],
       );
+      setInstanceTransform(
+        pebbles.current,
+        index,
+        [
+          x + Math.cos(rotation) * scale * 0.72,
+          terrainHeight(x, z) + scale * 0.18,
+          z + Math.sin(rotation) * scale * 0.72,
+        ],
+        [scale * 0.42, scale * 0.32, scale * 0.5],
+        [0.2, rotation - 0.4, 0.18],
+      );
     });
-    finishInstances(rocks.current);
+    finishInstances(rocks.current, pebbles.current);
   }, [items]);
   return (
-    <instancedMesh ref={rocks} args={[undefined, undefined, items.length]}>
-      <sphereGeometry args={[0.9, 12, 9]} />
-      <meshLambertMaterial color="#718A7D" />
-    </instancedMesh>
+    <>
+      <instancedMesh ref={rocks} args={[undefined, undefined, items.length]}>
+        <sphereGeometry args={[0.9, 12, 9]} />
+        <meshLambertMaterial color="#718A7D" />
+      </instancedMesh>
+      <instancedMesh ref={pebbles} args={[undefined, undefined, items.length]}>
+        <dodecahedronGeometry args={[0.72, 0]} />
+        <meshLambertMaterial color="#87998D" />
+      </instancedMesh>
+    </>
   );
 }
 
@@ -680,6 +927,7 @@ function MobilePlants({ items }: { items: PlantItem[] }) {
   const middle = useRef<THREE.InstancedMesh>(null);
   const right = useRef<THREE.InstancedMesh>(null);
   const flowers = useRef<THREE.InstancedMesh>(null);
+  const petals = useRef<THREE.InstancedMesh>(null);
   useLayoutEffect(() => {
     items.forEach(([x, z], index) => {
       const y = terrainHeight(x, z);
@@ -699,12 +947,20 @@ function MobilePlants({ items }: { items: PlantItem[] }) {
         [0, 0, 0.352],
       );
       setInstanceTransform(flowers.current, index, [x, y + 0.68, z], [1, 1, 1]);
+      setInstanceTransform(
+        petals.current,
+        index,
+        [x, y + 0.68, z],
+        [1, 1, 1],
+        [Math.PI / 2, 0, 0],
+      );
     });
     finishInstances(
       left.current,
       middle.current,
       right.current,
       flowers.current,
+      petals.current,
     );
   }, [items]);
   return (
@@ -724,6 +980,10 @@ function MobilePlants({ items }: { items: PlantItem[] }) {
       <instancedMesh ref={flowers} args={[undefined, undefined, items.length]}>
         <sphereGeometry args={[0.14, 8, 6]} />
         <meshBasicMaterial color="#F3C453" />
+      </instancedMesh>
+      <instancedMesh ref={petals} args={[undefined, undefined, items.length]}>
+        <torusGeometry args={[0.17, 0.055, 5, 10]} />
+        <meshLambertMaterial color="#FFF0A8" />
       </instancedMesh>
     </>
   );
@@ -836,6 +1096,22 @@ function SnackCritter({
         <sphereGeometry args={[0.58, 14, 10]} />
         <meshStandardMaterial color="#D8B07A" roughness={0.88} />
       </mesh>
+      {[
+        [-0.25, -0.3, -0.24],
+        [0.25, -0.3, -0.24],
+        [-0.25, -0.3, 0.28],
+        [0.25, -0.3, 0.28],
+      ].map((position, index) => (
+        <mesh
+          key={index}
+          position={position as [number, number, number]}
+          scale={[0.82, 1, 0.72]}
+          castShadow={quality === "desktop"}
+        >
+          <capsuleGeometry args={[0.09, 0.2, 2, 7]} />
+          <meshStandardMaterial color="#B98960" roughness={0.92} />
+        </mesh>
+      ))}
       {[-0.28, 0.28].map((x) => (
         <group key={x}>
           <mesh
@@ -854,6 +1130,18 @@ function SnackCritter({
       <mesh position={[0, -0.02, 0.52]} scale={[1, 0.72, 1]}>
         <sphereGeometry args={[0.18, 12, 9]} />
         <meshStandardMaterial color="#FFF3D4" roughness={0.85} />
+      </mesh>
+      <mesh position={[0, 0.01, 0.68]} scale={[1, 0.7, 0.75]}>
+        <sphereGeometry args={[0.08, 9, 7]} />
+        <meshStandardMaterial color="#5B4032" roughness={0.82} />
+      </mesh>
+      <mesh
+        position={[0.44, 0.04, 0.06]}
+        rotation={[0.15, 0, -0.68]}
+        castShadow={quality === "desktop"}
+      >
+        <torusGeometry args={[0.18, 0.045, 6, 12, Math.PI * 1.35]} />
+        <meshStandardMaterial color="#B98960" roughness={0.9} />
       </mesh>
     </group>
   );

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ATTACK_ENERGY_COST, TICK_SECONDS } from "../src/sim/constants";
 import { stepWorld } from "../src/sim/engine";
 import { getCreaturePower } from "../src/sim/genetics";
-import { EDIBLES, EDIBLE_REGROW_SECONDS, PREY } from "../src/world/resources";
+import { EDIBLES, PREY } from "../src/world/resources";
 import { emptyWorld, makeEntity, makePlayer, run, withDna } from "./helpers";
 
 const tree = EDIBLES.find((edible) => edible.kind === "tree")!;
@@ -19,10 +19,9 @@ describe("energy, feeding and health", () => {
     ]);
 
     expect(player.energy).toBeCloseTo(20 + tree.energy, 3);
-    expect(state.depletedResources[tree.id]).toBeCloseTo(
-      state.time + EDIBLE_REGROW_SECONDS,
-      3,
-    );
+    const readyAt = state.depletedResources[tree.id]!;
+    expect(readyAt - state.time).toBeGreaterThan(18);
+    expect(readyAt - state.time).toBeLessThan(120);
 
     run(state, 10);
     const events = stepWorld(state, TICK_SECONDS, [
@@ -34,7 +33,7 @@ describe("energy, feeding and health", () => {
       ),
     ).toBe(true);
 
-    state.time += EDIBLE_REGROW_SECONDS;
+    state.time = readyAt;
     stepWorld(state, TICK_SECONDS);
     expect(state.depletedResources[tree.id]).toBeUndefined();
   });

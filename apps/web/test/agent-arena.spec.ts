@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MONSTER_DNA,
+  EDIBLES,
   encodeMonsterDna,
   type NetEntity,
 } from "@monsters/game-core";
@@ -93,8 +94,9 @@ describe("agent arena", () => {
   });
 
   it("returns useful nearby state sorted by distance", () => {
-    const self = entity("agent", { x: -18, z: -13 });
-    const wild = entity("wild", { x: -17, z: -13 });
+    const food = EDIBLES[0];
+    const self = entity("agent", { x: food.x, z: food.z });
+    const wild = entity("wild", { x: food.x + 1, z: food.z });
     const arena = startAgentArena("agent", 0, 0);
     const observation = observeArena({
       self,

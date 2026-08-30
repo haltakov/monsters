@@ -1,7 +1,9 @@
 import { createSeededRandom } from "../rng";
-import { PLAYABLE_RADIUS, riverX } from "./terrain";
+import { PLAYABLE_RADIUS, isWaterAt, riverX } from "./terrain";
 
 export type EdibleKind = "tree" | "bush";
+export type ResourceKind = EdibleKind | "prey";
+export type ResourceHabitat = ResourceKind | "rock" | "plant" | "mixed";
 
 export type Edible = {
   id: string;
@@ -17,137 +19,207 @@ export type Prey = {
   z: number;
 };
 
-export const TREES: Array<[number, number, number]> = [
-  [-18, -13, 0.9],
-  [-14, 14, 1.15],
-  [-11, -4, 0.8],
-  [-8, 19, 1.05],
-  [11, 16, 1.2],
-  [17, 10, 0.9],
-  [20, -7, 1.15],
-  [13, -17, 0.95],
-  [-20, 5, 0.85],
-  [8, -9, 0.8],
-  [20, 2, 0.72],
-  [-4, -20, 0.95],
-  [-31, -16, 1.1],
-  [-29, 10, 0.94],
-  [-24, 25, 1.18],
-  [-12, 31, 0.86],
-  [5, 33, 1.08],
-  [23, 27, 0.96],
-  [31, 14, 1.16],
-  [32, -11, 0.88],
-  [24, -28, 1.06],
-  [-19, -29, 0.92],
-];
+type HabitatRegion = {
+  x: number;
+  z: number;
+  radiusX: number;
+  radiusZ: number;
+  strength: number;
+};
 
-export const BUSHES: Array<[number, number, number]> = [
-  [-16, 2, 0.9],
-  [-12, -15, 0.75],
-  [-6, 11, 0.8],
-  [8, 20, 0.9],
-  [15, 6, 0.75],
-  [18, -13, 0.8],
-  [7, -18, 0.65],
-  [-20, -5, 0.75],
-  [-31, 2, 0.86],
-  [-26, -24, 0.72],
-  [-18, 29, 0.82],
-  [1, 29, 0.76],
-  [18, 28, 0.9],
-  [30, 5, 0.78],
-  [28, -22, 0.84],
-  [8, -32, 0.7],
-];
+const HABITAT_REGIONS: Record<ResourceHabitat, HabitatRegion[]> = {
+  tree: [
+    { x: -68, z: 45, radiusX: 45, radiusZ: 38, strength: 1 },
+    { x: 67, z: 49, radiusX: 38, radiusZ: 48, strength: 0.94 },
+    { x: 63, z: -61, radiusX: 44, radiusZ: 34, strength: 0.9 },
+    { x: -75, z: -66, radiusX: 32, radiusZ: 38, strength: 0.72 },
+  ],
+  bush: [
+    { x: -52, z: -52, radiusX: 48, radiusZ: 34, strength: 1 },
+    { x: 35, z: 8, radiusX: 35, radiusZ: 42, strength: 0.92 },
+    { x: -10, z: 76, radiusX: 44, radiusZ: 30, strength: 0.88 },
+    { x: 76, z: -20, radiusX: 30, radiusZ: 45, strength: 0.7 },
+  ],
+  plant: [
+    { x: -23, z: -34, radiusX: 47, radiusZ: 32, strength: 1 },
+    { x: -5, z: 76, radiusX: 52, radiusZ: 27, strength: 0.94 },
+    { x: 58, z: 16, radiusX: 38, radiusZ: 45, strength: 0.82 },
+  ],
+  rock: [
+    { x: -82, z: 3, radiusX: 31, radiusZ: 54, strength: 1 },
+    { x: 72, z: -62, radiusX: 42, radiusZ: 31, strength: 0.92 },
+    { x: 18, z: 91, radiusX: 42, radiusZ: 25, strength: 0.76 },
+  ],
+  prey: [
+    { x: -20, z: -34, radiusX: 54, radiusZ: 38, strength: 1 },
+    { x: 44, z: 7, radiusX: 42, radiusZ: 46, strength: 0.9 },
+    { x: -6, z: 78, radiusX: 50, radiusZ: 27, strength: 0.76 },
+  ],
+  mixed: [
+    { x: -48, z: 34, radiusX: 62, radiusZ: 55, strength: 0.82 },
+    { x: 52, z: -35, radiusX: 59, radiusZ: 58, strength: 0.82 },
+  ],
+};
 
-export const ROCKS: Array<[number, number, number, number]> = [
-  [-17, 9, 0.8, 0.4],
-  [-9, -17, 1.1, -0.3],
-  [-4, 15, 0.65, 0.2],
-  [10, 11, 0.9, 0.6],
-  [17, -2, 1.2, -0.2],
-  [4, -14, 0.7, 0.35],
-  [-30, -8, 1.1, 0.2],
-  [-25, 22, 0.82, -0.45],
-  [-6, 31, 1.28, 0.1],
-  [21, 26, 0.92, 0.52],
-  [31, -14, 1.16, -0.18],
-  [17, -30, 0.88, 0.36],
-];
+const NO_GROWTH_REGIONS: Partial<Record<ResourceHabitat, HabitatRegion[]>> = {
+  tree: [
+    { x: -17, z: -33, radiusX: 31, radiusZ: 25, strength: 1 },
+    { x: 39, z: 7, radiusX: 20, radiusZ: 28, strength: 1 },
+  ],
+  bush: [
+    { x: -80, z: 2, radiusX: 25, radiusZ: 38, strength: 1 },
+    { x: 68, z: 52, radiusX: 23, radiusZ: 30, strength: 1 },
+  ],
+  plant: [
+    { x: -69, z: 46, radiusX: 28, radiusZ: 25, strength: 1 },
+    { x: 72, z: -63, radiusX: 28, radiusZ: 23, strength: 1 },
+  ],
+  rock: [
+    { x: -18, z: -33, radiusX: 32, radiusZ: 24, strength: 1 },
+    { x: 35, z: 8, radiusX: 24, radiusZ: 30, strength: 1 },
+  ],
+  prey: [
+    { x: -69, z: 46, radiusX: 27, radiusZ: 25, strength: 1 },
+    { x: 71, z: -63, radiusX: 25, radiusZ: 22, strength: 1 },
+  ],
+};
 
-export const PLANTS: Array<[number, number]> = [
-  [-8, 7],
-  [-14, -8],
-  [-18, 15],
-  [8, 6],
-  [14, 13],
-  [16, -10],
-  [4, -19],
-  [-2, 19],
-  [-29, 7],
-  [-25, -21],
-  [-16, 30],
-  [0, 33],
-  [20, 29],
-  [30, 9],
-  [27, -23],
-  [-3, -32],
-];
+const HABITAT_BASE_DENSITY: Record<ResourceHabitat, number> = {
+  tree: 0.045,
+  bush: 0.075,
+  plant: 0.08,
+  rock: 0.055,
+  prey: 0.07,
+  mixed: 0.18,
+};
 
-export const PREY: Prey[] = [
-  { id: "critter-0", x: -4.5, z: 8 },
-  { id: "critter-1", x: -15, z: -5 },
-  { id: "critter-2", x: 12, z: 9 },
-  { id: "critter-3", x: 20, z: -18 },
-  { id: "critter-4", x: -27, z: 20 },
-  { id: "critter-5", x: 32, z: 27 },
-  { id: "critter-6", x: -43, z: -34 },
-  { id: "critter-7", x: 51, z: 38 },
-  { id: "critter-8", x: -62, z: 49 },
-  { id: "critter-9", x: 72, z: -52 },
-];
+function clamp01(value: number) {
+  return Math.min(1, Math.max(0, value));
+}
 
-/** Deterministic scatter used for both the visual props and the food graph. */
-export function scatterPositions(count: number, seed: number) {
+function regionInfluence(region: HabitatRegion, x: number, z: number) {
+  const distanceSquared =
+    ((x - region.x) / region.radiusX) ** 2 +
+    ((z - region.z) / region.radiusZ) ** 2;
+  return clamp01(1 - distanceSquared) * region.strength;
+}
+
+/**
+ * Continuous habitat score used by both deterministic placement and regrowth.
+ * The island deliberately has recognizable dense habitats and true clearings.
+ */
+export function resourceHabitatDensity(
+  habitat: ResourceHabitat,
+  x: number,
+  z: number,
+) {
+  if (Math.hypot(x, z) >= PLAYABLE_RADIUS - 4 || isWaterAt(x, z)) return 0;
+  if (Math.abs(x - riverX(z)) < 4.2) return 0;
+
+  const exclusions = NO_GROWTH_REGIONS[habitat] ?? [];
+  if (exclusions.some((region) => regionInfluence(region, x, z) > 0.58)) {
+    return 0;
+  }
+
+  const regionalStrength = Math.max(
+    0,
+    ...HABITAT_REGIONS[habitat].map((region) => regionInfluence(region, x, z)),
+  );
+  const coastFade = clamp01((PLAYABLE_RADIUS - Math.hypot(x, z) - 4) / 13);
+  return clamp01(
+    (HABITAT_BASE_DENSITY[habitat] + regionalStrength * 0.95) *
+      (0.55 + coastFade * 0.45),
+  );
+}
+
+function habitatSpacing(habitat: ResourceHabitat) {
+  if (habitat === "tree") return 5.1;
+  if (habitat === "rock") return 4.3;
+  if (habitat === "bush") return 3.15;
+  if (habitat === "prey") return 5.5;
+  return 2.5;
+}
+
+/** Deterministic, habitat-weighted scatter shared by visuals and food AI. */
+export function scatterPositions(
+  count: number,
+  seed: number,
+  habitat: ResourceHabitat = "mixed",
+) {
   const random = createSeededRandom(seed);
   const positions: Array<[number, number]> = [];
-  const innerRadius = 36;
+  const innerRadius = 9;
   const outerRadius = PLAYABLE_RADIUS - 5;
+  const minimumSpacing = habitatSpacing(habitat);
+  let attempts = 0;
 
-  while (positions.length < count) {
+  while (positions.length < count && attempts < count * 1800) {
+    attempts += 1;
     const angle = random() * Math.PI * 2;
     const radius = Math.sqrt(
       innerRadius ** 2 + random() * (outerRadius ** 2 - innerRadius ** 2),
     );
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
-    if (Math.abs(x - riverX(z)) < 4.2) continue;
+    if (random() > resourceHabitatDensity(habitat, x, z)) continue;
+    if (
+      positions.some(
+        ([otherX, otherZ]) =>
+          Math.hypot(x - otherX, z - otherZ) < minimumSpacing,
+      )
+    ) {
+      continue;
+    }
     positions.push([x, z]);
   }
 
+  if (positions.length !== count) {
+    throw new Error(`Unable to place ${count} ${habitat} resources`);
+  }
   return positions;
 }
 
-export const EXTRA_TREES: Array<[number, number, number]> = scatterPositions(
-  78,
-  1847,
-).map(([x, z], index) => [x, z, 0.72 + (index % 7) * 0.075]);
-
-export const EXTRA_BUSHES: Array<[number, number, number]> = scatterPositions(
-  68,
-  7319,
-).map(([x, z], index) => [x, z, 0.62 + (index % 6) * 0.06]);
-
-export const EXTRA_ROCKS: Array<[number, number, number, number]> =
-  scatterPositions(52, 9923).map(([x, z], index) => [
+function scaledPositions(
+  count: number,
+  seed: number,
+  habitat: ResourceHabitat,
+  base: number,
+  step: number,
+  variants: number,
+): Array<[number, number, number]> {
+  return scatterPositions(count, seed, habitat).map(([x, z], index) => [
     x,
     z,
-    0.62 + (index % 8) * 0.08,
+    base + (index % variants) * step,
+  ]);
+}
+
+const TREE_POSITIONS = scaledPositions(128, 1847, "tree", 0.68, 0.065, 8);
+export const TREES = TREE_POSITIONS.slice(0, 28);
+export const EXTRA_TREES = TREE_POSITIONS.slice(28);
+
+const BUSH_POSITIONS = scaledPositions(108, 7319, "bush", 0.58, 0.055, 7);
+export const BUSHES = BUSH_POSITIONS.slice(0, 24);
+export const EXTRA_BUSHES = BUSH_POSITIONS.slice(24);
+
+const ROCK_POSITIONS: Array<[number, number, number, number]> =
+  scatterPositions(80, 9923, "rock").map(([x, z], index) => [
+    x,
+    z,
+    0.58 + (index % 8) * 0.075,
     ((index * 1.71) % Math.PI) - Math.PI / 2,
   ]);
+export const ROCKS = ROCK_POSITIONS.slice(0, 16);
+export const EXTRA_ROCKS = ROCK_POSITIONS.slice(16);
 
-export const EXTRA_PLANTS = scatterPositions(86, 4213);
+const PLANT_POSITIONS = scatterPositions(136, 4213, "plant");
+export const PLANTS = PLANT_POSITIONS.slice(0, 24);
+export const EXTRA_PLANTS = PLANT_POSITIONS.slice(24);
+
+export const PREY: Prey[] = scatterPositions(16, 8191, "prey").map(
+  ([x, z], index) => ({ id: `critter-${index}`, x, z }),
+);
+
 export const ALL_TREES = [...TREES, ...EXTRA_TREES];
 export const ALL_BUSHES = [...BUSHES, ...EXTRA_BUSHES];
 
@@ -176,10 +248,41 @@ export const PREY_BY_ID: ReadonlyMap<string, Prey> = new Map(
   PREY.map((prey) => [prey.id, prey]),
 );
 
+/** Baseline seconds; actual regrowth adapts to scarcity and local habitat. */
+export const EDIBLE_REGROW_SECONDS = 78;
+export const BUSH_REGROW_SECONDS = 54;
+export const PREY_REGROW_SECONDS = 108;
+
+function stableResourceJitter(id: string) {
+  let hash = 2166136261;
+  for (const char of id) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return 0.9 + ((hash >>> 0) % 201) / 1000;
+}
+
 /**
- * Seconds a resource stays depleted before the persistent world regrows it.
- * The single-player prototype removed food permanently; a world that runs for
- * days needs it back.
+ * Scarce resources return quickly; abundant ones pause longer. Fertile habitat
+ * also regrows a little faster, while stable id jitter avoids mass pop-ins.
  */
-export const EDIBLE_REGROW_SECONDS = 150;
-export const PREY_REGROW_SECONDS = 210;
+export function adaptiveResourceRegrowSeconds(
+  kind: ResourceKind,
+  availableRatio: number,
+  x: number,
+  z: number,
+  id: string,
+) {
+  const base =
+    kind === "tree"
+      ? EDIBLE_REGROW_SECONDS
+      : kind === "bush"
+        ? BUSH_REGROW_SECONDS
+        : PREY_REGROW_SECONDS;
+  const abundanceFactor = 0.48 + clamp01(availableRatio) * 0.98;
+  const habitatFactor = 1.08 - resourceHabitatDensity(kind, x, z) * 0.22;
+  return Math.max(
+    18,
+    base * abundanceFactor * habitatFactor * stableResourceJitter(id),
+  );
+}

@@ -29,11 +29,13 @@ import {
 } from "../mathx";
 import { nextRandom, randomFn } from "../rng";
 import {
-  EDIBLE_REGROW_SECONDS,
+  adaptiveResourceRegrowSeconds,
   EDIBLES,
+  EDIBLES_BY_ID,
   PREY,
-  PREY_REGROW_SECONDS,
+  PREY_BY_ID,
   type Edible,
+  type ResourceKind,
 } from "../world/resources";
 import {
   isBlockedByWater,
@@ -365,7 +367,44 @@ function isResourceAvailable(state: WorldSimState, id: string) {
   return readyAt === undefined || readyAt <= state.time;
 }
 
-function depleteResource(state: WorldSimState, id: string, seconds: number) {
+function resourceAvailabilityRatio(
+  state: WorldSimState,
+  kind: ResourceKind,
+  newlyDepletedId: string,
+) {
+  const resources =
+    kind === "prey"
+      ? PREY
+      : EDIBLES.filter((resource) => resource.kind === kind);
+  let unavailable = 0;
+  for (const resource of resources) {
+    const readyAt = state.depletedResources[resource.id];
+    if (
+      resource.id === newlyDepletedId ||
+      (readyAt !== undefined && readyAt > state.time)
+    ) {
+      unavailable += 1;
+    }
+  }
+  return resources.length === 0
+    ? 1
+    : (resources.length - unavailable) / resources.length;
+}
+
+function depleteResource(state: WorldSimState, id: string) {
+  const edible = EDIBLES_BY_ID.get(id);
+  const prey = PREY_BY_ID.get(id);
+  const kind: ResourceKind | null = edible?.kind ?? (prey ? "prey" : null);
+  const resource = edible ?? prey;
+  if (!kind || !resource) return;
+  const availableRatio = resourceAvailabilityRatio(state, kind, id);
+  const seconds = adaptiveResourceRegrowSeconds(
+    kind,
+    availableRatio,
+    resource.x,
+    resource.z,
+    id,
+  );
   state.depletedResources[id] = state.time + seconds;
 }
 
@@ -626,7 +665,7 @@ function performEat(
   const restored = Math.min(plantEnergy, 100 - entity.energy);
   entity.energy = Math.min(100, entity.energy + restored);
   entity.forageCooldownUntil = state.time + PLAYER_EAT_COOLDOWN_SECONDS;
-  depleteResource(state, nearest.id, EDIBLE_REGROW_SECONDS);
+  depleteResource(state, nearest.id);
   events.push({
     type: "feed",
     tick: state.tick,
@@ -714,7 +753,7 @@ function performAttack(
       const huntEnergy = entity.dna.diet === "carnivore" ? 45 : 28;
       const restored = Math.min(huntEnergy, 100 - entity.energy);
       entity.energy = Math.min(100, entity.energy + restored);
-      depleteResource(state, prey.id, PREY_REGROW_SECONDS);
+      depleteResource(state, prey.id);
       events.push({
         type: "feed",
         tick: state.tick,
@@ -1250,7 +1289,7 @@ function updateAiEntity(
         );
         entity.energy = Math.min(100, entity.energy + restored);
         entity.forageCooldownUntil = now + 5.5;
-        depleteResource(state, nearestFood.id, EDIBLE_REGROW_SECONDS);
+        depleteResource(state, nearestFood.id);
         events.push({
           type: "feed",
           tick: state.tick,
