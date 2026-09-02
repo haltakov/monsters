@@ -8,7 +8,7 @@ describe("MonstersDNA branding", () => {
   it("uses the shared generated mascot without duplicate accessible text", () => {
     const { container } = render(<MonsterMark className="brand-mark" />);
     const image = container.querySelector("img");
-    expect(image).toHaveAttribute("src", "/brand/monstersdna-mark-v1.png");
+    expect(image).toHaveAttribute("src", "/brand/monstersdna-mark-v1.png?v=1");
     expect(image).toHaveAttribute("alt", "");
     expect(image).toHaveAttribute("aria-hidden", "true");
     expect(image).toHaveClass("monster-mark", "brand-mark");

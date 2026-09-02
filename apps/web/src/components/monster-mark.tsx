@@ -6,7 +6,7 @@ type MonsterMarkProps = { className?: string };
 export function MonsterMark({ className }: MonsterMarkProps) {
   return (
     <Image
-      src="/brand/monstersdna-mark-v1.png"
+      src="/brand/monstersdna-mark-v1.png?v=1"
       width={256}
       height={256}
       className={["monster-mark", className].filter(Boolean).join(" ")}
