@@ -73,6 +73,11 @@ button {
   font-size: 19px;
   letter-spacing: 0.11em;
 }
+.monster-mark {
+  object-fit: contain;
+  border-radius: 24%;
+  flex-shrink: 0;
+}
 .brand-mark {
   width: 44px;
   height: 44px;

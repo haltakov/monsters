@@ -7,6 +7,9 @@ server {
   index index.html;
 
   server_tokens off;
+  # TLS terminates at Coolify/Cloudflare. Relative directory redirects preserve
+  # the public HTTPS origin instead of exposing http://host:3000/privacy/.
+  absolute_redirect off;
 
   gzip on;
   gzip_comp_level 6;
