@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authClient } from "@/lib/auth/auth-client";
 import {
@@ -414,6 +415,28 @@ export function AccountHub({
                     {t("account.setupPending")}
                   </p>
                 )}
+                <div className="account-legal">
+                  <p>{t("legal.notice")}</p>
+                  <nav
+                    className="legal-links"
+                    aria-label={t("legal.navigation")}
+                  >
+                    <Link
+                      href="/terms/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {t("legal.terms")}
+                    </Link>
+                    <Link
+                      href="/privacy/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {t("legal.privacy")}
+                    </Link>
+                  </nav>
+                </div>
               </div>
             )}
 

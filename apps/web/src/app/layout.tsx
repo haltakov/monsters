@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Comfortaa, IBM_Plex_Mono, Nunito } from "next/font/google";
 import { LanguageProvider } from "@/components/i18n";
+import { Analytics } from "@/components/analytics";
 import "./globals.css";
+import "./legal.css";
 
 const display = Comfortaa({
   variable: "--font-display",
@@ -18,12 +20,13 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://monstersdna.com"),
   title: {
-    default: "Monsters — отгледай малък див свят",
-    template: "%s · Monsters",
+    default: "Monsters DNA — grow a tiny wild world",
+    template: "%s · Monsters DNA",
   },
   description:
-    "Създавай чудовища, изследвай острова им и открий какво може тяхното DNA.",
+    "Create your own DNA-based monster, explore a living island, and grow a strange new family.",
 };
 
 export const viewport: Viewport = {
@@ -35,11 +38,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="bg"
+      lang="en"
       className={`${display.variable} ${body.variable} ${mono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
         <LanguageProvider>{children}</LanguageProvider>
+        <Analytics />
       </body>
     </html>
   );

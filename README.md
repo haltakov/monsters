@@ -76,7 +76,22 @@ RESEND_API_KEY=<Resend API key>
 RESEND_FROM_EMAIL=Monsters <login@your-verified-domain.example>
 ```
 
-Use `http://localhost:3101/api/auth/callback/google` as the local Google callback. In production use `https://monsters-api.haltakov.com/api/auth/callback/google`, set `BETTER_AUTH_URL=https://monsters-api.haltakov.com`, and set `AUTH_COOKIE_DOMAIN=.haltakov.com` so the static game and API can share the secure session cookie.
+Use `http://localhost:3101/api/auth/callback/google` as the local Google callback. In production use `https://api.monstersdna.com/api/auth/callback/google`, set `BETTER_AUTH_URL=https://api.monstersdna.com`, and set `AUTH_COOKIE_DOMAIN=.monstersdna.com` so the static game and API can share the secure session cookie. Keep `WEB_ORIGIN=https://monstersdna.com` for REST, WebSocket, and Better Auth origin checks.
+
+Google OAuth setup (Web application):
+
+- Authorized domain: `monstersdna.com`.
+- Authorized JavaScript origin: `https://monstersdna.com`.
+- Authorized redirect URI: `https://api.monstersdna.com/api/auth/callback/google`.
+- Homepage: `https://monstersdna.com/`.
+- Privacy policy: `https://monstersdna.com/privacy/`.
+- Terms of service: `https://monstersdna.com/terms/`.
+
+Verify the sender domain in Resend before setting `RESEND_FROM_EMAIL=Monsters DNA <login@monstersdna.com>`. Supply `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `RESEND_API_KEY` as runtime-only secrets in the Monsters API resource; never in the frontend build. Sign-in methods remain hidden until their required credentials are set. Preserve `BETTER_AUTH_SECRET` across deployments.
+
+Changing domains does not transfer browser local storage or existing cookies. Guests on an older domain do not automatically regain their guest history on the new domain; accounts that already claimed that history can sign in to recover it.
+
+The legal pages are starter text, not a legal-compliance guarantee. Before public account signup, the operator should review controller/contact details, retention, applicable jurisdiction, and child-account requirements. No contact email is published in the starter pages.
 
 Administrators are deliberately not assignable through the application. Mark one directly in PostgreSQL:
 
@@ -110,11 +125,11 @@ Create a PostgreSQL 17 resource and configure the API with:
 
 ```text
 DATABASE_URL=<Coolify internal PostgreSQL URL>
-WEB_ORIGIN=https://monsters.haltakov.com
+WEB_ORIGIN=https://monstersdna.com
 PORT=3000
 BETTER_AUTH_SECRET=<strong random secret>
-BETTER_AUTH_URL=https://monsters-api.haltakov.com
-AUTH_COOKIE_DOMAIN=.haltakov.com
+BETTER_AUTH_URL=https://api.monstersdna.com
+AUTH_COOKIE_DOMAIN=.monstersdna.com
 GOOGLE_CLIENT_ID=<Google OAuth client id>
 GOOGLE_CLIENT_SECRET=<Google OAuth client secret>
 RESEND_API_KEY=<Resend API key>
@@ -122,3 +137,20 @@ RESEND_FROM_EMAIL=Monsters <login@your-verified-domain.example>
 ```
 
 The frontend health endpoint is `/healthz`; the API health endpoint is `/api/health` and verifies its database connection.
+
+### Domains and first-party analytics
+
+Route `https://monstersdna.com` **and** `https://p.monstersdna.com` to the Monsters Game resource on port 3000. Route `https://api.monstersdna.com` to Monsters API on port 3000. Only the main host serves the game; the analytics host exposes two fixed proxy routes, not a second game or an open proxy. DNS for all three hosts must point to the Coolify server.
+
+Frontend build variables:
+
+```text
+NEXT_PUBLIC_API_URL=https://api.monstersdna.com
+NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID=pa-<site-specific ID from the Plausible installation snippet>
+```
+
+`next-plausible` v4 needs the site-specific ID from `https://plausible.io/js/pa-….js` for the **monstersdna.com** site (omit `.js`). This public identifier is not an API key. An empty value disables analytics. A new value requires rebuilding the static frontend; the Docker build also carries it into the Nginx template.
+
+Because Next.js is exported statically, `withPlausibleProxy` rewrites cannot run here. `next-plausible` loads `https://p.monstersdna.com/js/script.js` and sends pageviews to `https://p.monstersdna.com/api/event`; Nginx forwards only these paths to Plausible. The proxy strips cookies, authorization, and referrer headers; forwards client IPs for aggregate analytics; and does not log analytics requests. Tracking sends only canonical page paths, without query strings, hash fragments, account data, or creature properties. Development tracking is disabled.
+
+After deployment, verify both legal pages, the script response, and analytics CORS from `https://monstersdna.com`. The script is unavailable (503) until a valid ID is supplied. Google/Resend credentials and Plausible site activation must be completed in the relevant provider accounts.

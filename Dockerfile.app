@@ -4,8 +4,10 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
 # The static export inlines the API origin at build time.
-ARG NEXT_PUBLIC_API_URL="https://monsters-api.haltakov.com"
+ARG NEXT_PUBLIC_API_URL="https://api.monstersdna.com"
 ENV NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL"
+ARG NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID=""
+ENV NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID="$NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID"
 
 RUN corepack enable && corepack prepare pnpm@11.18.0 --activate
 
@@ -26,7 +28,10 @@ RUN pnpm --filter @monsters/game-core build \
 
 FROM nginx:1.29-alpine AS runner
 
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+ARG NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID=""
+ENV PLAUSIBLE_SCRIPT_ID="$NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID"
+ENV NGINX_ENVSUBST_FILTER="^PLAUSIBLE_SCRIPT_ID$"
+COPY deploy/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=builder /workspace/apps/web/out /usr/share/nginx/html
 
 EXPOSE 3000

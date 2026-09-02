@@ -177,7 +177,10 @@ export default function Home() {
 
       <footer className="site-footer">
         <span>{t("landing.footer")}</span>
-        <span>{t("landing.version")}</span>
+        <nav className="legal-links" aria-label={t("legal.navigation")}>
+          <Link href="/privacy/">{t("legal.privacy")}</Link>
+          <Link href="/terms/">{t("legal.terms")}</Link>
+        </nav>
       </footer>
     </div>
   );
