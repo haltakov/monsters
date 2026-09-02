@@ -140,7 +140,7 @@ The frontend health endpoint is `/healthz`; the API health endpoint is `/api/hea
 
 ### Domains and first-party analytics
 
-Route `https://monstersdna.com` **and** `https://p.monstersdna.com` to the Monsters Game resource on port 3000. Route `https://api.monstersdna.com` to Monsters API on port 3000. Only the main host serves the game; the analytics host exposes two fixed proxy routes, not a second game or an open proxy. DNS for all three hosts must point to the Coolify server.
+Route `https://monstersdna.com` to the Monsters Game resource on port 3000. Route `https://api.monstersdna.com` to Monsters API on port 3000. `https://p.monstersdna.com` is the existing analytics upstream; **do not route it to the game container** or change its DNS. The frontend's Nginx exposes two fixed analytics proxy paths, not an open proxy.
 
 Frontend build variables:
 
@@ -151,6 +151,6 @@ NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID=pa-<site-specific ID from the Plausible installa
 
 `next-plausible` v4 needs the site-specific ID from `https://plausible.io/js/pa-….js` for the **monstersdna.com** site (omit `.js`). This public identifier is not an API key. An empty value disables analytics. A new value requires rebuilding the static frontend; the Docker build also carries it into the Nginx template.
 
-Because Next.js is exported statically, `withPlausibleProxy` rewrites cannot run here. `next-plausible` loads `https://p.monstersdna.com/js/script.js` and sends pageviews to `https://p.monstersdna.com/api/event`; Nginx forwards only these paths to Plausible. The proxy strips cookies, authorization, and referrer headers; forwards client IPs for aggregate analytics; and does not log analytics requests. Tracking sends only canonical page paths, without query strings, hash fragments, account data, or creature properties. Development tracking is disabled.
+Because Next.js is exported statically, `withPlausibleProxy` rewrites cannot run here. `next-plausible` loads `/js/script.js` and sends pageviews to `/api/event` on `monstersdna.com`; Nginx forwards these to the site-specific script and event API on `p.monstersdna.com`. Browser analytics traffic never needs to contact an external origin. The proxy strips cookies, authorization, and referrer headers; forwards client IPs for aggregate analytics; and does not log analytics requests. Tracking sends only canonical page paths, without query strings, hash fragments, account data, or creature properties. Development tracking is disabled.
 
-After deployment, verify both legal pages, the script response, and analytics CORS from `https://monstersdna.com`. The script is unavailable (503) until a valid ID is supplied. Google/Resend credentials and Plausible site activation must be completed in the relevant provider accounts.
+After deployment, verify both legal pages, the script response, and same-origin analytics requests from `https://monstersdna.com`. The script is unavailable (503) until a valid ID is supplied. Google/Resend credentials and Plausible site activation must be completed in the relevant provider accounts.

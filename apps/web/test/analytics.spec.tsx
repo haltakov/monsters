@@ -55,9 +55,9 @@ describe("first-party analytics", () => {
     render(<Analytics />);
     expect(state.provider).toHaveBeenCalledWith(
       expect.objectContaining({
-        src: "https://p.monstersdna.com/js/script.js",
+        src: "/js/script.js",
         init: {
-          endpoint: "https://p.monstersdna.com/api/event",
+          endpoint: "/api/event",
           autoCapturePageviews: false,
         },
       }),

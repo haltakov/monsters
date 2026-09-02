@@ -69,10 +69,11 @@ export default function PrivacyPage() {
         <p>
           We use Plausible to understand aggregate traffic, such as page visits,
           referral sources, device types, and approximate locations. Its script
-          and events are proxied through p.monstersdna.com. Our integration
-          sends page paths, not URL query strings, monster DNA, nicknames,
-          account IDs, or email addresses. The proxy removes cookies and
-          authorization headers before forwarding requests to Plausible.
+          and events use our website’s first-party proxy, which forwards them
+          through p.monstersdna.com. Our integration sends page paths, not URL
+          query strings, monster DNA, nicknames, account IDs, or email
+          addresses. The proxy removes cookies and authorization headers before
+          forwarding requests to Plausible.
         </p>
         <p>
           Plausible does not use analytics cookies or persistent cross-site

@@ -4,7 +4,6 @@ import PlausibleProvider, { usePlausible } from "next-plausible";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-export const ANALYTICS_ORIGIN = "https://p.monstersdna.com";
 export const SITE_ORIGIN = "https://monstersdna.com";
 
 function Pageviews({ ready }: { ready: boolean }) {
@@ -34,9 +33,9 @@ export function Analytics() {
 
   return (
     <PlausibleProvider
-      src={`${ANALYTICS_ORIGIN}/js/script.js`}
+      src="/js/script.js"
       init={{
-        endpoint: `${ANALYTICS_ORIGIN}/api/event`,
+        endpoint: "/api/event",
         autoCapturePageviews: false,
       }}
       scriptProps={{
