@@ -34,7 +34,13 @@ describe("generated brand assets", () => {
       expect(offset + length).toBeLessThanOrEqual(ico.length);
       expect(
         await sharp(ico.subarray(offset, offset + length)).metadata(),
-      ).toMatchObject({ width: size, height: size, format: "png" });
+      ).toMatchObject({
+        width: size,
+        height: size,
+        format: "png",
+        channels: 4,
+        hasAlpha: true,
+      });
     }
   });
 });

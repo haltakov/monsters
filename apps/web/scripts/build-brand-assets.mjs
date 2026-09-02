@@ -25,7 +25,8 @@ for (const [size, path] of sizes) {
 const frames = await Promise.all(
   [16, 32, 48].map(async (size) => ({
     size,
-    png: await sharp(source).resize(size, size).png().toBuffer(),
+    // Turbopack's ICO decoder requires RGBA even for fully opaque artwork.
+    png: await sharp(source).resize(size, size).ensureAlpha().png().toBuffer(),
   })),
 );
 const header = Buffer.alloc(6 + frames.length * 16);
