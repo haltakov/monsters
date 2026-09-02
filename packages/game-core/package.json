@@ -2,7 +2,7 @@
   "name": "@monsters/game-core",
   "version": "0.1.0",
   "private": true,
-  "description": "Browser-independent Monsters simulation core shared by the web client and the API.",
+  "description": "Browser-independent MonstersDNA simulation core shared by the web client and the API.",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

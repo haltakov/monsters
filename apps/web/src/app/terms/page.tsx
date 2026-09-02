@@ -4,7 +4,7 @@ import { LegalPage } from "@/components/legal-page";
 
 export const metadata: Metadata = {
   title: "Terms of use",
-  description: "The ground rules for playing and creating in Monsters DNA.",
+  description: "The ground rules for playing and creating in MonstersDNA.",
   alternates: { canonical: "/terms/" },
 };
 
@@ -15,9 +15,9 @@ export default function TermsPage() {
       summary="Build curious creatures, share the island, and play fairly. These are the ground rules."
     >
       <section>
-        <h2>Using Monsters DNA</h2>
+        <h2>Using MonstersDNA</h2>
         <p>
-          These terms cover the Monsters DNA website and game. By using the
+          These terms cover the MonstersDNA website and game. By using the
           service, you agree to these terms. If you do not agree, do not use it.
           If you are not old enough to agree to these terms in your country, a
           parent or guardian must review them and permit your use.

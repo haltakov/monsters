@@ -36,6 +36,6 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 3101;
   await app.listen(port);
-  console.log(`Monsters API ready at http://localhost:${port}/api`);
+  console.log(`MonstersDNA API ready at http://localhost:${port}/api`);
 }
 void bootstrap();

@@ -1,4 +1,4 @@
-# Monsters
+# MonstersDNA
 
 A small 3D monster-world game that a father and son can build together. Monsters now live in one persistent, server-authoritative public world: players can join from multiple browsers, control their own creatures, and leave the ecosystem running while they are away.
 
@@ -73,7 +73,7 @@ BETTER_AUTH_URL=http://localhost:3101
 GOOGLE_CLIENT_ID=<Google OAuth client id>
 GOOGLE_CLIENT_SECRET=<Google OAuth client secret>
 RESEND_API_KEY=<Resend API key>
-RESEND_FROM_EMAIL=Monsters <login@your-verified-domain.example>
+RESEND_FROM_EMAIL=MonstersDNA <login@your-verified-domain.example>
 ```
 
 Use `http://localhost:3101/api/auth/callback/google` as the local Google callback. In production use `https://api.monstersdna.com/api/auth/callback/google`, set `BETTER_AUTH_URL=https://api.monstersdna.com`, and set `AUTH_COOKIE_DOMAIN=.monstersdna.com` so the static game and API can share the secure session cookie. Keep `WEB_ORIGIN=https://monstersdna.com` for REST, WebSocket, and Better Auth origin checks.
@@ -87,7 +87,7 @@ Google OAuth setup (Web application):
 - Privacy policy: `https://monstersdna.com/privacy/`.
 - Terms of service: `https://monstersdna.com/terms/`.
 
-Verify the sender domain in Resend before setting `RESEND_FROM_EMAIL=Monsters DNA <login@monstersdna.com>`. Supply `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `RESEND_API_KEY` as runtime-only secrets in the Monsters API resource; never in the frontend build. Sign-in methods remain hidden until their required credentials are set. Preserve `BETTER_AUTH_SECRET` across deployments.
+Verify the sender domain in Resend before setting `RESEND_FROM_EMAIL=MonstersDNA <login@monstersdna.com>`. Supply `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `RESEND_API_KEY` as runtime-only secrets in the MonstersDNA API resource; never in the frontend build. Sign-in methods remain hidden until their required credentials are set. Preserve `BETTER_AUTH_SECRET` across deployments.
 
 Changing domains does not transfer browser local storage or existing cookies. Guests on an older domain do not automatically regain their guest history on the new domain; accounts that already claimed that history can sign in to recover it.
 
@@ -133,14 +133,14 @@ AUTH_COOKIE_DOMAIN=.monstersdna.com
 GOOGLE_CLIENT_ID=<Google OAuth client id>
 GOOGLE_CLIENT_SECRET=<Google OAuth client secret>
 RESEND_API_KEY=<Resend API key>
-RESEND_FROM_EMAIL=Monsters <login@your-verified-domain.example>
+RESEND_FROM_EMAIL=MonstersDNA <login@your-verified-domain.example>
 ```
 
 The frontend health endpoint is `/healthz`; the API health endpoint is `/api/health` and verifies its database connection.
 
 ### Domains and first-party analytics
 
-Route `https://monstersdna.com` to the Monsters Game resource on port 3000. Route `https://api.monstersdna.com` to Monsters API on port 3000. `https://p.monstersdna.com` is the existing analytics upstream; **do not route it to the game container** or change its DNS. The frontend's Nginx exposes two fixed analytics proxy paths, not an open proxy.
+Route `https://monstersdna.com` to the MonstersDNA Game resource on port 3000. Route `https://api.monstersdna.com` to MonstersDNA API on port 3000. `https://p.monstersdna.com` is the existing analytics upstream; **do not route it to the game container** or change its DNS. The frontend's Nginx exposes two fixed analytics proxy paths, not an open proxy.
 
 Frontend build variables:
 

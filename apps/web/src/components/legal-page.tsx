@@ -15,9 +15,9 @@ export function LegalPage({
   return (
     <div className="landing-shell legal-shell" lang="en">
       <header className="site-header">
-        <Link href="/" className="brand" aria-label="Monsters DNA home">
+        <Link href="/" className="brand" aria-label="MonstersDNA home">
           <MonsterMark className="brand-mark" />
-          <span>MONSTERS</span>
+          <span>MonstersDNA</span>
         </Link>
         <Link href="/game/" className="header-play" data-short-label="Play">
           Play <ArrowRight size={17} aria-hidden="true" />
@@ -28,7 +28,7 @@ export function LegalPage({
           <ArrowLeft size={16} aria-hidden="true" /> Back to the island
         </Link>
         <header className="legal-heading">
-          <p className="eyebrow">MONSTERS DNA · THE SMALL PRINT</p>
+          <p className="eyebrow">MonstersDNA · THE SMALL PRINT</p>
           <h1>{title}</h1>
           <p>{summary}</p>
           <time dateTime="2026-09-03">Last updated: 3 September 2026</time>
@@ -36,7 +36,7 @@ export function LegalPage({
         <article className="legal-copy">{children}</article>
       </main>
       <footer className="site-footer legal-footer">
-        <span>Monsters DNA · A little world, built together.</span>
+        <span>MonstersDNA · A little world, built together.</span>
         <nav aria-label="Legal information" className="legal-links">
           <Link href="/privacy/">Privacy policy</Link>
           <Link href="/terms/">Terms of use</Link>

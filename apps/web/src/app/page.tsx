@@ -28,7 +28,7 @@ export default function Home() {
       <header className="site-header">
         <Link href="/" className="brand" aria-label={t("landing.home")}>
           <MonsterMark className="brand-mark" />
-          <span>MONSTERS</span>
+          <span>MonstersDNA</span>
         </Link>
         <div className="header-actions">
           <LanguageSwitcher />

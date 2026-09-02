@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-Implement stages 1–4 of the persistent multiplayer plan for Monsters:
+Implement stages 1–4 of the persistent multiplayer plan for MonstersDNA:
 
 1. Extract a deterministic, server-compatible simulation engine.
 2. Add a persistent, continuously running world backed by PostgreSQL checkpoints.
@@ -26,7 +26,7 @@ complete.
   `game-experience.tsx` and `monster-simulation.ts` and runs in the browser.
 - `apps/api`: NestJS 11 API, Prisma 7, and PostgreSQL. It currently exposes only
   a welcome endpoint and a database-backed health endpoint.
-- Production resources already exist in the Monsters Coolify project:
+- Production resources already exist in the MonstersDNA Coolify project:
   frontend, one API instance, and PostgreSQL.
 - Production frontend and API domains are:
   `https://monsters.haltakov.com` and

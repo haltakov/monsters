@@ -22,8 +22,8 @@ const mono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://monstersdna.com"),
   title: {
-    default: "Monsters DNA — grow a tiny wild world",
-    template: "%s · Monsters DNA",
+    default: "MonstersDNA — grow a tiny wild world",
+    template: "%s · MonstersDNA",
   },
   description:
     "Create your own DNA-based monster, explore a living island, and grow a strange new family.",

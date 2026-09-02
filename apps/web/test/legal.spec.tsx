@@ -12,6 +12,9 @@ describe("public legal pages", () => {
     (title, Page, path, metadata) => {
       const { container } = render(<Page />);
       expect(
+        screen.getByRole("link", { name: "MonstersDNA home" }),
+      ).toHaveTextContent("MonstersDNA");
+      expect(
         screen.getByRole("heading", { name: title, level: 1 }),
       ).toBeVisible();
       expect(

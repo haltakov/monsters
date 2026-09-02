@@ -4,7 +4,7 @@ import { LegalPage } from "@/components/legal-page";
 export const metadata: Metadata = {
   title: "Privacy policy",
   description:
-    "How Monsters DNA handles accounts, game progress, and analytics.",
+    "How MonstersDNA handles accounts, game progress, and analytics.",
   alternates: { canonical: "/privacy/" },
 };
 
@@ -17,8 +17,8 @@ export default function PrivacyPage() {
       <section>
         <h2>About this policy</h2>
         <p>
-          This policy covers Monsters DNA at monstersdna.com and its game and
-          analytics subdomains. “We” means the team operating Monsters DNA.
+          This policy covers MonstersDNA at monstersdna.com and its game and
+          analytics subdomains. “We” means the team operating MonstersDNA.
         </p>
       </section>
       <section>

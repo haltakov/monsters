@@ -80,7 +80,7 @@ export class AuthService {
       process.env.BETTER_AUTH_URL?.trim() ?? 'http://localhost:3101';
 
     return betterAuth({
-      appName: 'Monsters',
+      appName: 'MonstersDNA',
       baseURL,
       basePath: '/api/auth',
       secret: authSecret(
@@ -131,9 +131,9 @@ export class AuthService {
             const result = await resend.emails.send({
               from,
               to: email,
-              subject: 'Your Monsters sign-in link',
-              text: `Open this secure link to sign in to Monsters: ${url}\n\nIt expires in 15 minutes.`,
-              html: `<div style="font-family:system-ui,sans-serif;line-height:1.5;color:#173a2f"><h1 style="font-size:24px">Return to Monster Island</h1><p>Use the button below to sign in. This link expires in 15 minutes.</p><p><a href="${url}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#164f3e;color:white;text-decoration:none;font-weight:700">Sign in to Monsters</a></p><p style="font-size:12px;color:#56706a">If you did not request this, you can ignore this email.</p></div>`,
+              subject: 'Your MonstersDNA sign-in link',
+              text: `Open this secure link to sign in to MonstersDNA: ${url}\n\nIt expires in 15 minutes.`,
+              html: `<div style="font-family:system-ui,sans-serif;line-height:1.5;color:#173a2f"><h1 style="font-size:24px">Return to MonstersDNA</h1><p>Use the button below to sign in. This link expires in 15 minutes.</p><p><a href="${url}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#164f3e;color:white;text-decoration:none;font-weight:700">Sign in to MonstersDNA</a></p><p style="font-size:12px;color:#56706a">If you did not request this, you can ignore this email.</p></div>`,
             });
             if (result.error) throw new Error(result.error.message);
           },

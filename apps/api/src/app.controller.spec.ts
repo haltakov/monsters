@@ -16,7 +16,7 @@ describe('AppController', () => {
 
   describe('root', () => {
     it('should return the API welcome message', () => {
-      expect(appController.getHello()).toBe('Welcome to the Monsters API');
+      expect(appController.getHello()).toBe('Welcome to the MonstersDNA API');
     });
   });
 });
