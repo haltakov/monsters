@@ -573,13 +573,12 @@ export function applyPlayerMovement(entity: SimEntity, dt: number) {
     );
   }
 
-  const moveMagnitude = Math.abs(horizontal) + Math.abs(forward);
+  const moveMagnitude = Math.hypot(horizontal, forward);
   let moved = false;
   if (input && moveMagnitude > INPUT_DEADZONE) {
-    const targetYaw =
-      Math.abs(horizontal) > INPUT_DEADZONE
-        ? input.heading - Math.sign(horizontal) * Math.PI * 0.5
-        : input.heading;
+    // Keyboard S still backpedals. Diagonal inputs turn proportionally instead
+    // of a tiny horizontal value immediately forcing a full 90-degree turn.
+    const targetYaw = input.heading - Math.atan2(horizontal, Math.abs(forward));
     entity.yaw = dampAngle(entity.yaw, targetYaw, 15, dt);
 
     const length = Math.hypot(horizontal, forward);
@@ -587,12 +586,12 @@ export function applyPlayerMovement(entity: SimEntity, dt: number) {
     const zInput = forward / Math.max(1, length);
     const sin = Math.sin(input.heading);
     const cos = Math.cos(input.heading);
-    let velocityX = xInput * cos - zInput * sin;
-    let velocityZ = -xInput * sin - zInput * cos;
+    const velocityX = xInput * cos - zInput * sin;
+    const velocityZ = -xInput * sin - zInput * cos;
     const magnitude = Math.hypot(velocityX, velocityZ);
     if (magnitude > 0.0001) {
-      velocityX /= magnitude;
-      velocityZ /= magnitude;
+      // The input vector is already capped to a unit circle above. Preserve
+      // its magnitude so a gentle thumb movement means a slower walk.
       const flying = entity.locomotion === "fly" && canFly;
       const dnaSpeedMultiplier =
         getCreatureSpeed(entity.dna) / getCreatureSpeed(DEFAULT_MONSTER_DNA);

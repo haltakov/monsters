@@ -5,7 +5,11 @@ import {
   TICK_SECONDS,
   WALK_ENERGY_PER_SECOND,
 } from "../src/sim/constants";
-import { sanitizeInput, stepWorld } from "../src/sim/engine";
+import {
+  applyPlayerMovement,
+  sanitizeInput,
+  stepWorld,
+} from "../src/sim/engine";
 import {
   isBlockedByWater,
   isWaterAt,
@@ -16,6 +20,42 @@ import {
 import { emptyWorld, input, makePlayer, run, withDna } from "./helpers";
 
 describe("authoritative movement", () => {
+  it("preserves analog speed and caps diagonals to walking speed", () => {
+    const move = (forward: number, strafe = 0) => {
+      const player = makePlayer("analog", {
+        input: input(1, { forward, strafe }),
+      });
+      applyPlayerMovement(player, TICK_SECONDS);
+      return Math.hypot(player.x, player.z);
+    };
+    expect(move(0.5)).toBeCloseTo(move(1) * 0.5, 6);
+    expect(move(0.25)).toBeCloseTo(move(1) * 0.25, 6);
+    expect(move(1, 1)).toBeCloseTo(move(1), 6);
+    expect(move(0.03, 0.03)).toBe(0);
+  });
+
+  it("turns a little for a little sideways input, not a full quarter turn", () => {
+    const player = makePlayer("diagonal", {
+      input: input(1, { forward: 1, strafe: 0.08 }),
+    });
+    for (let i = 0; i < 10; i++) applyPlayerMovement(player, TICK_SECONDS);
+    expect(player.yaw).toBeCloseTo(-Math.atan2(0.08, 1), 5);
+    expect(Math.abs(player.yaw)).toBeLessThan(0.1);
+  });
+
+  it("keeps keyboard backpedalling and stationary camera orbit independent", () => {
+    const player = makePlayer("backward", {
+      input: input(1, { forward: -1 }),
+    });
+    applyPlayerMovement(player, TICK_SECONDS);
+    expect(player.z).toBeGreaterThan(0);
+    expect(player.yaw).toBe(0);
+    const previous = { x: player.x, z: player.z, yaw: player.yaw };
+    player.input = input(2, { heading: 2 });
+    applyPlayerMovement(player, TICK_SECONDS);
+    expect(player).toMatchObject(previous);
+  });
+
   it("moves a walking player at the walk speed and no faster", () => {
     const state = emptyWorld();
     const player = makePlayer("p1", { x: 0, z: 0 });

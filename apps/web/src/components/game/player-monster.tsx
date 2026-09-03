@@ -11,6 +11,7 @@ import {
   type MonsterDna,
   type PlayerInput,
   type SimEntity,
+  normalizeAngle,
 } from "@monsters/game-core";
 import {
   MonsterVisual,
@@ -92,6 +93,30 @@ function blankPredictedEntity(dna: MonsterDna): SimEntity {
 export function readInput(state: ControlState): Omit<PlayerInput, "seq"> {
   const keys = state.keys;
   const blocked = state.paused || state.isDead;
+  const stickMagnitude = Math.hypot(state.move.x, state.move.y);
+  const hasKeyboardMovement = [
+    "KeyW",
+    "KeyS",
+    "KeyA",
+    "KeyD",
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+  ].some((key) => keys.has(key));
+  // A stick is a 360-degree travel direction, not keyboard strafe buttons.
+  // Encode it as forward travel along its own heading, leaving the camera alone.
+  if (!blocked && !hasKeyboardMovement && stickMagnitude > 0.05) {
+    return {
+      forward: Math.min(1, stickMagnitude),
+      strafe: 0,
+      turn: 0,
+      heading: normalizeAngle(
+        state.cameraYaw - Math.atan2(state.move.x, state.move.y),
+      ),
+      sprint: keys.has("ShiftLeft") || keys.has("ShiftRight"),
+    };
+  }
   const hasHumanMovement =
     keys.has("KeyW") ||
     keys.has("KeyS") ||
@@ -258,7 +283,10 @@ export function PlayerMonster({
       sendAccumulator.current = 0;
       const changed = !lastSent.current || !sameInput(lastSent.current, raw);
       if (
-        canControl &&
+        // Publish the zero input when opening a menu too, so the server stops
+        // walking instead of retaining the last held joystick direction.
+        connection.isController &&
+        entity.alive &&
         (changed || heartbeat.current >= INPUT_HEARTBEAT_SECONDS)
       ) {
         sequence.current += 1;

@@ -676,6 +676,12 @@ button {
   height: 100%;
   cursor: crosshair;
 }
+.world-input-surface {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  user-select: none;
+}
 :where(.game-shell, .monster-audit)
   :where(a, button, select, input, textarea, [tabindex]):focus-visible {
   outline: 3px solid var(--focus-ring);

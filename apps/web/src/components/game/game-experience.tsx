@@ -34,6 +34,8 @@ import {
 import * as THREE from "three";
 import { MonsterMark } from "@/components/monster-mark";
 import { MonsterAge } from "./monster-age";
+import { Joystick, WorldInputSurface } from "./touch-controls";
+import { swipeCamera } from "@/lib/touch-input";
 import {
   AgentActionError,
   throwIfAborted,
@@ -290,7 +292,7 @@ function SpectatorCamera({
       .multiplyScalar(forwardInput)
       .addScaledVector(right, strafeInput);
     if (!state.paused && movement.lengthSq() > 0.001) {
-      movement.normalize();
+      if (movement.lengthSq() > 1) movement.normalize();
       const speed = state.keys.has("ShiftLeft") ? 34 : 20;
       camera.position.addScaledVector(movement, speed * delta);
       const radius = Math.hypot(camera.position.x, camera.position.z);
@@ -306,65 +308,6 @@ function SpectatorCamera({
   });
 
   return null;
-}
-
-function Joystick({
-  label,
-  onMove,
-}: {
-  label: string;
-  onMove: (x: number, y: number) => void;
-}) {
-  const base = useRef<HTMLDivElement>(null);
-  const [knob, setKnob] = useState({ x: 0, y: 0 });
-
-  const update = (clientX: number, clientY: number) => {
-    if (!base.current) return;
-    const rect = base.current.getBoundingClientRect();
-    const radius = rect.width * 0.32;
-    const dx = clientX - (rect.left + rect.width / 2);
-    const dy = clientY - (rect.top + rect.height / 2);
-    const distance = Math.hypot(dx, dy);
-    const scale = distance > radius ? radius / distance : 1;
-    const x = dx * scale;
-    const y = dy * scale;
-    setKnob({ x, y });
-    onMove(x / radius, -y / radius);
-  };
-
-  return (
-    <div
-      ref={base}
-      className="joystick"
-      role="application"
-      aria-label={label}
-      onPointerDown={(event) => {
-        event.stopPropagation();
-        event.currentTarget.setPointerCapture(event.pointerId);
-        update(event.clientX, event.clientY);
-      }}
-      onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId))
-          update(event.clientX, event.clientY);
-      }}
-      onPointerUp={(event) => {
-        event.stopPropagation();
-        setKnob({ x: 0, y: 0 });
-        onMove(0, 0);
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }}
-      onPointerCancel={() => {
-        setKnob({ x: 0, y: 0 });
-        onMove(0, 0);
-      }}
-    >
-      <span className="joystick-label">{label}</span>
-      <div
-        className="joystick-knob"
-        style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }}
-      />
-    </div>
-  );
 }
 
 /** Session bootstrap gate: the heavy canvas only mounts once we have a guest. */
@@ -1184,16 +1127,20 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     const updateLook = (time: number) => {
       const delta = Math.min(0.05, (time - previousTime) / 1000);
       previousTime = time;
+      if (controls.current.paused) {
+        animationFrame = window.requestAnimationFrame(updateLook);
+        return;
+      }
       const turn =
         (controls.current.keys.has("ArrowLeft") ? 1 : 0) -
         (controls.current.keys.has("ArrowRight") ? 1 : 0);
       controls.current.cameraYaw = normalizeAngle(
         controls.current.cameraYaw +
           turn * 1.75 * delta -
-          controls.current.look.x * 1.9 * delta,
+          controls.current.look.x * 1.35 * delta,
       );
       controls.current.cameraPitch = THREE.MathUtils.clamp(
-        controls.current.cameraPitch + controls.current.look.y * 1.25 * delta,
+        controls.current.cameraPitch + controls.current.look.y * delta,
         selfEntityId ? 0.12 : -0.72,
         0.72,
       );
@@ -1227,7 +1174,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     const onKeyUp = (event: KeyboardEvent) =>
       controls.current.keys.delete(event.code);
     const onMouseMove = (event: MouseEvent) => {
-      if (!document.pointerLockElement) return;
+      if (!document.pointerLockElement || controls.current.paused) return;
       controls.current.cameraYaw = normalizeAngle(
         controls.current.cameraYaw - event.movementX * 0.0024,
       );
@@ -1239,12 +1186,20 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     };
     const onPointerLock = () =>
       setPointerLocked(Boolean(document.pointerLockElement));
-    const onBlur = () => controls.current.keys.clear();
+    const onBlur = () => {
+      controls.current.keys.clear();
+      controls.current.move = { x: 0, y: 0 };
+      controls.current.look = { x: 0, y: 0 };
+    };
+    const onVisibility = () => {
+      if (document.hidden) onBlur();
+    };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("blur", onBlur);
     document.addEventListener("pointerlockchange", onPointerLock);
+    document.addEventListener("visibilitychange", onVisibility);
     animationFrame = window.requestAnimationFrame(updateLook);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
@@ -1252,6 +1207,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("blur", onBlur);
       document.removeEventListener("pointerlockchange", onPointerLock);
+      document.removeEventListener("visibilitychange", onVisibility);
       window.cancelAnimationFrame(animationFrame);
     };
   }, [selfEntityId, toggleDive, toggleFlight, triggerAction, triggerMate]);
@@ -2036,6 +1992,9 @@ function ConnectedGame({ session }: { session: SessionApi }) {
 
   const monsterName = activeMonster?.name ?? t("game.genericMonster");
   const canPlay = Boolean(selfEntityId) && isController && !isDead;
+  const touchDisabled = Boolean(
+    creatorDraft || mobileMenuOpen || settingsOpen || controlsHelpOpen,
+  );
   const isSpectating =
     phase === "connected" && !selfEntityId && !creatorDraft && !isDead;
   const dominationScore = scoreAgentArena(
@@ -2047,36 +2006,44 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   return (
     <main className="game-shell">
       {sceneQuality ? (
-        <Canvas
-          shadows={sceneQuality === "desktop" ? "percentage" : false}
-          dpr={sceneQuality === "mobile" ? 1 : [1, 1.6]}
-          camera={{ fov: 48, near: 0.1, far: 420, position: [8, 8, 12] }}
-          gl={{
-            antialias: sceneQuality === "desktop",
-            powerPreference: "high-performance",
-          }}
-          onPointerDown={(event) => {
-            setMouseHintDismissed(true);
-            if (
-              event.pointerType === "mouse" &&
-              event.target instanceof HTMLCanvasElement &&
-              !document.pointerLockElement
-            ) {
-              void event.target.requestPointerLock();
-            }
+        <WorldInputSurface
+          disabled={touchDisabled}
+          onInteract={() => setMouseHintDismissed(true)}
+          onSwipe={(dx, dy) => {
+            const state = controls.current;
+            if (state.paused) return;
+            const angles = swipeCamera(
+              state.cameraYaw,
+              state.cameraPitch,
+              dx,
+              dy,
+              !selfEntityId,
+            );
+            state.cameraYaw = angles.yaw;
+            state.cameraPitch = angles.pitch;
           }}
         >
-          <World
-            connection={connection}
-            controls={controls}
-            dna={monsterDna}
-            name={monsterName}
-            quality={sceneQuality}
-            selfEntityId={selfEntityId}
-            depletedResources={depletedResources}
-            onPlayerFrame={reportPlayerFrame}
-          />
-        </Canvas>
+          <Canvas
+            shadows={sceneQuality === "desktop" ? "percentage" : false}
+            dpr={sceneQuality === "mobile" ? 1 : [1, 1.6]}
+            camera={{ fov: 48, near: 0.1, far: 420, position: [8, 8, 12] }}
+            gl={{
+              antialias: sceneQuality === "desktop",
+              powerPreference: "high-performance",
+            }}
+          >
+            <World
+              connection={connection}
+              controls={controls}
+              dna={monsterDna}
+              name={monsterName}
+              quality={sceneQuality}
+              selfEntityId={selfEntityId}
+              depletedResources={depletedResources}
+              onPlayerFrame={reportPlayerFrame}
+            />
+          </Canvas>
+        </WorldInputSurface>
       ) : (
         <div className="scene-loading" role="status" aria-live="polite">
           {t("loading.island")}
@@ -2741,12 +2708,14 @@ function ConnectedGame({ session }: { session: SessionApi }) {
         <div className="mobile-controls">
           <Joystick
             label={t("game.move")}
+            disabled={touchDisabled}
             onMove={(x, y) => {
               controls.current.move = { x, y };
             }}
           />
           <Joystick
             label={t("game.look")}
+            disabled={touchDisabled}
             onMove={(x, y) => {
               controls.current.look = { x, y: -y };
             }}
