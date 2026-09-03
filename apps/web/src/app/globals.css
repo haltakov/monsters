@@ -1699,6 +1699,20 @@ button {
   justify-content: center;
   gap: 8px;
 }
+.monster-detail-setting {
+  display: grid;
+  gap: 6px;
+}
+.monster-detail-setting p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.monster-detail-setting p strong {
+  color: var(--ink);
+  font-weight: 650;
+}
 .activity-feed {
   position: absolute;
   top: 150px;

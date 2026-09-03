@@ -19,9 +19,13 @@ import { getMonsterColor } from "@/components/game/monster-dna";
 import {
   getInitialNetworkMonsterDetail,
   getNetworkMonsterDetail,
+  getMonsterDetailDistance,
+  claimMeshPromotion,
+  type MeshPromotionBudget,
   type NetworkMonsterDetail,
 } from "@/components/game/network-detail";
 import type { SceneQuality } from "@/components/game/world-scenery";
+import type { MonsterDetailPreset } from "@/lib/monster-detail-settings";
 import type {
   WorldConnection,
   WorldEntityRecord,
@@ -80,10 +84,14 @@ function NetworkMonsterActor({
   connection,
   entityId,
   quality,
+  detailPreset,
+  promotionBudget,
 }: {
   connection: WorldConnection;
   entityId: string;
   quality: SceneQuality;
+  detailPreset: MonsterDetailPreset;
+  promotionBudget: MeshPromotionBudget;
 }) {
   const root = useRef<THREE.Group>(null);
   const visual = useRef<THREE.Group>(null);
@@ -110,38 +118,43 @@ function NetworkMonsterActor({
       self && record
         ? Math.hypot(record.net.x - self.x, record.net.z - self.z)
         : Number.POSITIVE_INFINITY;
-    return getInitialNetworkMonsterDetail(distance, quality);
+    return getInitialNetworkMonsterDetail(distance, detailPreset);
   });
   const detailRef = useRef(detail);
-  const nextDetailCheck = useRef(
-    0.08 +
-      ([...entityId].reduce(
-        (sum, character) => sum + character.charCodeAt(0),
-        0,
-      ) %
-        23) /
-        23,
-  );
+  const nextDetailCheck = useRef(0);
+  const lastPreset = useRef(detailPreset);
 
   useFrame(({ camera, clock }, delta) => {
     const live: WorldEntityRecord | undefined =
       connection.entities.get(entityId);
     if (!root.current || !visual.current || !live) return;
 
-    if (clock.elapsedTime >= nextDetailCheck.current) {
-      nextDetailCheck.current = clock.elapsedTime + 0.32;
-      const distance = Math.hypot(
-        live.net.x - camera.position.x,
-        live.net.z - camera.position.z,
+    if (
+      clock.elapsedTime >= nextDetailCheck.current ||
+      lastPreset.current !== detailPreset
+    ) {
+      lastPreset.current = detailPreset;
+      nextDetailCheck.current = clock.elapsedTime + 0.2;
+      const distance = getMonsterDetailDistance(
+        live.net,
+        camera.position,
+        connection.self?.net,
       );
       const nextDetail = getNetworkMonsterDetail(
         distance,
-        quality,
+        detailPreset,
         detailRef.current,
       );
       if (nextDetail !== detailRef.current) {
-        detailRef.current = nextDetail;
-        setDetail(nextDetail);
+        if (
+          nextDetail !== "full" ||
+          claimMeshPromotion(promotionBudget, clock.elapsedTime, distance)
+        ) {
+          detailRef.current = nextDetail;
+          setDetail(nextDetail);
+        } else {
+          nextDetailCheck.current = clock.elapsedTime + 0.04;
+        }
       }
     }
 
@@ -371,11 +384,16 @@ export function NetworkPopulation({
   connection,
   quality,
   selfEntityId,
+  detailPreset,
 }: {
   connection: WorldConnection;
   quality: SceneQuality;
   selfEntityId: string | null;
+  detailPreset: MonsterDetailPreset;
 }) {
+  const [promotionBudget] = useState<MeshPromotionBudget>(() => ({
+    nextAt: 0,
+  }));
   // The connection is an external store; subscribing this way keeps the very
   // frequent network updates out of React's render path.
   const roster = useSyncExternalStore(
@@ -397,6 +415,8 @@ export function NetworkPopulation({
             connection={connection}
             entityId={id}
             quality={quality}
+            detailPreset={detailPreset}
+            promotionBudget={promotionBudget}
           />
         ))}
       {roster.eggs.map((id) => (

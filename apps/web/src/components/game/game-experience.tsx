@@ -34,6 +34,15 @@ import {
 import * as THREE from "three";
 import { MonsterMark } from "@/components/monster-mark";
 import { MonsterAge } from "./monster-age";
+import { MonsterDetailSelect } from "./monster-detail-select";
+import {
+  getAutomaticMonsterDetail,
+  getServerMonsterDetailSetting,
+  readMonsterDetailSetting,
+  saveMonsterDetailSetting,
+  subscribeMonsterDetailSetting,
+  type MonsterDetailPreset,
+} from "@/lib/monster-detail-settings";
 import { Joystick, WorldInputSurface } from "./touch-controls";
 import { swipeCamera } from "@/lib/touch-input";
 import {
@@ -166,6 +175,7 @@ function World({
   name,
   quality,
   selfEntityId,
+  detailPreset,
   depletedResources,
   onPlayerFrame,
 }: {
@@ -174,6 +184,7 @@ function World({
   dna: MonsterDna;
   name: string;
   quality: SceneQuality;
+  detailPreset: MonsterDetailPreset;
   selfEntityId: string | null;
   depletedResources: ReadonlySet<string>;
   onPlayerFrame: (frame: {
@@ -237,6 +248,7 @@ function World({
         connection={connection}
         quality={quality}
         selfEntityId={selfEntityId}
+        detailPreset={detailPreset}
       />
       {selfEntityId && (
         <PlayerMonster
@@ -446,6 +458,16 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     getDeviceProfile,
     getServerDeviceProfile,
   );
+  const monsterDetailSetting = useSyncExternalStore(
+    subscribeMonsterDetailSetting,
+    readMonsterDetailSetting,
+    getServerMonsterDetailSetting,
+  );
+  const automaticMonsterDetail = getAutomaticMonsterDetail();
+  const monsterDetailPreset =
+    monsterDetailSetting === "auto"
+      ? automaticMonsterDetail
+      : monsterDetailSetting;
 
   const livingMonsters = useMemo(
     () => session.monsters.filter((monster) => monster.alive),
@@ -2038,6 +2060,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               dna={monsterDna}
               name={monsterName}
               quality={sceneQuality}
+              detailPreset={monsterDetailPreset}
               selfEntityId={selfEntityId}
               depletedResources={depletedResources}
               onPlayerFrame={reportPlayerFrame}
@@ -2237,6 +2260,11 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               </button>
             </header>
             <LanguageSelect />
+            <MonsterDetailSelect
+              value={monsterDetailSetting}
+              automatic={automaticMonsterDetail}
+              onChange={saveMonsterDetailSetting}
+            />
             <button
               type="button"
               className="settings-controls-button"
@@ -2480,6 +2508,14 @@ function ConnectedGame({ session }: { session: SessionApi }) {
                 <div className="mobile-menu-section mobile-language-section">
                   <LanguageSelect className="mobile-menu-language" />
                 </div>
+              </div>
+
+              <div className="mobile-menu-section">
+                <MonsterDetailSelect
+                  value={monsterDetailSetting}
+                  automatic={automaticMonsterDetail}
+                  onChange={saveMonsterDetailSetting}
+                />
               </div>
 
               <div className="mobile-menu-section">

@@ -1,11 +1,37 @@
-import type { SceneQuality } from "@/components/game/world-scenery";
+import {
+  MONSTER_DETAIL_LIMITS,
+  type MonsterDetailPreset,
+} from "@/lib/monster-detail-settings";
 
 export type NetworkMonsterDetail = "hidden" | "proxy" | "full";
 
-const DETAIL_DISTANCE = {
-  mobile: { full: 20, hidden: 64, hysteresis: 5 },
-  desktop: { full: 34, hidden: 132, hysteresis: 8 },
-} as const;
+export type MeshPromotionBudget = { nextAt: number };
+
+/** Spread distant mesh construction across frames; interactions never queue. */
+export function claimMeshPromotion(
+  budget: MeshPromotionBudget,
+  now: number,
+  distance: number,
+) {
+  if (distance > 12 && now < budget.nextAt) return false;
+  budget.nextAt = now + 0.04;
+  return true;
+}
+
+/** Camera offset must never downgrade a creature next to the player. */
+export function getMonsterDetailDistance(
+  monster: { x: number; z: number },
+  camera: { x: number; z: number },
+  player?: { x: number; z: number } | null,
+) {
+  const cameraDistance = Math.hypot(monster.x - camera.x, monster.z - camera.z);
+  return player
+    ? Math.min(
+        cameraDistance,
+        Math.hypot(monster.x - player.x, monster.z - player.z),
+      )
+    : cameraDistance;
+}
 
 /**
  * Selects a cheap representation for remote monsters. The dead band prevents
@@ -13,10 +39,10 @@ const DETAIL_DISTANCE = {
  */
 export function getNetworkMonsterDetail(
   distance: number,
-  quality: SceneQuality,
+  preset: MonsterDetailPreset,
   previous: NetworkMonsterDetail,
 ): NetworkMonsterDetail {
-  const limits = DETAIL_DISTANCE[quality];
+  const limits = MONSTER_DETAIL_LIMITS[preset];
 
   if (previous === "full" && distance <= limits.full + limits.hysteresis) {
     return "full";
@@ -32,7 +58,7 @@ export function getNetworkMonsterDetail(
 /** Start quickly with silhouettes; expensive smooth meshes are promoted later. */
 export function getInitialNetworkMonsterDetail(
   distance: number,
-  quality: SceneQuality,
+  preset: MonsterDetailPreset,
 ): NetworkMonsterDetail {
-  return distance <= DETAIL_DISTANCE[quality].hidden ? "proxy" : "hidden";
+  return distance <= MONSTER_DETAIL_LIMITS[preset].hidden ? "proxy" : "hidden";
 }
