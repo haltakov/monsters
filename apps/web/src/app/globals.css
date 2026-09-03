@@ -1065,6 +1065,9 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
+.public-monster-list {
+  margin-top: 12px;
+}
 .account-monster-list article {
   overflow: hidden;
   border: 1px solid var(--rim);
@@ -1084,7 +1087,7 @@ button {
   width: 100%;
   min-height: 70px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
   padding: 10px;
@@ -1095,6 +1098,7 @@ button {
 .account-monster-main > div {
   display: grid;
   min-width: 0;
+  gap: 3px;
 }
 .account-monster-main strong {
   overflow: hidden;
@@ -1106,14 +1110,51 @@ button {
   color: var(--muted);
 }
 .account-specimen-number {
-  width: 34px;
-  height: 34px;
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  min-width: 27px;
+  height: 21px;
+  padding: 0 5px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  background: var(--meadow);
+  border-radius: 5px;
+  background: var(--shell);
   font-size: 10px;
   font-weight: 900;
+}
+.monster-portrait {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 100px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: #d4ebe7;
+}
+.monster-portrait img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.monster-portrait-large {
+  width: 180px;
+}
+.monster-portrait-placeholder {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: var(--muted);
+}
+.monster-portrait-renderer {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 256px;
+  height: 256px;
+  pointer-events: none;
 }
 .account-origin {
   width: max-content;
@@ -1276,12 +1317,29 @@ button {
   min-width: 0;
   text-align: left;
 }
-.admin-monster-list article > button:first-child span {
+.admin-monster-list article > button:first-child > div > span {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
+}
+.admin-monster-list .admin-monster-main {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+}
+.admin-monster-main > div {
+  display: grid;
+  min-width: 0;
+}
+.admin-monster-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-monster-main .monster-portrait {
+  width: 64px;
 }
 .admin-monster-list article > button:nth-last-child(2) {
   display: inline-flex;
@@ -3480,8 +3538,22 @@ button[data-gene-option="avian"] .gene-silhouette::after {
   .account-monster-main {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
-  .account-monster-main .account-origin {
-    display: none;
+  .monster-portrait {
+    width: 80px;
+  }
+  .monster-portrait-large {
+    width: 112px;
+  }
+  .lineage-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 10px;
+  }
+  .lineage-hero > .account-origin {
+    grid-column: 2;
+  }
+  .lineage-hero h3 {
+    font-size: 24px;
+    overflow-wrap: anywhere;
   }
   .lineage-branches {
     margin-left: 15px;
