@@ -29,6 +29,7 @@ import {
 } from "@/components/game/monster-dna";
 import { MONSTER_ARCHETYPES } from "@/components/game/monster-archetypes";
 import { MonsterVisual } from "@/components/game/monster-model";
+import { getCreatureLifespanHours } from "@monsters/game-core";
 import { useI18n, type TranslationKey } from "@/components/i18n";
 
 type MonsterCreatorProps = {
@@ -366,6 +367,10 @@ export function MonsterCreator({
                 {draft.legs} {t("creator.legs")}
               </span>
               <span>{option(draft.body)}</span>
+              <span title={t("game.ageHelp")}>
+                {t("game.lifespan")}{" "}
+                {getCreatureLifespanHours(draft).toFixed(2)} h
+              </span>
               <span>
                 {followerCount
                   ? `${followerCount} ${t("creator.followers")}`

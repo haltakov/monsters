@@ -19,11 +19,7 @@ import { getSocketUrl } from "./config";
 import { pushSample, type MotionSample } from "./interpolation";
 
 export type ConnectionPhase =
-  | "idle"
-  | "connecting"
-  | "connected"
-  | "reconnecting"
-  | "error";
+  "idle" | "connecting" | "connected" | "reconnecting" | "error";
 
 export type WorldEntityRecord = {
   net: NetEntity;
@@ -274,6 +270,8 @@ export class WorldConnection {
     this.serverTick = message.tick;
     this.worldTime = message.time;
     this.entityId = message.you.entityId;
+    this.pendingMonsterId = message.you.entityId;
+    this.ackSeq = 0;
     this.isController = message.you.isController;
     this.population = message.population;
 

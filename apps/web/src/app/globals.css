@@ -1305,6 +1305,38 @@ button {
   display: flex;
   gap: 6px;
 }
+
+.monster-age {
+  display: block;
+  color: var(--ink, #173a2f);
+  font-size: 11px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+.monster-age b {
+  font-weight: 700;
+}
+.monster-age-old {
+  color: #92411e;
+}
+.survival-bars > .monster-age {
+  padding: 2px 10px;
+  border-radius: 8px;
+  background: #fff8e8;
+}
+.daily-reset-hint {
+  font-size: 10px;
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .ecosystem-pulse > .daily-reset-hint {
+    display: none;
+  }
+  .mobile-player-vitals > .monster-age {
+    font-size: 9px;
+    line-height: 1.2;
+  }
+}
 .energy-bar,
 .health-bar {
   position: relative;

@@ -7,6 +7,7 @@ export * from "./world/resources";
 export * from "./sim/types";
 export * from "./sim/constants";
 export * from "./sim/genetics";
+export * from "./sim/aging";
 export * from "./sim/accumulator";
 export * from "./sim/engine";
 export * from "./sim/catchup";

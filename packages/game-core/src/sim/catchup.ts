@@ -5,7 +5,7 @@ import {
   MAX_COARSE_CATCHUP_STEPS,
   TICK_SECONDS,
 } from "./constants";
-import { stepWorld } from "./engine";
+import { ageWorldEntities, stepWorld } from "./engine";
 import { isCriticalEvent, type SimEvent, type WorldSimState } from "./types";
 
 export type CatchUpResult = {
@@ -61,6 +61,12 @@ export function catchUpWorld(
 
   const requestedSteps = Math.floor(elapsedSeconds / COARSE_CATCHUP_DT);
   const steps = Math.min(requestedSteps, MAX_COARSE_CATCHUP_STEPS);
+  // CPU-bounded catch-up must not grant animals extra hours of life.
+  ageWorldEntities(
+    state,
+    Math.max(0, elapsedSeconds - steps * COARSE_CATCHUP_DT),
+    events,
+  );
   for (let index = 0; index < steps; index += 1) {
     for (const event of stepWorld(state, COARSE_CATCHUP_DT)) {
       if (isCriticalEvent(event)) events.push(event);

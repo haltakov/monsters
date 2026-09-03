@@ -212,6 +212,7 @@ export function PlayerMonster({
       }
       entity.energy = authoritative.net.energy;
       entity.health = authoritative.net.health;
+      entity.age = authoritative.net.age;
       entity.alive = authoritative.net.alive;
       entity.locomotion = authoritative.net.loco;
     }

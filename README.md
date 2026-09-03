@@ -49,6 +49,27 @@ The creator exposes 18 deterministic genes covering anatomy, appearance, habitat
 
 The server mixes parental DNA deterministically, applies seeded mutations, creates persistent eggs, and hatches babies with recorded lineage and generation.
 
+### Aging and daily seasons
+
+Monsters age in real-time hours, including API downtime. Functional DNA (body,
+size, build, armor, metabolism and diet) determines a reproducible **2–12 hour**
+lifespan; cosmetic changes do not extend it. The first 75% of life is at full
+speed, followed by gradual slowing to 40% of normal speed. Maximum age causes
+permanent death, even with full health and energy. Age and lifespan appear in
+the HUD and monster history, with lifespan also shown in the creator.
+
+Every day at **00:00 UTC**, the authoritative API resets the public island and
+its resources, spawning ten new land-based wild monsters. Accounts, player
+monster history and lineage remain intact; living monsters from the previous
+season are archived as dead. Connected players return to spectating and can
+spawn new copies. The next reset is stored in PostgreSQL and performed once
+on startup if midnight was missed. Deploying this feature does not immediately
+reset an existing world: its first deadline is the next UTC midnight.
+
+No separate cron service is required. The world-owning API process handles the
+schedule under its existing advisory lock. The explicit admin reset remains
+a separate destructive operation that also removes the world's monster history.
+
 ## Project layout
 
 ```text

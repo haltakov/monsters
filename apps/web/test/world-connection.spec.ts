@@ -106,6 +106,33 @@ describe("world connection state mapping", () => {
     expect(connection.self?.net.id).toBe("me");
   });
 
+  it("discards the previous season's controller, entities, eggs and depleted resources", () => {
+    connection.applySnapshot(snapshot());
+    connection.applyDelta(delta({ ackSeq: 99 }));
+    connection.applySnapshot(
+      snapshot({
+        tick: 0,
+        time: 0,
+        you: {
+          guestId: "guest-1",
+          entityId: null,
+          connectionId: "socket-1",
+          isController: false,
+        },
+        entities: [netEntity("new-season")],
+        eggs: [],
+        depletedResources: [],
+      }),
+    );
+    expect(connection.entityId).toBeNull();
+    expect(connection.isController).toBe(false);
+    expect(connection.self).toBeNull();
+    expect(connection.ackSeq).toBe(0);
+    expect([...connection.entities.keys()]).toEqual(["new-season"]);
+    expect(connection.eggs.size).toBe(0);
+    expect(connection.depletedResources.size).toBe(0);
+  });
+
   it("applies field-level patches and records interpolation samples", () => {
     connection.applySnapshot(snapshot());
     now = 100;

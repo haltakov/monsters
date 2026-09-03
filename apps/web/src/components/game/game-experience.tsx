@@ -33,6 +33,7 @@ import {
 } from "react";
 import * as THREE from "three";
 import { MonsterMark } from "@/components/monster-mark";
+import { MonsterAge } from "./monster-age";
 import {
   ACCENT_COLORS,
   ADAPTATIONS,
@@ -446,10 +447,13 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [energy, setEnergy] = useState(100);
   const [health, setHealth] = useState(100);
+  const [ageSeconds, setAgeSeconds] = useState(0);
   const [matingCooldown, setMatingCooldown] = useState(0);
   const [locomotionMode, setLocomotionMode] = useState<LocomotionMode>("land");
   const [isDead, setIsDead] = useState(false);
-  const [deathReason, setDeathReason] = useState<"energy" | "health">("energy");
+  const [deathReason, setDeathReason] = useState<"energy" | "health" | "age">(
+    "energy",
+  );
   const [population, setPopulation] = useState<WorldPopulation>({
     living: 0,
     eggs: 0,
@@ -558,6 +562,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       setIsController(message.you.isController);
       setPopulation(message.population);
       setDepletedResources(new Set(message.depletedResources));
+      setAgeSeconds(connection.self?.net.age ?? 0);
     });
     const unsubscribeStatus = connection.on("status", (message) => {
       setSelfEntityId(message.entityId);
@@ -609,10 +614,10 @@ function ConnectedGame({ session }: { session: SessionApi }) {
 
   // Population counters only need about one update per second.
   useEffect(() => {
-    const timer = window.setInterval(
-      () => setPopulation({ ...connection.population }),
-      1000,
-    );
+    const timer = window.setInterval(() => {
+      setPopulation({ ...connection.population });
+      setAgeSeconds(Math.floor(connection.self?.net.age ?? 0));
+    }, 1000);
     return () => window.clearInterval(timer);
   }, [connection]);
 
@@ -621,6 +626,29 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       const selfId = connection.entityId;
       for (const event of events) {
         switch (event.type) {
+          case "worldReset": {
+            controls.current.keys.clear();
+            controls.current.move = { x: 0, y: 0 };
+            controls.current.isDead = false;
+            controls.current.agent.enabled = false;
+            setIsDead(false);
+            setPairing(null);
+            mateCooldownUntil.current = 0;
+            setStatus({ key: "game.worldReset" });
+            setEcosystemEvent({ key: "game.worldReset" });
+            updateAgentArena((current) =>
+              current.status === "active" || current.status === "paused"
+                ? {
+                    ...current,
+                    status: "ended",
+                    endedAt: Date.now() / 1000,
+                    lastAction: "World reset",
+                  }
+                : current,
+            );
+            void session.refreshMonsters();
+            break;
+          }
           case "feed": {
             if (agentArenaRef.current.lineageIds.includes(event.entityId)) {
               updateAgentArena((current) => ({
@@ -843,7 +871,11 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               setDeathReason(event.cause);
               setStatus({
                 key:
-                  event.cause === "energy" ? "game.ranOut" : "game.lostHealth",
+                  event.cause === "age"
+                    ? "game.diedOfAge"
+                    : event.cause === "energy"
+                      ? "game.ranOut"
+                      : "game.lostHealth",
                 values: { name: event.name },
               });
               session.markMonsterDead(event.entityId);
@@ -1954,6 +1986,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               <MonsterMark className="mobile-player-mark" />
               <div className="mobile-player-vitals">
                 <strong>{monsterName}</strong>
+                <MonsterAge dna={monsterDna} seconds={ageSeconds} />
                 <div className="mobile-vital-row">
                   <Heart size={13} aria-hidden="true" />
                   <div
@@ -2062,6 +2095,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           </div>
           {selfEntityId && (
             <div className="survival-bars">
+              <MonsterAge dna={monsterDna} seconds={ageSeconds} />
               <div
                 className={`health-bar${health <= 25 ? " health-low" : ""}${isDead && deathReason === "health" ? " health-empty" : ""}`}
               >
@@ -2092,6 +2126,9 @@ function ConnectedGame({ session }: { session: SessionApi }) {
         <div className="ecosystem-pulse">
           <span className="ecosystem-live">
             <Activity size={13} /> {t("game.ecosystem")}
+          </span>
+          <span className="daily-reset-hint" title={t("game.worldResetHelp")}>
+            ↻ 00:00 UTC
           </span>
           <strong>{population.living}</strong>
           <span>{t("game.living")}</span>
@@ -2472,9 +2509,11 @@ function ConnectedGame({ session }: { session: SessionApi }) {
         {isDead && (
           <div className="death-card" role="dialog" aria-modal="true">
             <span>
-              {deathReason === "energy"
-                ? t("game.outOfEnergy")
-                : t("game.outOfHealth")}
+              {deathReason === "age"
+                ? t("game.oldAge")
+                : deathReason === "energy"
+                  ? t("game.outOfEnergy")
+                  : t("game.outOfHealth")}
             </span>
             <strong>{t("game.collapsed", { name: monsterName })}</strong>
             <p>{t("game.monsterDied", { name: monsterName })}</p>

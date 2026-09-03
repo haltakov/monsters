@@ -98,6 +98,8 @@ model World {
   currentTick Int            @default(0)
   /// Wall-clock instant the latest checkpoint corresponds to.
   simulatedAt DateTime       @default(now())
+  /// Durable daily reset deadline. Initialized at rollout, then advanced atomically.
+  nextResetAt DateTime?
   monsters    Monster[]
   members     WorldMember[]
   snapshot    WorldSnapshot?
@@ -132,6 +134,7 @@ model Monster {
   dna            Json
   position       Json?
   energy         Int          @default(100)
+  ageSeconds     Float        @default(0)
   world          World        @relation(fields: [worldId], references: [id], onDelete: Cascade)
   worldId        String
   owner          GuestPlayer? @relation(fields: [ownerId], references: [id], onDelete: SetNull)

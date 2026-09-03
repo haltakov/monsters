@@ -31,6 +31,7 @@ export type MonsterView = {
   name: string;
   species: string;
   dna: string;
+  ageSeconds: number;
   generation: number;
   parentIds: [string, string] | null;
   mutations: number;
@@ -49,6 +50,7 @@ type MonsterRow = {
   name: string;
   species: string;
   dna: Prisma.JsonValue;
+  ageSeconds?: number;
   generation: number;
   parentAId: string | null;
   parentBId: string | null;
@@ -107,6 +109,7 @@ export class WorldService {
       status: world.status,
       tick: status.ownsWorld ? status.tick : world.currentTick,
       simulatedAt: world.simulatedAt.toISOString(),
+      nextResetAt: world.nextResetAt?.toISOString() ?? null,
       createdAt: world.createdAt.toISOString(),
       population: {
         living: status.livingEntities,
@@ -129,6 +132,11 @@ export class WorldService {
       name: row.name,
       species: row.species,
       dna: encodeMonsterDna(dna),
+      ageSeconds:
+        this.runner.getState()?.entities.find((entity) => entity.id === row.id)
+          ?.age ??
+        row.ageSeconds ??
+        0,
       generation: row.generation,
       parentIds:
         row.parentAId && row.parentBId ? [row.parentAId, row.parentBId] : null,
@@ -587,7 +595,7 @@ export class WorldService {
       ? monster
       : await this.prisma.monster.update({
           where: { id: monster.id },
-          data: { alive: true, diedAt: null, energy: 100 },
+          data: { alive: true, diedAt: null, energy: 100, ageSeconds: 0 },
         });
     this.spawnDurableMonster(revived);
     return this.toMonsterView(revived);
@@ -652,6 +660,7 @@ export class WorldService {
     generation: number;
     parentAId: string | null;
     parentBId: string | null;
+    ageSeconds?: number;
   }) {
     const dna = readStoredDna(monster.dna);
     const spawn = getMonsterSpawn(dna);
@@ -661,6 +670,9 @@ export class WorldService {
         id: monster.id,
         name: monster.name,
         dna,
+        // Fresh player-created monsters start as adults; restored ones keep
+        // their accumulated age rather than receiving a new lifespan.
+        age: monster.ageSeconds || undefined,
         ownerGuestId: monster.ownerId,
         generation: monster.generation,
         parentIds:

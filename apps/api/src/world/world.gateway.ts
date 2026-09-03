@@ -97,9 +97,25 @@ export class WorldGateway
 
   onModuleInit() {
     this.runner.onPublish(({ state, events }) => {
+      const reset = events.some((event) => event.type === 'worldReset');
+      if (reset) this.controllers.clear();
       for (const [socketId, session] of this.sessions) {
         const socket = this.server?.sockets?.sockets?.get(socketId);
         if (!socket) continue;
+        if (reset) {
+          session.entityId = null;
+          session.isController = false;
+          session.view = createConnectionView();
+          socket.emit(
+            SERVER_EVENTS.snapshot,
+            buildSnapshot(state, this.runner.getWorld()!, session.view, {
+              guestId: session.guestId,
+              entityId: null,
+              connectionId: socketId,
+              isController: false,
+            }),
+          );
+        }
         const delta = buildDelta(state, session.view, session.entityId, events);
         socket.emit(SERVER_EVENTS.delta, delta);
       }

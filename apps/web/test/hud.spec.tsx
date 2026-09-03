@@ -4,6 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { LanguageProvider } from "@/components/i18n";
 import { ConnectionBadge } from "@/components/game/connection-badge";
 import { PairingRequestCard } from "@/components/game/pairing-prompt";
+import { MonsterAge } from "@/components/game/monster-age";
+import {
+  DEFAULT_MONSTER_DNA,
+  getCreatureLifespanHours,
+} from "@monsters/game-core";
 
 function withI18n(node: React.ReactNode) {
   return render(<LanguageProvider>{node}</LanguageProvider>);
@@ -13,6 +18,29 @@ function withI18n(node: React.ReactNode) {
 // the assertions read naturally.
 beforeEach(() => {
   window.localStorage.setItem("monsters-language", "en");
+});
+
+describe("monster age", () => {
+  it("shows numeric age and DNA lifespan in hours", () => {
+    const { container } = withI18n(
+      <MonsterAge dna={DEFAULT_MONSTER_DNA} seconds={4500} />,
+    );
+    expect(container).toHaveTextContent(
+      `Age 1.25 / ${getCreatureLifespanHours(DEFAULT_MONSTER_DNA).toFixed(2)} h`,
+    );
+    expect(container).not.toHaveTextContent("Elder");
+  });
+
+  it("marks the last quarter of life as elder", () => {
+    const { container } = withI18n(
+      <MonsterAge
+        dna={DEFAULT_MONSTER_DNA}
+        seconds={getCreatureLifespanHours(DEFAULT_MONSTER_DNA) * 3600 * 0.8}
+      />,
+    );
+    expect(container).toHaveTextContent("Elder");
+    expect(container.querySelector(".monster-age-old")).not.toBeNull();
+  });
 });
 
 describe("connection indicator", () => {

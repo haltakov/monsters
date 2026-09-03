@@ -68,7 +68,8 @@ const en = {
   "legal.navigation": "Legal information",
   "legal.privacy": "Privacy policy",
   "legal.terms": "Terms of use",
-  "legal.notice": "By playing or signing in, you agree to the terms. Read how we handle your data.",
+  "legal.notice":
+    "By playing or signing in, you agree to the terms. Read how we handle your data.",
   "loading.island": "Growing the island…",
   "loading.creator": "Opening the DNA lab…",
   "creator.kicker": "DNA LAB · SPECIMEN 001",
@@ -291,6 +292,17 @@ const en = {
   "game.exitIsland": "Leave island",
   "game.energy": "ENERGY",
   "game.health": "HEALTH",
+  "game.age": "Age",
+  "game.lifespan": "Lifespan",
+  "game.elder": "Elder",
+  "game.ageHelp":
+    "Age / DNA lifespan in hours. Movement gradually slows during the final quarter of life.",
+  "game.oldAge": "OLD AGE",
+  "game.diedOfAge": "{{name}} reached the end of its natural life.",
+  "game.worldReset":
+    "A fresh day on the island. Create a monster or spawn a copy from your history.",
+  "game.worldResetHelp":
+    "The island resets daily at 00:00 UTC. Accounts and monster history are kept.",
   "game.ecosystem": "ECOSYSTEM LIVE",
   "game.living": "living",
   "game.eggs": "eggs",
@@ -505,7 +517,8 @@ const bg: Record<TranslationKey, string> = {
   "legal.navigation": "Правна информация",
   "legal.privacy": "Поверителност",
   "legal.terms": "Условия за ползване",
-  "legal.notice": "Като играеш или влизаш, приемаш условията. Прочети как обработваме данните ти.",
+  "legal.notice":
+    "Като играеш или влизаш, приемаш условията. Прочети как обработваме данните ти.",
   "loading.island": "Островът расте…",
   "loading.creator": "DNA лабораторията се отваря…",
   "creator.kicker": "DNA ЛАБОРАТОРИЯ · ЕКЗЕМПЛЯР 001",
@@ -726,6 +739,17 @@ const bg: Record<TranslationKey, string> = {
   "game.exitIsland": "Напусни острова",
   "game.energy": "ЕНЕРГИЯ",
   "game.health": "ЗДРАВЕ",
+  "game.age": "Възраст",
+  "game.lifespan": "Продължителност на живота",
+  "game.elder": "Възрастно",
+  "game.ageHelp":
+    "Възраст / живот според ДНК в часове. Движението постепенно се забавя през последната четвърт от живота.",
+  "game.oldAge": "СТАРОСТ",
+  "game.diedOfAge": "{{name}} достигна края на естествения си живот.",
+  "game.worldReset":
+    "Нов ден на острова. Създай чудовище или копие от историята си.",
+  "game.worldResetHelp":
+    "Островът се обновява всеки ден в 00:00 UTC. Профилите и историята се запазват.",
   "game.ecosystem": "ЖИВА ЕКОСИСТЕМА",
   "game.living": "живи",
   "game.eggs": "яйца",
@@ -941,7 +965,8 @@ const de: Record<TranslationKey, string> = {
   "legal.navigation": "Rechtliche Informationen",
   "legal.privacy": "Datenschutz",
   "legal.terms": "Nutzungsbedingungen",
-  "legal.notice": "Mit dem Spielen oder Anmelden akzeptierst du die Bedingungen. Lies, wie wir deine Daten verarbeiten.",
+  "legal.notice":
+    "Mit dem Spielen oder Anmelden akzeptierst du die Bedingungen. Lies, wie wir deine Daten verarbeiten.",
   "loading.island": "Die Insel wächst…",
   "loading.creator": "Das DNA-Labor öffnet…",
   "creator.kicker": "DNA-LABOR · EXEMPLAR 001",
@@ -1164,6 +1189,18 @@ const de: Record<TranslationKey, string> = {
   "game.exitIsland": "Insel verlassen",
   "game.energy": "ENERGIE",
   "game.health": "GESUNDHEIT",
+  "game.age": "Alter",
+  "game.lifespan": "Lebensdauer",
+  "game.elder": "Alt",
+  "game.ageHelp":
+    "Alter / DNA-Lebensdauer in Stunden. Im letzten Lebensviertel wird die Bewegung allmählich langsamer.",
+  "game.oldAge": "ALTERSSCHWÄCHE",
+  "game.diedOfAge":
+    "{{name}} hat das Ende seiner natürlichen Lebensdauer erreicht.",
+  "game.worldReset":
+    "Ein neuer Tag auf der Insel. Erstelle ein Monster oder eine Kopie aus deinem Verlauf.",
+  "game.worldResetHelp":
+    "Die Insel wird täglich um 00:00 UTC zurückgesetzt. Konten und Monsterverlauf bleiben erhalten.",
   "game.ecosystem": "ÖKOSYSTEM LIVE",
   "game.living": "lebendig",
   "game.eggs": "Eier",

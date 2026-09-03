@@ -43,6 +43,7 @@ export type SimEntity = {
   yaw: number;
   energy: number;
   health: number;
+  /** Seconds alive; persisted across restarts. Eggs start at zero on hatching. */
   age: number;
   intent: SimIntent;
   targetId: string | null;
@@ -246,7 +247,8 @@ export type SimEvent =
       tick: number;
       entityId: string;
       name: string;
-      cause: "energy" | "health";
+      cause: "energy" | "health" | "age";
+      ageSeconds?: number;
       killerId: string | null;
       ownerGuestId: string | null;
     }
@@ -272,6 +274,7 @@ export type SimEvent =
       name: string;
       ownerGuestId: string | null;
     }
+  | { type: "worldReset"; tick: number; reason: "daily" | "manual" }
   | { type: "error"; tick: number; message: string; entityId?: string };
 
 export type SimEventType = SimEvent["type"];

@@ -25,6 +25,8 @@ import {
   type MonsterSummary,
 } from "@/lib/net/api-client";
 import { useI18n } from "@/components/i18n";
+import { decodeMonsterDna } from "@monsters/game-core";
+import { MonsterAge } from "@/components/game/monster-age";
 
 type AuthConfiguration = { google: boolean; magicLink: boolean };
 type AccountUser = {
@@ -494,6 +496,10 @@ export function AccountHub({
                         Generation {lineage.monster.generation} ·{" "}
                         {lineage.monster.species}
                       </p>
+                      <MonsterAge
+                        dna={decodeMonsterDna(lineage.monster.dna)}
+                        seconds={lineage.monster.ageSeconds}
+                      />
                     </div>
                     <OriginBadge origin={lineage.monster.originType} />
                   </div>
@@ -565,6 +571,10 @@ export function AccountHub({
                             </span>
                             <div>
                               <strong>{monster.name}</strong>
+                              <MonsterAge
+                                dna={decodeMonsterDna(monster.dna)}
+                                seconds={monster.ageSeconds}
+                              />
                               <small>
                                 {monster.species} ·{" "}
                                 {monster.alive
@@ -663,6 +673,10 @@ export function AccountHub({
                               ? t("account.alive")
                               : t("account.dead")}
                           </small>
+                          <MonsterAge
+                            dna={decodeMonsterDna(monster.dna)}
+                            seconds={monster.ageSeconds}
+                          />
                         </div>
                         <OriginBadge origin={monster.originType} />
                         <ChevronRight size={17} />

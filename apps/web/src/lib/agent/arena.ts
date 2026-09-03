@@ -1,6 +1,8 @@
 import {
   EDIBLES,
   PREY,
+  getCreatureLifespanHours,
+  getAgeSpeedMultiplier,
   type MonsterDna,
   type NetEntity,
   type WorldPopulation,
@@ -197,6 +199,9 @@ export function observeArena(input: {
       health: input.self.health,
       energy: input.self.energy,
       ageSeconds: input.self.age,
+      ageHours: input.self.age / 3600,
+      maxAgeHours: getCreatureLifespanHours(input.selfDna),
+      ageSpeedMultiplier: getAgeSpeedMultiplier(input.selfDna, input.self.age),
       locomotion: input.self.loco,
       generation: input.self.generation,
       alive: input.self.alive,

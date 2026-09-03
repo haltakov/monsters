@@ -14,6 +14,7 @@ import {
   readPopulation,
   stepWorld,
   TICK_SECONDS,
+  INITIAL_WILD_MONSTERS,
   type FixedStepAccumulator,
   type SimCommand,
   type SimEvent,
@@ -44,6 +45,7 @@ export type RunnerStatus = {
   simulatedSeconds: number;
   lastTickAt: string | null;
   lastCheckpointAt: string | null;
+  nextResetAt: string | null;
   connections: number;
   entities: number;
   livingEntities: number;
@@ -85,6 +87,8 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
   private connectionCount = 0;
   private mode: RunnerMode = 'starting';
   private stopping = false;
+  private resetRetryAt = 0;
+  private dailyReset: Promise<unknown> | null = null;
 
   constructor(
     private readonly persistence: WorldPersistenceService,
@@ -140,6 +144,7 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
       simulatedSeconds: this.state ? Math.round(this.state.time) : 0,
       lastTickAt: this.lastTickAt?.toISOString() ?? null,
       lastCheckpointAt: this.lastCheckpointAt?.toISOString() ?? null,
+      nextResetAt: this.world?.nextResetAt?.toISOString() ?? null,
       connections: this.connectionCount,
       entities: this.state?.entities.length ?? 0,
       livingEntities: population.living,
@@ -160,6 +165,7 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
   async resetWorld(options: {
     initialPopulation: number;
     terrestrialOnly: boolean;
+    preserveHistory?: boolean;
   }) {
     if (
       this.mode !== 'running' ||
@@ -177,18 +183,38 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
 
     try {
       await this.persistence.drain();
+      if (!this.lock.isOwned || this.stopping || !this.state) {
+        throw new Error('World ownership lost before reset');
+      }
       const reset = await this.persistence.resetWorld(this.world, {
         seed: randomInt(1, 0x7fffffff),
         initialPopulation: options.initialPopulation,
         terrestrialOnly: options.terrestrialOnly,
+        preserveHistory: options.preserveHistory,
+        previousState: this.state,
       });
       this.world = reset.world;
       this.state = reset.state;
       this.lastCheckpointAt = reset.simulatedAt;
       this.lastTickAt = reset.simulatedAt;
       this.lastTickDurationMs = 0;
+      if (!this.lock.isOwned || this.stopping)
+        return {
+          seed: this.world.seed,
+          population: this.state.entities.length,
+          terrestrialOnly: options.terrestrialOnly,
+        };
       this.start();
-      this.publish([], this.state);
+      this.publish(
+        [
+          {
+            type: 'worldReset',
+            tick: 0,
+            reason: options.preserveHistory ? 'daily' : 'manual',
+          },
+        ],
+        this.state,
+      );
       this.logger.warn(
         `Reset world "${this.world.slug}" with ${this.state.entities.length} terrestrial monsters`,
       );
@@ -199,8 +225,10 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
       };
     } catch (error) {
       // Reload whichever complete transaction is durable, then resume service.
-      await this.load();
-      this.start();
+      if (this.lock.isOwned && !this.stopping) {
+        await this.load(false);
+        this.start();
+      }
       throw error;
     }
   }
@@ -254,9 +282,30 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
-  private async load() {
+  private async load(checkDailyReset = true) {
+    // Another process may have reset the world while this one was on standby.
+    this.world = await this.persistence.findWorldBySlug(this.world!.slug);
     const world = this.world!;
     const checkpoint = await this.persistence.loadCheckpoint(world.id);
+    if (!this.lock.isOwned || this.stopping)
+      throw new Error('World ownership lost during load');
+    if (
+      checkDailyReset &&
+      world.nextResetAt &&
+      world.nextResetAt.getTime() <= Date.now()
+    ) {
+      const reset = await this.persistence.resetWorld(world, {
+        seed: randomInt(1, 0x7fffffff),
+        initialPopulation: INITIAL_WILD_MONSTERS,
+        terrestrialOnly: true,
+        preserveHistory: true,
+        previousState: checkpoint?.state,
+      });
+      this.world = reset.world;
+      this.state = reset.state;
+      this.lastCheckpointAt = reset.simulatedAt;
+      return;
+    }
     if (!checkpoint) {
       const created = await this.persistence.createInitialCheckpoint(
         world,
@@ -296,6 +345,7 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
   }
 
   private start() {
+    if (this.stopping || !this.lock.isOwned) return;
     this.mode = 'running';
     this.accumulator = createAccumulator(TICK_SECONDS);
     this.lastRealTime = process.hrtime.bigint();
@@ -307,7 +357,8 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
   }
 
   private handleLockLost() {
-    if (this.mode !== 'running') return;
+    if (this.stopping || this.mode === 'stopped' || this.mode === 'disabled')
+      return;
     this.logger.error('World ownership lost; pausing the simulation');
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
@@ -319,6 +370,27 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
 
   private onTimer() {
     if (this.mode !== 'running' || !this.state || !this.world) return;
+    if (
+      this.world.nextResetAt &&
+      Date.now() >= this.world.nextResetAt.getTime() &&
+      Date.now() >= this.resetRetryAt
+    ) {
+      this.dailyReset = this.resetWorld({
+        initialPopulation: INITIAL_WILD_MONSTERS,
+        terrestrialOnly: true,
+        preserveHistory: true,
+      })
+        .catch((error: unknown) => {
+          this.resetRetryAt = Date.now() + 30_000;
+          this.logger.error(
+            `Daily reset failed; retrying in 30s: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        })
+        .finally(() => {
+          this.dailyReset = null;
+        });
+      return;
+    }
     const startedAt = process.hrtime.bigint();
     const elapsedSeconds = Number(startedAt - this.lastRealTime) / 1e9;
     this.lastRealTime = startedAt;
@@ -416,6 +488,7 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
 
+    await this.dailyReset;
     if (this.mode === 'running' && this.world && this.state) {
       try {
         await this.persistence.checkpoint(this.world, this.state, new Date());

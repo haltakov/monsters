@@ -12,6 +12,7 @@ export type MonsterSummary = {
   name: string;
   species: string;
   dna: string;
+  ageSeconds?: number;
   generation: number;
   parentIds: [string, string] | null;
   mutations: number;

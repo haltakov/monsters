@@ -167,7 +167,12 @@ export function buildDelta(
   };
 }
 
-const GLOBAL_EVENT_TYPES = new Set<SimEvent['type']>(['birth', 'death', 'egg']);
+const GLOBAL_EVENT_TYPES = new Set<SimEvent['type']>([
+  'birth',
+  'death',
+  'egg',
+  'worldReset',
+]);
 
 /** A connection sees global lifecycle events plus everything it is part of. */
 function filterEvents(

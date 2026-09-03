@@ -11,6 +11,7 @@ import {
 } from '@monsters/game-core';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { nextUtcMidnight } from './daily-reset';
 import {
   getSeedPopulation,
   PUBLIC_WORLD_NAME,
@@ -27,6 +28,7 @@ export type WorldRecord = {
   status: string;
   currentTick: number;
   simulatedAt: Date;
+  nextResetAt: Date | null;
   createdAt: Date;
 };
 
@@ -34,6 +36,10 @@ export type ResetWorldOptions = {
   seed: number;
   initialPopulation: number;
   terrestrialOnly: boolean;
+  /** Daily resets archive the outgoing population, never erase player history. */
+  preserveHistory?: boolean;
+  previousState?: WorldSimState;
+  now?: Date;
 };
 
 /** Keep the event log useful without letting it grow forever. */
@@ -54,6 +60,7 @@ export function monsterRowData(entity: SimEntity, worldId: string) {
       yaw: entity.yaw,
     } as unknown as Prisma.InputJsonValue,
     energy: Math.round(entity.energy),
+    ageSeconds: entity.age,
     worldId,
     ownerId: entity.ownerGuestId,
     originType: entity.parentIds
@@ -91,7 +98,17 @@ export class WorldPersistenceService {
     const existing = await this.prisma.world.findUnique({
       where: { slug: PUBLIC_WORLD_SLUG },
     });
-    if (existing) return existing;
+    if (existing) {
+      if (existing.nextResetAt) return existing;
+      // First rollout starts at the next midnight, not an immediate reset.
+      await this.prisma.world.updateMany({
+        where: { id: existing.id, nextResetAt: null },
+        data: { nextResetAt: nextUtcMidnight() },
+      });
+      return await this.prisma.world.findUniqueOrThrow({
+        where: { id: existing.id },
+      });
+    }
     try {
       return await this.prisma.world.create({
         data: {
@@ -101,6 +118,7 @@ export class WorldPersistenceService {
           isPublic: true,
           status: 'active',
           settings: {},
+          nextResetAt: nextUtcMidnight(),
         },
       });
     } catch {
@@ -183,11 +201,12 @@ export class WorldPersistenceService {
   }
 
   /**
-   * Permanently replaces one world's simulation and relational history while
-   * preserving accounts, guest devices and their memberships.
+   * Replaces one world's simulation atomically. Daily resets archive monsters
+   * and preserve lineage/history; explicit admin resets may erase that history.
+   * Accounts, guest devices and memberships are always preserved.
    */
   resetWorld(world: WorldRecord, options: ResetWorldOptions) {
-    const now = new Date();
+    const now = options.now ?? new Date();
     const state = createWorldState({
       seed: options.seed,
       idPrefix: `${world.slug}:reset-${options.seed}:`,
@@ -195,6 +214,11 @@ export class WorldPersistenceService {
       terrestrialOnly: options.terrestrialOnly,
     });
     const serialized = serializeWorldState(state) as Prisma.InputJsonValue;
+    const ages =
+      options.previousState?.entities.map((entity) => ({
+        id: entity.id,
+        ageSeconds: entity.age,
+      })) ?? [];
 
     return this.enqueue(async () => {
       const updatedWorld = await this.prisma.$transaction(async (tx) => {
@@ -202,9 +226,24 @@ export class WorldPersistenceService {
           where: { worldId: world.id },
           data: { selectedMonsterId: null },
         });
-        await tx.worldEvent.deleteMany({ where: { worldId: world.id } });
+        if (!options.preserveHistory) {
+          await tx.worldEvent.deleteMany({ where: { worldId: world.id } });
+        }
         await tx.worldSnapshot.deleteMany({ where: { worldId: world.id } });
-        await tx.monster.deleteMany({ where: { worldId: world.id } });
+        if (options.preserveHistory) {
+          await tx.monster.updateMany({
+            where: { worldId: world.id, alive: true },
+            data: { alive: false, diedAt: now },
+          });
+          for (const entity of ages) {
+            await tx.monster.updateMany({
+              where: { id: entity.id, worldId: world.id },
+              data: { ageSeconds: entity.ageSeconds },
+            });
+          }
+        } else {
+          await tx.monster.deleteMany({ where: { worldId: world.id } });
+        }
         await tx.monster.createMany({
           data: state.entities.map((entity) => ({
             id: entity.id,
@@ -227,6 +266,7 @@ export class WorldPersistenceService {
             status: 'active',
             currentTick: 0,
             simulatedAt: now,
+            nextResetAt: nextUtcMidnight(now),
           },
         });
         await tx.worldEvent.create({
@@ -238,6 +278,7 @@ export class WorldPersistenceService {
               entities: state.entities.length,
               seed: options.seed,
               terrestrialOnly: options.terrestrialOnly,
+              reason: options.preserveHistory ? 'daily' : 'manual',
             },
           },
         });
@@ -264,6 +305,7 @@ export class WorldPersistenceService {
       .map((entity) => ({
         id: entity.id,
         energy: Math.round(entity.energy),
+        ageSeconds: entity.age,
         alive: entity.alive,
         position: {
           x: entity.x,
@@ -300,6 +342,7 @@ export class WorldPersistenceService {
             where: { id: entity.id },
             data: {
               energy: entity.energy,
+              ageSeconds: entity.ageSeconds,
               alive: entity.alive,
               position: entity.position,
             },
@@ -377,7 +420,12 @@ export class WorldPersistenceService {
           operations.push(
             this.prisma.monster.updateMany({
               where: { id: event.entityId },
-              data: { alive: false, diedAt: simulatedAt, energy: 0 },
+              data: {
+                alive: false,
+                diedAt: simulatedAt,
+                energy: 0,
+                ageSeconds: event.ageSeconds,
+              },
             }),
           );
         }

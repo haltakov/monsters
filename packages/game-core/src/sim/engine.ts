@@ -98,6 +98,7 @@ import type {
   WorldSettings,
   WorldSimState,
 } from "./types";
+import { getAgeSpeedMultiplier, getCreatureMaxAge } from "./aging";
 
 export const WORLD_STATE_VERSION = 1;
 
@@ -418,7 +419,7 @@ function regrowResources(state: WorldSimState) {
 function killEntity(
   state: WorldSimState,
   entity: SimEntity,
-  cause: "energy" | "health",
+  cause: "energy" | "health" | "age",
   killerId: string | null,
   events: SimEvent[],
 ) {
@@ -436,6 +437,7 @@ function killEntity(
     entityId: entity.id,
     name: entity.name,
     cause,
+    ageSeconds: entity.age,
     killerId,
     ownerGuestId: entity.ownerGuestId,
   });
@@ -601,7 +603,9 @@ export function applyPlayerMovement(entity: SimEntity, dt: number) {
             : PLAYER_FLY_SPEED
           : sprinting
             ? PLAYER_SPRINT_SPEED
-            : PLAYER_WALK_SPEED) * dnaSpeedMultiplier;
+            : PLAYER_WALK_SPEED) *
+        dnaSpeedMultiplier *
+        getAgeSpeedMultiplier(entity.dna, entity.age);
       const nextX = entity.x + velocityX * speed * dt;
       const nextZ = entity.z + velocityZ * speed * dt;
       const movementCanSwim = flying || canSwim;
@@ -1506,7 +1510,10 @@ function updateAiEntity(
           : entity.intent === "rest"
             ? 0.2
             : 0.82;
-    const speed = getCreatureSpeed(entity.dna) * speedScale;
+    const speed =
+      getCreatureSpeed(entity.dna) *
+      speedScale *
+      getAgeSpeedMultiplier(entity.dna, entity.age);
     const moveX = (steerX / length) * speed * dt;
     const moveZ = (steerZ / length) * speed * dt;
     const nextX = entity.x + moveX;
@@ -1620,6 +1627,24 @@ function removeExpiredBodies(state: WorldSimState) {
   );
 }
 
+/** Also used to age through downtime outside the bounded AI replay budget. */
+export function ageWorldEntities(
+  state: WorldSimState,
+  seconds: number,
+  events: SimEvent[],
+) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return;
+  for (const entity of state.entities) {
+    if (!entity.alive) continue;
+    entity.age += seconds;
+    const maxAge = getCreatureMaxAge(entity.dna);
+    if (entity.age >= maxAge) {
+      entity.age = maxAge;
+      killEntity(state, entity, "age", null, events);
+    }
+  }
+}
+
 /**
  * Advances the world by one explicit fixed step. The state object is mutated
  * in place; callers that need history should clone it first. The function is
@@ -1634,6 +1659,9 @@ export function stepWorld(
   state.tick += 1;
   state.time += dt;
 
+  // Expired creatures cannot eat, breed or attack on their final tick.
+  ageWorldEntities(state, dt, events);
+
   for (const command of commands) applyCommand(state, command, events);
   releaseExpiredControl(state, events);
   expirePairRequests(state, events);
@@ -1643,7 +1671,6 @@ export function stepWorld(
   for (const entity of living) {
     // A monster earlier in this same step may have killed this one.
     if (!entity.alive) continue;
-    entity.age += dt;
 
     const recentlyHurt =
       state.time - entity.lastAttackedAt < HEALTH_REGEN_DELAY_SECONDS;
