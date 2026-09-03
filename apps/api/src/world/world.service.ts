@@ -613,6 +613,20 @@ export class WorldService {
     });
   }
 
+  async adminKillMonster(monsterId: string, adminUserId: string) {
+    const world = await this.requireWorld();
+    const monster = await this.prisma.monster.findFirst({
+      where: { id: monsterId, worldId: world.id },
+    });
+    if (!monster) throw new NotFoundException('Monster not found');
+    // Even retries go through the runner: the database can briefly lag a live transition.
+    await this.runner.killMonster(monster, adminUserId);
+    const updated = await this.prisma.monster.findUniqueOrThrow({
+      where: { id: monsterId },
+    });
+    return this.toMonsterView(updated);
+  }
+
   private spawnDurableMonster(monster: MonsterRow) {
     if (!this.runner.isRunning) {
       throw new ServiceUnavailableException(

@@ -419,7 +419,7 @@ function regrowResources(state: WorldSimState) {
 function killEntity(
   state: WorldSimState,
   entity: SimEntity,
-  cause: "energy" | "health" | "age",
+  cause: "energy" | "health" | "age" | "admin",
   killerId: string | null,
   events: SimEvent[],
 ) {
@@ -441,6 +441,22 @@ function killEntity(
     killerId,
     ownerGuestId: entity.ownerGuestId,
   });
+}
+
+/** Server-authorized keeper action; deliberately not part of player commands. */
+export function killWorldMonster(
+  state: WorldSimState,
+  entityId: string,
+  adminUserId: string,
+): SimEvent[] {
+  const entity = findEntity(state, entityId);
+  if (!entity?.alive) return [];
+  const events: SimEvent[] = [];
+  killEntity(state, entity, "admin", null, events);
+  const death = events[0];
+  if (death.type === "death") death.adminUserId = adminUserId;
+  expirePairRequests(state, events);
+  return events;
 }
 
 function layEgg(

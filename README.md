@@ -120,6 +120,12 @@ Administrators are deliberately not assignable through the application. Mark one
 UPDATE "User" SET "role" = 'admin' WHERE "email" = 'you@example.com';
 ```
 
+In **Island keeper**, admins can kill any living monster (including player-controlled
+ones) after confirming its name. This preserves ownership, DNA and lineage. The
+admin-only `POST /api/admin/monsters/:id/kill` endpoint commits the death, actor ID
+and world snapshot together before notifying connected players; retries do not
+create additional deaths. It also supports saved monsters not yet spawned.
+
 ## Verification
 
 ### WebMCP action safety

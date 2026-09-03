@@ -247,7 +247,8 @@ export type SimEvent =
       tick: number;
       entityId: string;
       name: string;
-      cause: "energy" | "health" | "age";
+      cause: "energy" | "health" | "age" | "admin";
+      adminUserId?: string;
       ageSeconds?: number;
       killerId: string | null;
       ownerGuestId: string | null;

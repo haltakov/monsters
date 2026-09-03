@@ -257,4 +257,12 @@ export const api = {
         confirmation: "RESET MONSTER ISLAND",
       },
     }),
+  adminKillMonster: (id: string, options: RequestOptions = {}) =>
+    apiRequest<{ monster: MonsterSummary }>(
+      `/api/admin/monsters/${encodeURIComponent(id)}/kill`,
+      {
+        ...options,
+        method: "POST",
+      },
+    ),
 };

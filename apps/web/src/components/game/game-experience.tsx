@@ -411,9 +411,9 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   const [matingCooldown, setMatingCooldown] = useState(0);
   const [locomotionMode, setLocomotionMode] = useState<LocomotionMode>("land");
   const [isDead, setIsDead] = useState(false);
-  const [deathReason, setDeathReason] = useState<"energy" | "health" | "age">(
-    "energy",
-  );
+  const [deathReason, setDeathReason] = useState<
+    "energy" | "health" | "age" | "admin"
+  >("energy");
   const [population, setPopulation] = useState<WorldPopulation>({
     living: 0,
     eggs: 0,
@@ -841,11 +841,13 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               setDeathReason(event.cause);
               setStatus({
                 key:
-                  event.cause === "age"
-                    ? "game.diedOfAge"
-                    : event.cause === "energy"
-                      ? "game.ranOut"
-                      : "game.lostHealth",
+                  event.cause === "admin"
+                    ? "game.killedByKeeper"
+                    : event.cause === "age"
+                      ? "game.diedOfAge"
+                      : event.cause === "energy"
+                        ? "game.ranOut"
+                        : "game.lostHealth",
                 values: { name: event.name },
               });
               session.markMonsterDead(event.entityId);
@@ -2627,11 +2629,13 @@ function ConnectedGame({ session }: { session: SessionApi }) {
         {isDead && (
           <div className="death-card" role="dialog" aria-modal="true">
             <span>
-              {deathReason === "age"
-                ? t("game.oldAge")
-                : deathReason === "energy"
-                  ? t("game.outOfEnergy")
-                  : t("game.outOfHealth")}
+              {deathReason === "admin"
+                ? t("game.keeperAction")
+                : deathReason === "age"
+                  ? t("game.oldAge")
+                  : deathReason === "energy"
+                    ? t("game.outOfEnergy")
+                    : t("game.outOfHealth")}
             </span>
             <strong>{t("game.collapsed", { name: monsterName })}</strong>
             <p>{t("game.monsterDied", { name: monsterName })}</p>

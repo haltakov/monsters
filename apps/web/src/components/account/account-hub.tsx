@@ -27,6 +27,7 @@ import { useI18n } from "@/components/i18n";
 import { decodeMonsterDna } from "@monsters/game-core";
 import { MonsterAge } from "@/components/game/monster-age";
 import { MonsterPortrait, MonsterPortraitProvider } from "./monster-portrait";
+import { AdminMonsterActions } from "./admin-monster-actions";
 
 type AuthConfiguration = { google: boolean; magicLink: boolean };
 type AccountUser = {
@@ -247,6 +248,18 @@ export function AccountHub({
       setAdminName("Keeper's creature");
       setAdminDna(selectedDna);
       await loadAdmin();
+    });
+
+  const killAdminMonster = (monster: AdminMonster) =>
+    run(async () => {
+      const result = await api.adminKillMonster(monster.id);
+      setAdminMonsters((current) =>
+        current.map((entry) =>
+          entry.id === monster.id ? { ...entry, ...result.monster } : entry,
+        ),
+      );
+      await onRefresh();
+      setMessage(t("account.killComplete", { name: monster.name }));
     });
 
   const resetAdminWorld = () => {
@@ -793,21 +806,39 @@ export function AccountHub({
                                     ? "Local player"
                                     : "Simulation"}
                               </span>
+                              <span>
+                                {t(
+                                  monster.alive
+                                    ? "account.alive"
+                                    : "account.dead",
+                                )}
+                              </span>
+                              <OriginBadge origin={monster.originType} />
                             </div>
                           </button>
-                          <OriginBadge origin={monster.originType} />
-                          <button
-                            type="button"
-                            onClick={() =>
+                          <AdminMonsterActions
+                            monster={monster}
+                            busy={busy}
+                            onKill={() => void killAdminMonster(monster)}
+                            onSpawn={() =>
                               void run(async () => {
-                                await api.adminSpawnMonster(monster.id);
+                                const result = await api.adminSpawnMonster(
+                                  monster.id,
+                                );
+                                setAdminMonsters((current) =>
+                                  current.map((entry) =>
+                                    entry.id === monster.id
+                                      ? { ...entry, ...result.monster }
+                                      : entry,
+                                  ),
+                                );
+                                await onRefresh();
                               })
                             }
-                          >
-                            <Play size={13} /> Spawn
-                          </button>
+                          />
                           <button
                             type="button"
+                            className="admin-monster-lineage"
                             aria-label={`View lineage for ${monster.name}`}
                             onClick={() => {
                               setTab("family");

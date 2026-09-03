@@ -3,13 +3,16 @@ import {
   Logger,
   OnApplicationShutdown,
   OnModuleInit,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomInt } from 'node:crypto';
 import {
   accumulate,
   catchUpWorld,
+  cloneWorldState,
   createAccumulator,
   isCriticalEvent,
+  killWorldMonster,
   MAX_TICKS_PER_UPDATE,
   readPopulation,
   stepWorld,
@@ -89,6 +92,7 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
   private stopping = false;
   private resetRetryAt = 0;
   private dailyReset: Promise<unknown> | null = null;
+  private adminMutation: Promise<void> | null = null;
 
   constructor(
     private readonly persistence: WorldPersistenceService,
@@ -159,6 +163,106 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     if (this.mode !== 'running') return false;
     this.commands.push(command);
     return true;
+  }
+
+  /** Commit the death and recovery snapshot before exposing it to connected clients. */
+  killMonster(
+    monster: {
+      id: string;
+      name: string;
+      alive: boolean;
+      ageSeconds: number;
+      ownerId: string | null;
+    },
+    adminUserId: string,
+  ): Promise<void> {
+    if (
+      !this.isRunning ||
+      !this.lock.isOwned ||
+      !this.state ||
+      !this.world ||
+      this.stopping
+    ) {
+      throw new ServiceUnavailableException(
+        'This API instance does not currently own the world',
+      );
+    }
+    const operation = this.commitAdminDeath(monster, adminUserId);
+    this.adminMutation = operation;
+    return operation.finally(() => {
+      if (this.adminMutation === operation) this.adminMutation = null;
+    });
+  }
+
+  private async commitAdminDeath(
+    monster: {
+      id: string;
+      name: string;
+      alive: boolean;
+      ageSeconds: number;
+      ownerId: string | null;
+    },
+    adminUserId: string,
+  ) {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.mode = 'starting';
+    try {
+      await this.persistence.drain();
+      if (!this.lock.isOwned || !this.state || !this.world || this.stopping) {
+        throw new ServiceUnavailableException(
+          'World ownership lost before the keeper action',
+        );
+      }
+      const next = cloneWorldState(this.state);
+      const entity = next.entities.find(
+        (candidate) => candidate.id === monster.id,
+      );
+      next.tick += 1;
+      const events = killWorldMonster(next, monster.id, adminUserId);
+      // Also support saved monsters not yet spawned, without spawning them just to kill them.
+      if (!entity && monster.alive) {
+        events.push({
+          type: 'death',
+          tick: next.tick,
+          entityId: monster.id,
+          name: monster.name,
+          cause: 'admin',
+          adminUserId,
+          killerId: null,
+          ownerGuestId: monster.ownerId,
+          ageSeconds: monster.ageSeconds,
+        });
+      }
+      if (events.length) {
+        const at = new Date();
+        await this.persistence.commitCriticalEvents(
+          this.world,
+          next,
+          events,
+          at,
+        );
+        if (!this.lock.isOwned || !this.state) {
+          throw new ServiceUnavailableException(
+            'World ownership changed during the keeper action',
+          );
+        }
+        this.state = next;
+        this.lastCheckpointAt = at;
+        this.lastTickAt = at;
+        // A previously queued spawn must not bring this monster back next tick.
+        this.commands = this.commands.filter((command) =>
+          command.type === 'spawn'
+            ? command.entity.id !== monster.id
+            : 'entityId' in command
+              ? command.entityId !== monster.id
+              : true,
+        );
+        this.publish(events, next);
+      }
+    } finally {
+      if (this.lock.isOwned && this.state && !this.stopping) this.start();
+    }
   }
 
   /** Atomically replaces the live world and publishes its fresh state. */
@@ -489,6 +593,7 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     this.timer = null;
 
     await this.dailyReset;
+    await this.adminMutation?.catch(() => undefined);
     if (this.mode === 'running' && this.world && this.state) {
       try {
         await this.persistence.checkpoint(this.world, this.state, new Date());

@@ -1296,7 +1296,7 @@ button {
 }
 .admin-monster-list article {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
   padding: 7px 8px;
@@ -1341,11 +1341,42 @@ button {
 .admin-monster-main .monster-portrait {
   width: 64px;
 }
-.admin-monster-list article > button:nth-last-child(2) {
+.admin-monster-actions {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.admin-monster-list .admin-monster-actions button {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
+  gap: 5px;
+  min-height: 36px;
+  border: 1px solid var(--rim);
+  border-radius: var(--r-sm);
   font-weight: 800;
+}
+.admin-monster-list .admin-kill-monster {
+  --fill: #fff0e9;
+  --fill-hi: #ffd5ca;
+  background: var(--danger-tint);
+  color: #862e23;
+}
+.admin-monster-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.admin-monster-lineage {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+@media (pointer: coarse) {
+  .admin-monster-list .admin-monster-actions button {
+    min-height: 44px;
+  }
 }
 .admin-world-reset {
   grid-column: 1 / -1;
@@ -3565,7 +3596,7 @@ button[data-gene-option="avian"] .gene-silhouette::after {
     grid-column: span 2;
   }
   .admin-monster-list article {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
   .admin-monster-list article > .account-origin {
     display: none;

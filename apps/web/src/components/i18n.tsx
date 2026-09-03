@@ -306,6 +306,8 @@ const en = {
   "game.ageHelp":
     "Age / DNA lifespan in hours. Movement gradually slows during the final quarter of life.",
   "game.oldAge": "OLD AGE",
+  "game.keeperAction": "ISLAND KEEPER ACTION",
+  "game.killedByKeeper": "{{name}} was killed by an island keeper.",
   "game.diedOfAge": "{{name}} reached the end of its natural life.",
   "game.worldReset":
     "A fresh day on the island. Create a monster or spawn a copy from your history.",
@@ -448,6 +450,13 @@ const en = {
   "account.empty": "Create a monster to begin this family record.",
   "account.alive": "alive",
   "account.dead": "dead",
+  "account.spawn": "Spawn",
+  "account.kill": "Kill",
+  "account.killNamed": "Kill {{name}}",
+  "account.killConfirm":
+    "Kill {{name}}? This ends its current life, including if another player controls it. Its history and family tree will be kept.",
+  "account.killComplete":
+    "{{name}} is dead. Its history and family tree have been kept.",
   "account.play": "Play",
   "account.copy": "Spawn copy",
   "account.backHistory": "Back to history",
@@ -761,6 +770,8 @@ const bg: Record<TranslationKey, string> = {
   "game.ageHelp":
     "Възраст / живот според ДНК в часове. Движението постепенно се забавя през последната четвърт от живота.",
   "game.oldAge": "СТАРОСТ",
+  "game.keeperAction": "ДЕЙСТВИЕ НА ПАЗИТЕЛЯ",
+  "game.killedByKeeper": "{{name}} беше убито от пазител на острова.",
   "game.diedOfAge": "{{name}} достигна края на естествения си живот.",
   "game.worldReset":
     "Нов ден на острова. Създай чудовище или копие от историята си.",
@@ -906,6 +917,13 @@ const bg: Record<TranslationKey, string> = {
   "account.empty": "Създай чудовище, за да започнеш семейната история.",
   "account.alive": "живо",
   "account.dead": "мъртво",
+  "account.spawn": "Създай в света",
+  "account.kill": "Убий",
+  "account.killNamed": "Убий {{name}}",
+  "account.killConfirm":
+    "Да убия ли {{name}}? Това прекратява сегашния му живот, дори ако друг играч го управлява. Историята и родословието му ще се запазят.",
+  "account.killComplete":
+    "{{name}} е мъртво. Историята и родословието му са запазени.",
   "account.play": "Играй",
   "account.copy": "Създай копие",
   "account.backHistory": "Назад към историята",
@@ -1219,6 +1237,8 @@ const de: Record<TranslationKey, string> = {
   "game.ageHelp":
     "Alter / DNA-Lebensdauer in Stunden. Im letzten Lebensviertel wird die Bewegung allmählich langsamer.",
   "game.oldAge": "ALTERSSCHWÄCHE",
+  "game.keeperAction": "AKTION DES INSELWÄCHTERS",
+  "game.killedByKeeper": "{{name}} wurde von einem Inselwächter getötet.",
   "game.diedOfAge":
     "{{name}} hat das Ende seiner natürlichen Lebensdauer erreicht.",
   "game.worldReset":
@@ -1372,6 +1392,13 @@ const de: Record<TranslationKey, string> = {
   "account.empty": "Erstelle ein Monster, um die Familienakte zu beginnen.",
   "account.alive": "lebendig",
   "account.dead": "tot",
+  "account.spawn": "Spawnen",
+  "account.kill": "Töten",
+  "account.killNamed": "{{name}} töten",
+  "account.killConfirm":
+    "{{name}} töten? Das beendet sein aktuelles Leben, auch wenn ein anderer Spieler es steuert. Geschichte und Stammbaum bleiben erhalten.",
+  "account.killComplete":
+    "{{name}} ist tot. Geschichte und Stammbaum bleiben erhalten.",
   "account.play": "Spielen",
   "account.copy": "Kopie erzeugen",
   "account.backHistory": "Zurück zum Verlauf",
