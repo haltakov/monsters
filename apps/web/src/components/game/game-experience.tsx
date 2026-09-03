@@ -35,6 +35,11 @@ import * as THREE from "three";
 import { MonsterMark } from "@/components/monster-mark";
 import { MonsterAge } from "./monster-age";
 import {
+  AgentActionError,
+  throwIfAborted,
+  waitForAgentAction as waitForAnimation,
+} from "@/lib/agent/execution";
+import {
   ACCENT_COLORS,
   ADAPTATIONS,
   BODY_SHAPES,
@@ -1263,12 +1268,30 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   // --- visiting agents / WebMCP -------------------------------------------
 
   const ensureAgentArena = useCallback(() => {
+    if (connection.phase !== "connected")
+      throw new AgentActionError(
+        "disconnected",
+        "The world connection was lost. Wait for reconnection and observe again.",
+      );
+    if (controls.current.paused)
+      throw new AgentActionError(
+        "paused",
+        "Close the creator or game menu before using agent actions.",
+      );
     const self = connection.self?.net;
-    if (!self) throw new Error("Join the world with a living monster first.");
+    if (!self)
+      throw new AgentActionError(
+        "notReady",
+        "Join the world with a living monster first.",
+      );
     if (!self.alive)
-      throw new Error("This monster is dead. Create another one.");
+      throw new AgentActionError(
+        "dead",
+        "This monster is dead. Create another one.",
+      );
     if (!connection.isController) {
-      throw new Error(
+      throw new AgentActionError(
+        "notController",
         "This browser is observing; it does not control the monster.",
       );
     }
@@ -1283,7 +1306,8 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       );
     }
     if (agentArenaRef.current.status === "paused") {
-      throw new Error(
+      throw new AgentActionError(
+        "paused",
         "The human coach paused agent control. Observe the world and wait.",
       );
     }
@@ -1291,7 +1315,8 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       agentArenaRef.current.status === "dead" ||
       agentArenaRef.current.status === "ended"
     ) {
-      throw new Error(
+      throw new AgentActionError(
+        "ended",
         "This arena run has ended. Create a new monster to start again.",
       );
     }
@@ -1316,23 +1341,40 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   }, [connection]);
 
   const waitForAgentAction = useCallback(
-    (durationSeconds: number, signal: AbortSignal) =>
-      new Promise<void>((resolve, reject) => {
-        if (signal.aborted) {
-          reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
-          return;
+    (durationSeconds: number, signal: AbortSignal) => {
+      const entityId = ensureAgentArena().id;
+      return waitForAnimation(durationSeconds, signal, () => {
+        if (ensureAgentArena().id !== entityId)
+          throw new AgentActionError(
+            "interrupted",
+            "The controlled monster changed. Observe before acting again.",
+          );
+        const humanKeys = [
+          "KeyW",
+          "KeyS",
+          "KeyA",
+          "KeyD",
+          "ArrowUp",
+          "ArrowDown",
+          "ArrowLeft",
+          "ArrowRight",
+          "KeyE",
+          "Space",
+          "KeyM",
+        ];
+        if (
+          humanKeys.some((key) => controls.current.keys.has(key)) ||
+          Math.abs(controls.current.move.x) > 0.05 ||
+          Math.abs(controls.current.move.y) > 0.05
+        ) {
+          throw new AgentActionError(
+            "interrupted",
+            "Human movement interrupted this action.",
+          );
         }
-        const timer = window.setTimeout(resolve, durationSeconds * 1000);
-        signal.addEventListener(
-          "abort",
-          () => {
-            window.clearTimeout(timer);
-            reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
-          },
-          { once: true },
-        );
-      }),
-    [],
+      });
+    },
+    [ensureAgentArena],
   );
 
   const runAgentMotion = useCallback(
@@ -1348,6 +1390,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       },
       signal: AbortSignal,
     ) => {
+      throwIfAborted(signal);
       ensureAgentArena();
       const duration = THREE.MathUtils.clamp(motion.duration ?? 1.5, 0.25, 8);
       const commandId = controls.current.agent.commandId + 1;
@@ -1407,6 +1450,8 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       signal: AbortSignal,
       sprint = false,
     ) => {
+      throwIfAborted(signal);
+      ensureAgentArena();
       const from = controls.current.playerPosition;
       const distance = Math.hypot(x - from.x, z - from.z);
       if (distance <= 2.3) return;
@@ -1421,14 +1466,14 @@ function ConnectedGame({ session }: { session: SessionApi }) {
         signal,
       );
     },
-    [headingToward, runAgentMotion],
+    [ensureAgentArena, headingToward, runAgentMotion],
   );
 
   const createSessionMonster = session.createMonster;
+  const agentToolsRef = useRef<WebMcpTool[]>([]);
 
   useEffect(() => {
     if (phase !== "connected") return;
-    const registration = new AbortController();
     const numberEnum = (values: readonly number[]) => ({
       type: "integer",
       enum: [...values],
@@ -1473,12 +1518,19 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             name: { type: "string", minLength: 1, maxLength: 32 },
             dna: {
               type: "string",
+              maxLength: 4096,
               description: "Complete deterministic M6 DNA code.",
             },
             traits: traitSchema,
           },
         },
-        execute: async (input) => {
+        execute: async (input, context) => {
+          throwIfAborted(context.signal);
+          if (agentArenaRef.current.status === "paused")
+            throw new AgentActionError(
+              "paused",
+              "The human coach paused agent control.",
+            );
           const name =
             typeof input.name === "string" && input.name.trim()
               ? input.name.trim().slice(0, 32)
@@ -1499,10 +1551,14 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               } as MonsterDna),
             );
           }
-          const monster = await createSessionMonster({
-            name,
-            dna: encodeMonsterDna(dna),
-          });
+          const monster = await createSessionMonster(
+            {
+              name,
+              dna: encodeMonsterDna(dna),
+            },
+            { signal: context.signal },
+          );
+          throwIfAborted(context.signal);
           controls.current.isDead = false;
           controls.current.paused = false;
           connection.join(monster.id);
@@ -1613,6 +1669,11 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           const hasTarget =
             typeof input.targetX === "number" &&
             typeof input.targetZ === "number";
+          if ((input.targetX !== undefined) !== (input.targetZ !== undefined))
+            throw new AgentActionError(
+              "invalidInput",
+              "Supply both targetX and targetZ.",
+            );
           const x = hasTarget
             ? THREE.MathUtils.clamp(
                 input.targetX as number,
@@ -1693,6 +1754,11 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             typeof input.resourceId === "string"
               ? candidates.find((food) => food.id === input.resourceId)
               : undefined;
+          if (typeof input.resourceId === "string" && !requested)
+            throw new AgentActionError(
+              "targetUnavailable",
+              "That food is depleted, incompatible, or no longer visible. Observe and choose another.",
+            );
           const food =
             requested ??
             candidates.sort(
@@ -1708,6 +1774,8 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             `Approaching ${food.id}`,
             context.signal,
           );
+          throwIfAborted(context.signal);
+          ensureAgentArena();
           updateAgentArena((current) => ({
             ...current,
             lastAction: `Eating ${food.id}`,
@@ -1745,10 +1813,14 @@ function ConnectedGame({ session }: { session: SessionApi }) {
                 Math.hypot(b.x - self.x, b.z - self.z),
             );
           const target =
-            (typeof input.targetId === "string"
+            typeof input.targetId === "string"
               ? targets.find((entity) => entity.id === input.targetId)
-              : undefined) ?? targets[0];
-          if (!target) throw new Error("No living target is visible.");
+              : targets[0];
+          if (!target)
+            throw new AgentActionError(
+              "targetUnavailable",
+              "No matching living target is visible. Observe again.",
+            );
           await approachPoint(
             target.x,
             target.z,
@@ -1756,6 +1828,13 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             context.signal,
             true,
           );
+          throwIfAborted(context.signal);
+          ensureAgentArena();
+          if (!connection.entities.get(target.id)?.net.alive)
+            throw new AgentActionError(
+              "targetUnavailable",
+              "That target is dead or no longer visible. Observe again.",
+            );
           updateAgentArena((current) => ({
             ...current,
             lastAction: `Attacking ${target.name}`,
@@ -1796,11 +1875,10 @@ function ConnectedGame({ session }: { session: SessionApi }) {
                 Math.hypot(b.net.x - self.x, b.net.z - self.z),
             );
           const threat =
-            (typeof input.threatId === "string"
+            typeof input.threatId === "string"
               ? nearby.find((record) => record.net.id === input.threatId)
-              : undefined) ??
-            nearby.find((record) => record.dna.diet === "carnivore") ??
-            nearby[0];
+              : (nearby.find((record) => record.dna.diet === "carnivore") ??
+                nearby[0]);
           if (!threat) throw new Error("No visible threat to flee from.");
           const awayX = self.x - threat.net.x;
           const awayZ = self.z - threat.net.z;
@@ -1881,16 +1959,27 @@ function ConnectedGame({ session }: { session: SessionApi }) {
                 Math.hypot(b.x - self.x, b.z - self.z),
             );
           const partner =
-            (typeof input.partnerId === "string"
+            typeof input.partnerId === "string"
               ? partners.find((entity) => entity.id === input.partnerId)
-              : undefined) ?? partners[0];
-          if (!partner) throw new Error("No possible mate is visible.");
+              : partners[0];
+          if (!partner)
+            throw new AgentActionError(
+              "targetUnavailable",
+              "No matching living mate is visible. Observe again.",
+            );
           await approachPoint(
             partner.x,
             partner.z,
             `Approaching ${partner.name} to breed`,
             context.signal,
           );
+          throwIfAborted(context.signal);
+          ensureAgentArena();
+          if (!connection.entities.get(partner.id)?.net.alive)
+            throw new AgentActionError(
+              "targetUnavailable",
+              "That mate is dead or no longer visible. Observe again.",
+            );
           updateAgentArena((current) => ({
             ...current,
             lastAction: `Pairing with ${partner.name}`,
@@ -1902,8 +1991,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       },
     ];
 
-    void registerWebMcpTools(tools, registration.signal);
-    return () => registration.abort();
+    agentToolsRef.current = tools;
   }, [
     approachPoint,
     connection,
@@ -1918,6 +2006,33 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     updateAgentArena,
     waitForAgentAction,
   ]);
+
+  // Keep tool handles stable across React updates (including monster creation).
+  // Callbacks always dispatch to the latest game state. Only disconnect/unmount
+  // invalidates registration and cancels pending executions.
+  useEffect(() => {
+    if (phase !== "connected") return;
+    const registration = new AbortController();
+    const tools = agentToolsRef.current.map((tool) => ({
+      ...tool,
+      execute: (
+        input: Record<string, unknown>,
+        context: { signal: AbortSignal },
+      ) => {
+        const current = agentToolsRef.current.find(
+          (candidate) => candidate.name === tool.name,
+        );
+        if (!current)
+          throw new Error("Tool is no longer available. Reload the game.");
+        return current.execute(input, context);
+      },
+    }));
+    void registerWebMcpTools(tools, registration.signal).catch((error) => {
+      if (!registration.signal.aborted)
+        console.error("WebMCP registration failed", error);
+    });
+    return () => registration.abort();
+  }, [phase]);
 
   const monsterName = activeMonster?.name ?? t("game.genericMonster");
   const canPlay = Boolean(selfEntityId) && isController && !isDead;

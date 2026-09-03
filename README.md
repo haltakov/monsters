@@ -122,6 +122,26 @@ UPDATE "User" SET "role" = 'admin' WHERE "email" = 'you@example.com';
 
 ## Verification
 
+### WebMCP action safety
+
+The browser-facing tool adapter accepts missing execution options/signals and
+supplies a cancellation signal to every handler. Both `document.modelContext`
+and the older navigator surface are supported. It validates the declared input
+schema, allows only one mutating action at a time, and keeps observations
+available during movement. Overlapping actions return `busy` rather than fighting
+over the controls.
+
+Actions have a 20-second overall deadline and bounded animation waits. Cancel,
+disconnect, creature changes, death, world reset, and human takeover stop pending
+movement; timers and listeners are cleaned up. Tool failures return structured
+`isError` results with recovery guidance. A cancelled creation may already have
+reached the server: inspect the account/world before retrying, rather than
+automatically creating a duplicate. Tool registrations remain stable across
+ordinary React updates and use the latest game callbacks.
+
+Missing-context, cancellation, timeout, overlapping calls, malformed inputs,
+partial registration and cleanup regressions are covered by the web tests.
+
 ```bash
 pnpm lint
 pnpm typecheck

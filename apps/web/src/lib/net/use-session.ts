@@ -116,9 +116,14 @@ export function useGuestSession(options: { tokenStore?: TokenStore } = {}) {
   }, [state.token]);
 
   const createMonster = useCallback(
-    async (input: { name: string; dna: string }) => {
+    async (
+      input: { name: string; dna: string },
+      options?: { signal?: AbortSignal },
+    ) => {
       if (!state.token) throw new Error("No session");
-      const { monster } = await api.createMonster(state.token, input);
+      const { monster } = await api.createMonster(state.token, input, options);
+      options?.signal?.throwIfAborted();
+      if (!mounted.current) throw new Error("The game session was closed.");
       setState((current) => ({
         ...current,
         monsters: [...current.monsters, monster],
