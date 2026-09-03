@@ -2,6 +2,7 @@
   "name": "monsters",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "A family-built monster ecosystem game.",
   "packageManager": "pnpm@11.18.0",
   "engines": {

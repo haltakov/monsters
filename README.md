@@ -2,6 +2,8 @@
 
 A small 3D monster-world game that a father and son can build together. Monsters now live in one persistent, server-authoritative public world: players can join from multiple browsers, control their own creatures, and leave the ecosystem running while they are away.
 
+Play at [monstersdna.com](https://monstersdna.com/).
+
 The island now has 10× the original playable land area, with extended rivers, six bridges, outer hills, and distributed trees, bushes, rocks, and plants.
 
 ## Stack
@@ -201,3 +203,7 @@ NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID=pa-<site-specific ID from the Plausible installa
 Because Next.js is exported statically, `withPlausibleProxy` rewrites cannot run here. `next-plausible` loads `/js/script.js` and sends pageviews to `/api/event` on `monstersdna.com`; Nginx forwards these to the site-specific script and event API on `p.monstersdna.com`. Browser analytics traffic never needs to contact an external origin. The proxy strips cookies, authorization, and referrer headers; forwards client IPs for aggregate analytics; and does not log analytics requests. Tracking sends only canonical page paths, without query strings, hash fragments, account data, or creature properties. Development tracking is disabled.
 
 After deployment, verify both legal pages, the script response, and same-origin analytics requests from `https://monstersdna.com`. The script is unavailable (503) until a valid ID is supplied. Google/Resend credentials and Plausible site activation must be completed in the relevant provider accounts.
+
+## License
+
+MonstersDNA is licensed under the [MIT License](LICENSE).
