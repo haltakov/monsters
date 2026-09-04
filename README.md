@@ -189,7 +189,7 @@ The frontend health endpoint is `/healthz`; the API health endpoint is `/api/hea
 
 ### Domains and first-party analytics
 
-Route `https://monstersdna.com` to the MonstersDNA Game resource on port 3000. Route `https://api.monstersdna.com` to MonstersDNA API on port 3000. `https://p.monstersdna.com` is the existing analytics upstream; **do not route it to the game container** or change its DNS. The frontend's Nginx exposes two fixed analytics proxy paths, not an open proxy.
+Route `https://monstersdna.com` to the MonstersDNA Game resource on port 3000. Route `https://api.monstersdna.com` to MonstersDNA API on port 3000. `https://p.monstersdna.com` is the existing analytics events proxy; **do not route it to the game container** or change its DNS.
 
 Frontend build variables:
 
@@ -198,11 +198,17 @@ NEXT_PUBLIC_API_URL=https://api.monstersdna.com
 NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID=pa-<site-specific ID from the Plausible installation snippet>
 ```
 
-`next-plausible` v4 needs the site-specific ID from `https://plausible.io/js/pa-….js` for the **monstersdna.com** site (omit `.js`). This public identifier is not an API key. An empty value disables analytics. A new value requires rebuilding the static frontend; the Docker build also carries it into the Nginx template.
+`next-plausible` v4 needs the site-specific ID from `https://plausible.io/js/pa-….js` for the **monstersdna.com** site (omit `.js`). This public identifier is not an API key. In Coolify, enable **Build Variable**, not just Runtime. A new value requires rebuilding the static frontend; the Docker build also carries it into the Nginx template. Production Docker builds fail early if the ID is missing or malformed. Local builds can omit it to disable analytics.
 
-Because Next.js is exported statically, `withPlausibleProxy` rewrites cannot run here. `next-plausible` loads `/js/script.js` and sends pageviews to `/api/event` on `monstersdna.com`; Nginx forwards these to the site-specific script and event API on `p.monstersdna.com`. Browser analytics traffic never needs to contact an external origin. The proxy strips cookies, authorization, and referrer headers; forwards client IPs for aggregate analytics; and does not log analytics requests. Tracking sends only canonical page paths, without query strings, hash fragments, account data, or creature properties. Development tracking is disabled.
+Because Next.js is exported statically, `withPlausibleProxy` server rewrites cannot run here. The app still uses `next-plausible` for script initialization and navigation tracking:
 
-After deployment, verify both legal pages, the script response, and same-origin analytics requests from `https://monstersdna.com`. The script is unavailable (503) until a valid ID is supplied. Google/Resend credentials and Plausible site activation must be completed in the relevant provider accounts.
+- Script: browser → `monstersdna.com/js/script.js` → Nginx → `plausible.io/js/pa-….js`. The `p` proxy does **not** serve site-specific v4 scripts (404), so do not use it for this leg.
+- Events: browser → `p.monstersdna.com/api/event` → Plausible. Do **not** send these through the game server first: the `p` proxy uses its connecting client's IP, which would otherwise be the server's IP and trigger bot filtering.
+- Compatibility: the old same-origin `/api/event` route forwards directly to Plausible with the visitor IP chain for any cached clients.
+
+The script proxy strips cookies, authorization, and referrer headers and does not log analytics requests. Events use canonical page paths without query strings, fragments, account data, or creature properties; referrers are reduced to their origin. Automatic form/download/outbound events are filtered out. Development tracking is disabled.
+
+After deployment, run `pnpm check:analytics`. This checks the script's site identity and the event proxy's CORS/validation without creating fake traffic. Then run the **monstersdna.com** installation checker in Plausible and verify a real browser visit in the dashboard. HTTP 202 alone is insufficient: `x-plausible-dropped: 1` means an event was discarded. Plausible's `X-Debug-Request: true` header can diagnose which client IP the proxy forwards. See the [Events API diagnostics](https://plausible.io/docs/events-api#debugging).
 
 ## License
 

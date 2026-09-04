@@ -23,7 +23,8 @@
     "db:migrate": "pnpm --filter @monsters/api prisma:migrate",
     "db:deploy": "pnpm --filter @monsters/api prisma:deploy",
     "db:studio": "pnpm --filter @monsters/api prisma:studio",
-    "loadtest": "pnpm --filter @monsters/api loadtest"
+    "loadtest": "pnpm --filter @monsters/api loadtest",
+    "check:analytics": "node deploy/check-analytics.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

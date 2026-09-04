@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Analytics } from "@/components/analytics";
+import { Analytics, sanitizeAnalyticsEvent } from "@/components/analytics";
 
 const state = vi.hoisted(() => ({
   pathname: "/game/",
@@ -56,13 +56,47 @@ describe("first-party analytics", () => {
     expect(state.provider).toHaveBeenCalledWith(
       expect.objectContaining({
         src: "/js/script.js",
-        init: {
-          endpoint: "/api/event",
+        init: expect.objectContaining({
+          endpoint: "https://p.monstersdna.com/api/event",
           autoCapturePageviews: false,
-        },
+          formSubmissions: false,
+          outboundLinks: false,
+          transformRequest: sanitizeAnalyticsEvent,
+        }),
       }),
     );
     expect(state.track).not.toHaveBeenCalled();
+  });
+
+  it("redacts URL/referrer details and properties even for automatically captured events", () => {
+    // Match next-plausible's serialization: this must work without closures.
+    const transform = new Function(
+      `return (${sanitizeAnalyticsEvent.toString()})`,
+    )();
+    expect(
+      transform({
+        n: "pageview",
+        d: "wrong.example",
+        v: 36,
+        u: "https://monstersdna.com/game/?token=secret#dna",
+        r: "https://example.com/private?email=secret#token",
+        p: { nickname: "private" },
+        $: { amount: 100 },
+      }),
+    ).toEqual({
+      n: "pageview",
+      d: "monstersdna.com",
+      v: 36,
+      u: "https://monstersdna.com/game/",
+      r: "https://example.com",
+    });
+    expect(
+      transform({ n: "File Download", u: "https://monstersdna.com/dna.json" }),
+    ).toBe(false);
+    expect(
+      transform({ n: "Form: Submission", u: "https://monstersdna.com/" }),
+    ).toBe(false);
+    expect(transform({ n: "pageview", u: "invalid" })).toBe(false);
   });
 
   it("waits for the script and tracks navigation without query parameters or duplicates", () => {
