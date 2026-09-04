@@ -201,30 +201,19 @@ export class WorldService {
     const name = normalizeDisplayName(rawName, 'name');
     const { dna, encoded } = parseDna(rawDna);
 
-    const livingOwned = await this.prisma.monster.count({
-      where: { worldId: world.id, ownerId: guestId, alive: true },
-    });
-    if (livingOwned >= MAX_OWNED_MONSTERS) {
-      throw new BadRequestException(
-        `A guest may keep at most ${MAX_OWNED_MONSTERS} living monsters`,
-      );
-    }
-
     let monster: MonsterRow;
     try {
-      monster = await this.prisma.monster.create({
-        data: {
-          name,
-          nicknameKey: normalizeNicknameKey(name),
-          species: dna.body,
-          dna: { code: encoded, genes: dna },
-          worldId: world.id,
-          ownerId: guestId,
-          accountOwnerId: accountId,
-          originType: 'player',
-          energy: 100,
-          alive: true,
-        },
+      monster = await this.createOwnedMonster(guestId, world.id, {
+        name,
+        nicknameKey: normalizeNicknameKey(name),
+        species: dna.body,
+        dna: { code: encoded, genes: dna },
+        worldId: world.id,
+        ownerId: guestId,
+        accountOwnerId: accountId,
+        originType: 'player',
+        energy: 100,
+        alive: true,
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {
@@ -232,15 +221,6 @@ export class WorldService {
       }
       throw error;
     }
-    await this.prisma.worldMember.upsert({
-      where: { worldId_guestId: { worldId: world.id, guestId } },
-      create: {
-        worldId: world.id,
-        guestId,
-        selectedMonsterId: monster.id,
-      },
-      update: { selectedMonsterId: monster.id },
-    });
     return this.toMonsterView(monster, {
       selectedId: monster.id,
       accountId,
@@ -389,36 +369,51 @@ export class WorldService {
     dna: MonsterDna,
   ) {
     const world = await this.requireWorld();
-    const livingOwned = await this.prisma.monster.count({
-      where: { worldId: world.id, ownerId: guestId, alive: true },
-    });
-    if (livingOwned >= MAX_OWNED_MONSTERS) {
-      throw new BadRequestException(
-        `A guest may keep at most ${MAX_OWNED_MONSTERS} living monsters`,
-      );
-    }
-    const monster = await this.prisma.monster.create({
-      data: {
-        name,
-        nicknameKey: normalizeNicknameKey(name),
-        species: dna.body,
-        dna: source.dna as Prisma.InputJsonValue,
-        worldId: world.id,
-        ownerId: guestId,
-        accountOwnerId: accountId,
-        originType: 'copy',
-        clonedFromId: source.id,
-        energy: 100,
-      },
-    });
-    await this.prisma.worldMember.upsert({
-      where: { worldId_guestId: { worldId: world.id, guestId } },
-      create: { worldId: world.id, guestId, selectedMonsterId: monster.id },
-      update: { selectedMonsterId: monster.id },
+    const monster = await this.createOwnedMonster(guestId, world.id, {
+      name,
+      nicknameKey: normalizeNicknameKey(name),
+      species: dna.body,
+      dna: source.dna as Prisma.InputJsonValue,
+      worldId: world.id,
+      ownerId: guestId,
+      accountOwnerId: accountId,
+      originType: 'copy',
+      clonedFromId: source.id,
+      energy: 100,
     });
     return this.toMonsterView(monster, {
       selectedId: monster.id,
       accountId,
+    });
+  }
+
+  private createOwnedMonster(
+    guestId: string,
+    worldId: string,
+    data: Prisma.MonsterUncheckedCreateInput,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      // Serialize creates/copies for this device, including concurrent HTTP requests.
+      // Claim/release use the same row lock before changing monster ownership.
+      await tx.guestPlayer.update({
+        where: { id: guestId },
+        data: { lastSeenAt: new Date() },
+      });
+      const count = await tx.monster.count({
+        where: { worldId, ownerId: guestId, alive: true },
+      });
+      if (count >= MAX_OWNED_MONSTERS) {
+        throw new BadRequestException(
+          `A guest may keep at most ${MAX_OWNED_MONSTERS} living monsters`,
+        );
+      }
+      const monster = await tx.monster.create({ data });
+      await tx.worldMember.upsert({
+        where: { worldId_guestId: { worldId, guestId } },
+        create: { worldId, guestId, selectedMonsterId: monster.id },
+        update: { selectedMonsterId: monster.id },
+      });
+      return monster;
     });
   }
 
@@ -587,18 +582,16 @@ export class WorldService {
   }
 
   async adminSpawnMonster(monsterId: string) {
-    const monster = await this.prisma.monster.findUnique({
-      where: { id: monsterId },
+    const world = await this.requireWorld();
+    const monster = await this.prisma.monster.findFirst({
+      where: { id: monsterId, worldId: world.id },
     });
     if (!monster) throw new NotFoundException('Monster not found');
-    const revived = monster.alive
-      ? monster
-      : await this.prisma.monster.update({
-          where: { id: monster.id },
-          data: { alive: true, diedAt: null, energy: 100, ageSeconds: 0 },
-        });
-    this.spawnDurableMonster(revived);
-    return this.toMonsterView(revived);
+    await this.runner.spawnMonster(this.buildSpawnCommand(monster).entity);
+    const updated = await this.prisma.monster.findUniqueOrThrow({
+      where: { id: monster.id },
+    });
+    return this.toMonsterView(updated);
   }
 
   async adminResetWorld(population: number) {
@@ -656,12 +649,8 @@ export class WorldService {
       },
     });
     if (!monster) return null;
-    if (member.selectedMonsterId !== monster.id) {
-      await this.prisma.worldMember.update({
-        where: { id: member.id },
-        data: { selectedMonsterId: monster.id },
-      });
-    }
+    // Selection is persisted by the REST select endpoint. A pending socket
+    // lookup may already have been superseded and must not overwrite it.
     return monster;
   }
 

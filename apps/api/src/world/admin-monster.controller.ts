@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   HttpCode,
   Param,
@@ -21,7 +20,6 @@ import {
   AdminUpdateMonsterDto,
 } from './dto/monster.dto';
 import { WorldService } from './world.service';
-import { getWebOrigins } from '../config/app-config';
 
 @Controller('admin/monsters')
 @UseGuards(AccountAuthGuard, AdminGuard)
@@ -58,12 +56,6 @@ export class AdminMonsterController {
   @Post(':id/kill')
   @HttpCode(200)
   async kill(@Param('id') id: string, @Req() request: AccountRequest) {
-    if (
-      request.headers.origin &&
-      !getWebOrigins().includes(request.headers.origin)
-    ) {
-      throw new ForbiddenException('Untrusted request origin');
-    }
     return {
       monster: await this.worlds.adminKillMonster(id, request.account!.user.id),
     };

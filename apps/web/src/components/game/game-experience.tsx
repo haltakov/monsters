@@ -527,7 +527,9 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   }, [connection, phase, session.selectedMonsterId]);
 
   useEffect(() => {
+    let joinRetry: number | undefined;
     const unsubscribeSnapshot = connection.on("snapshot", (message) => {
+      window.clearTimeout(joinRetry);
       setSelfEntityId(message.you.entityId);
       setIsController(message.you.isController);
       setPopulation(message.population);
@@ -545,13 +547,15 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     const unsubscribeError = connection.on("error", (message) => {
       if (message.code === "worldUnavailable") {
         setStatus({ key: "net.worldPaused" });
-        window.setTimeout(
+        window.clearTimeout(joinRetry);
+        joinRetry = window.setTimeout(
           () => connection.join(session.selectedMonsterId ?? null),
           3000,
         );
       }
     });
     return () => {
+      window.clearTimeout(joinRetry);
       unsubscribeSnapshot();
       unsubscribeStatus();
       unsubscribeError();

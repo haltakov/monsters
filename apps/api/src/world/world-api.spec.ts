@@ -8,6 +8,7 @@ import {
 import { PUBLIC_WORLD_SLUG } from '../config/app-config';
 import { MAX_OWNED_MONSTERS } from './world.service';
 import { AccountService } from '../account/account.service';
+import { GuestService } from '../guest/guest.service';
 
 const DNA = encodeMonsterDna(DEFAULT_MONSTER_DNA);
 const OTHER_DNA = encodeMonsterDna({
@@ -309,5 +310,41 @@ describe('world REST API', () => {
     expect(body.worldRunner.ownsWorld).toBe(true);
     expect(body.worldRunner.mode).toBe('running');
     expect(body.worldRunner.tick).toBeGreaterThanOrEqual(0);
+  });
+
+  it('enforces the living limit when creates and copies race for the last slot', async () => {
+    const { token, guest } = await harness.app.get(GuestService).bootstrap();
+    const auth = { Authorization: `Bearer ${token}` };
+    let sourceId = '';
+    for (let index = 0; index < MAX_OWNED_MONSTERS - 1; index++) {
+      const result = await request(server())
+        .post('/api/monsters')
+        .set(auth)
+        .send({ name: `Concurrent ${index}`, dna: DNA })
+        .expect(201);
+      sourceId = (result.body as { monster: { id: string } }).monster.id;
+    }
+    const responses = await Promise.all([
+      request(server())
+        .post('/api/monsters')
+        .set(auth)
+        .send({ name: 'Final slot', dna: DNA }),
+      request(server()).post(`/api/monsters/${sourceId}/copy`).set(auth),
+    ]);
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      201, 400,
+    ]);
+    expect(
+      await harness.prisma.monster.count({
+        where: { ownerId: guest.id, alive: true },
+      }),
+    ).toBe(MAX_OWNED_MONSTERS);
+    const selected = await harness.prisma.worldMember.findFirstOrThrow({
+      where: { guestId: guest.id },
+    });
+    const winner = responses.find((response) => response.status === 201)!;
+    expect(selected.selectedMonsterId).toBe(
+      (winner.body as { monster: { id: string } }).monster.id,
+    );
   });
 });

@@ -161,6 +161,7 @@ export class WorldConnection {
       if (this.pendingMonsterId !== null) this.join(this.pendingMonsterId);
     });
     socket.on("disconnect", (reason: string) => {
+      this.isController = false;
       this.setPhase(
         reason === "io client disconnect" ? "idle" : "reconnecting",
         reason,
@@ -194,7 +195,8 @@ export class WorldConnection {
 
   join(monsterId: string | null) {
     this.pendingMonsterId = monsterId;
-    this.socket?.emit(CLIENT_EVENTS.join, { monsterId });
+    if (this.socket?.connected)
+      this.socket.emit(CLIENT_EVENTS.join, { monsterId });
   }
 
   sendInput(input: {
@@ -205,35 +207,48 @@ export class WorldConnection {
     heading: number;
     sprint: boolean;
   }) {
-    this.socket?.emit(CLIENT_EVENTS.input, input);
+    if (this.socket?.connected && this.isController)
+      this.socket.emit(CLIENT_EVENTS.input, input);
   }
 
   sendAction(action: "eat" | "attack" | "pair") {
-    this.socket?.emit(CLIENT_EVENTS.action, { action });
+    if (this.socket?.connected && this.isController)
+      this.socket.emit(CLIENT_EVENTS.action, { action });
   }
 
   sendLocomotion(mode: "fly" | "land" | "dive" | "surface") {
-    this.socket?.emit(CLIENT_EVENTS.locomotion, { mode });
+    if (this.socket?.connected && this.isController)
+      this.socket.emit(CLIENT_EVENTS.locomotion, { mode });
   }
 
   respondToPair(requestId: string, accept: boolean) {
-    this.socket?.emit(CLIENT_EVENTS.pairRespond, { requestId, accept });
+    if (this.socket?.connected && this.isController)
+      this.socket.emit(CLIENT_EVENTS.pairRespond, { requestId, accept });
   }
 
   acknowledge(tick: number) {
-    this.socket?.emit(CLIENT_EVENTS.ack, { tick });
+    if (this.socket?.connected) this.socket.emit(CLIENT_EVENTS.ack, { tick });
   }
 
   disconnect() {
-    if (!this.socket) return;
-    this.socket.removeAllListeners();
-    this.socket.close();
+    this.socket?.removeAllListeners();
+    this.socket?.close();
     this.socket = null;
     this.entities.clear();
     this.eggs.clear();
     this.depletedResources.clear();
     this.entityId = null;
     this.isController = false;
+    this.pendingMonsterId = null;
+    this.worldId = null;
+    this.worldName = "";
+    this.tick = 0;
+    this.serverTick = 0;
+    this.ackSeq = 0;
+    this.lastMessageAt = -1;
+    this.worldTime = 0;
+    this.population = { living: 0, eggs: 0, births: 0, deaths: 0 };
+    this.emit("roster");
     this.setPhase("idle");
   }
 

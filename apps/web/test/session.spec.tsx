@@ -3,7 +3,11 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DEFAULT_MONSTER_DNA, encodeMonsterDna } from "@monsters/game-core";
 import { useGuestSession } from "@/lib/net/use-session";
-import { createLocalTokenStore, resolveSession } from "@/lib/net/session";
+import {
+  createBrowserTokenStore,
+  createLocalTokenStore,
+  resolveSession,
+} from "@/lib/net/session";
 import { ApiError, api } from "@/lib/net/api-client";
 import { GUEST_TOKEN_STORAGE_KEY } from "@/lib/net/config";
 
@@ -77,6 +81,52 @@ function SessionProbe() {
 }
 
 describe("guest session bootstrap", () => {
+  it("retains a guest for retries when storage writes fail", async () => {
+    const storage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new DOMException("Quota exceeded", "QuotaExceededError");
+      },
+      removeItem: vi.fn(),
+    };
+    const bootstrap = vi.fn(() =>
+      jsonResponse({ token: "tab-token", guest: GUEST }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      routeFetch({
+        "/api/guest/bootstrap": bootstrap,
+        "/api/guest/me": () => jsonResponse({ guest: GUEST }),
+      }),
+    );
+    const store = createLocalTokenStore(storage);
+    await resolveSession(store);
+    expect(await resolveSession(store)).toMatchObject({
+      token: "tab-token",
+      resumed: true,
+    });
+    expect(bootstrap).toHaveBeenCalledTimes(1);
+    store.clear();
+    expect(store.read()).toBeNull();
+  });
+
+  it("supports browsers whose localStorage property throws", () => {
+    const getter = vi
+      .spyOn(window, "localStorage", "get")
+      .mockImplementation(() => {
+        throw new DOMException("Access denied", "SecurityError");
+      });
+    try {
+      const store = createBrowserTokenStore();
+      store.write("memory-token");
+      expect(store.read()).toBe("memory-token");
+      store.clear();
+      expect(store.read()).toBeNull();
+    } finally {
+      getter.mockRestore();
+    }
+  });
+
   it("creates a guest, stores the token and loads the world", async () => {
     vi.stubGlobal(
       "fetch",
@@ -103,9 +153,7 @@ describe("guest session bootstrap", () => {
 
   it("resumes a stored token without creating a second guest", async () => {
     window.localStorage.setItem(GUEST_TOKEN_STORAGE_KEY, "stored-token");
-    const bootstrap = vi.fn(() =>
-      jsonResponse({ token: "new", guest: GUEST }),
-    );
+    const bootstrap = vi.fn(() => jsonResponse({ token: "new", guest: GUEST }));
     vi.stubGlobal(
       "fetch",
       routeFetch({
@@ -180,14 +228,28 @@ describe("guest session bootstrap", () => {
 });
 
 describe("monster ownership calls", () => {
+  it("preserves HTTP errors when a proxy sends HTML instead of JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 502,
+        text: async () => "<html>Bad gateway</html>",
+      })),
+    );
+    await expect(api.listMonsters("token")).rejects.toMatchObject({
+      name: "ApiError",
+      status: 502,
+      message: "Request failed with 502",
+    });
+  });
+
   it("creates and edits monsters through the server with the bearer token", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const fetchImpl = vi.fn(
-      (input: RequestInfo | URL, init?: RequestInit) => {
-        calls.push({ url: String(input), init });
-        return Promise.resolve(jsonResponse({ monster: MONSTER }));
-      },
-    );
+    const fetchImpl = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      return Promise.resolve(jsonResponse({ monster: MONSTER }));
+    });
     vi.stubGlobal("fetch", fetchImpl);
 
     await api.createMonster("tok", { name: "Pebble", dna: DNA });
@@ -226,7 +288,10 @@ describe("monster ownership calls", () => {
       "fetch",
       routeFetch({
         "/api/monsters/other": () =>
-          jsonResponse({ message: "That monster belongs to another guest" }, 403),
+          jsonResponse(
+            { message: "That monster belongs to another guest" },
+            403,
+          ),
       }),
     );
     await expect(

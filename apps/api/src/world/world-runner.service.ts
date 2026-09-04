@@ -5,7 +5,7 @@ import {
   OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { randomInt } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import {
   accumulate,
   catchUpWorld,
@@ -13,6 +13,7 @@ import {
   createAccumulator,
   isCriticalEvent,
   killWorldMonster,
+  respawnWorldMonster,
   MAX_TICKS_PER_UPDATE,
   readPopulation,
   stepWorld,
@@ -21,6 +22,7 @@ import {
   type FixedStepAccumulator,
   type SimCommand,
   type SimEvent,
+  type SpawnEntitySpec,
   type WorldSimState,
 } from '@monsters/game-core';
 import {
@@ -93,6 +95,9 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
   private resetRetryAt = 0;
   private dailyReset: Promise<unknown> | null = null;
   private adminMutation: Promise<void> | null = null;
+  private criticalWrite: Promise<void> | null = null;
+  private wakeCriticalRetry: (() => void) | null = null;
+  private criticalSaveFailed = false;
 
   constructor(
     private readonly persistence: WorldPersistenceService,
@@ -160,9 +165,28 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
 
   /** Queues a validated command for the next tick, preserving arrival order. */
   enqueue(command: SimCommand) {
-    if (this.mode !== 'running') return false;
+    if (this.stopping || !this.lock.isOwned) return false;
+    if (
+      this.mode !== 'running' &&
+      (!this.criticalWrite ||
+        (this.criticalSaveFailed && command.type !== 'detach'))
+    )
+      return false;
+    // Preserve commands arriving during the brief durable save. Coalesce movement
+    // to its latest value and bound this queue if the database becomes slow.
+    if (this.criticalWrite && command.type === 'input') {
+      this.commands = this.commands.filter(
+        (pending) =>
+          pending.type !== 'input' || pending.entityId !== command.entityId,
+      );
+    }
+    if (this.commands.length >= 1024 && command.type !== 'detach') return false;
     this.commands.push(command);
     return true;
+  }
+
+  async waitForPendingCommit() {
+    await this.criticalWrite;
   }
 
   /** Commit the death and recovery snapshot before exposing it to connected clients. */
@@ -176,51 +200,11 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     },
     adminUserId: string,
   ): Promise<void> {
-    if (
-      !this.isRunning ||
-      !this.lock.isOwned ||
-      !this.state ||
-      !this.world ||
-      this.stopping
-    ) {
-      throw new ServiceUnavailableException(
-        'This API instance does not currently own the world',
-      );
-    }
-    const operation = this.commitAdminDeath(monster, adminUserId);
-    this.adminMutation = operation;
-    return operation.finally(() => {
-      if (this.adminMutation === operation) this.adminMutation = null;
-    });
-  }
-
-  private async commitAdminDeath(
-    monster: {
-      id: string;
-      name: string;
-      alive: boolean;
-      ageSeconds: number;
-      ownerId: string | null;
-    },
-    adminUserId: string,
-  ) {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
-    this.mode = 'starting';
-    try {
-      await this.persistence.drain();
-      if (!this.lock.isOwned || !this.state || !this.world || this.stopping) {
-        throw new ServiceUnavailableException(
-          'World ownership lost before the keeper action',
-        );
-      }
-      const next = cloneWorldState(this.state);
+    return this.mutateMonster(monster.id, (next) => {
       const entity = next.entities.find(
         (candidate) => candidate.id === monster.id,
       );
-      next.tick += 1;
       const events = killWorldMonster(next, monster.id, adminUserId);
-      // Also support saved monsters not yet spawned, without spawning them just to kill them.
       if (!entity && monster.alive) {
         events.push({
           type: 'death',
@@ -234,6 +218,55 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
           ageSeconds: monster.ageSeconds,
         });
       }
+      return events;
+    });
+  }
+
+  spawnMonster(spec: SpawnEntitySpec): Promise<void> {
+    return this.mutateMonster(spec.id, (next) =>
+      respawnWorldMonster(next, spec),
+    );
+  }
+
+  private mutateMonster(
+    monsterId: string,
+    change: (next: WorldSimState) => SimEvent[],
+  ): Promise<void> {
+    if (
+      !this.isRunning ||
+      !this.lock.isOwned ||
+      !this.state ||
+      !this.world ||
+      this.stopping
+    ) {
+      throw new ServiceUnavailableException(
+        'This API instance does not currently own the world',
+      );
+    }
+    const operation = this.commitAdminMutation(monsterId, change);
+    this.adminMutation = operation;
+    return operation.finally(() => {
+      if (this.adminMutation === operation) this.adminMutation = null;
+    });
+  }
+
+  private async commitAdminMutation(
+    monsterId: string,
+    change: (next: WorldSimState) => SimEvent[],
+  ) {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.mode = 'starting';
+    try {
+      await this.persistence.drain();
+      if (!this.lock.isOwned || !this.state || !this.world || this.stopping) {
+        throw new ServiceUnavailableException(
+          'World ownership lost before the keeper action',
+        );
+      }
+      const next = cloneWorldState(this.state);
+      next.tick += 1;
+      const events = change(next);
       if (events.length) {
         const at = new Date();
         await this.persistence.commitCriticalEvents(
@@ -253,9 +286,9 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
         // A previously queued spawn must not bring this monster back next tick.
         this.commands = this.commands.filter((command) =>
           command.type === 'spawn'
-            ? command.entity.id !== monster.id
+            ? command.entity.id !== monsterId
             : 'entityId' in command
-              ? command.entityId !== monster.id
+              ? command.entityId !== monsterId
               : true,
         );
         this.publish(events, next);
@@ -469,6 +502,7 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     this.state = null;
     this.commands = [];
     this.mode = 'standby';
+    this.wakeCriticalRetry?.();
     this.scheduleLockRetry();
   }
 
@@ -516,13 +550,25 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     this.lastTickAt = new Date();
     this.lastTickDurationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
 
-    this.publish(events, this.state);
-
     const critical = events.filter(isCriticalEvent);
     if (critical.length > 0) {
-      void this.commitCritical(critical);
+      // Hold this state until its lifecycle facts are durable. Later checkpoints
+      // must never skip a failed birth/death and make the missing row permanent.
+      if (this.timer) clearInterval(this.timer);
+      this.timer = null;
+      this.mode = 'starting';
+      this.criticalSaveFailed = false;
+      this.criticalWrite = this.commitCritical(
+        critical,
+        events,
+        this.state,
+      ).finally(() => {
+        this.criticalWrite = null;
+      });
       return;
     }
+
+    this.publish(events, this.state);
 
     if (
       Date.now() - (this.lastCheckpointAt?.getTime() ?? 0) >=
@@ -546,23 +592,51 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
-  private async commitCritical(events: SimEvent[]) {
-    if (!this.world || !this.state) return;
+  private async commitCritical(
+    events: SimEvent[],
+    publishedEvents: SimEvent[],
+    state: WorldSimState,
+  ) {
+    if (!this.world) return;
+    const world = this.world;
     const at = new Date();
-    try {
-      await this.persistence.commitCriticalEvents(
-        this.world,
-        this.state,
-        events,
-        at,
-      );
-      this.lastCheckpointAt = at;
-    } catch (error) {
-      this.logger.error(
-        `Failed to persist a critical transition: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+    const batchId = randomUUID();
+    let retryDelay = 1000;
+    while (this.lock.isOwned && this.state === state) {
+      try {
+        await this.persistence.commitCriticalEvents(
+          world,
+          state,
+          events,
+          at,
+          batchId,
+        );
+        this.lastCheckpointAt = at;
+        if (!this.stopping && this.lock.isOwned && this.state === state) {
+          this.publish(publishedEvents, state);
+          this.start();
+        }
+        return;
+      } catch (error) {
+        this.criticalSaveFailed = true;
+        this.logger.error(
+          `Critical save failed; world paused until recovery: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        if (this.stopping || !this.lock.isOwned || this.state !== state) return;
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            this.wakeCriticalRetry = null;
+            resolve();
+          }, retryDelay);
+          this.wakeCriticalRetry = () => {
+            clearTimeout(timer);
+            this.wakeCriticalRetry = null;
+            resolve();
+          };
+        });
+        if (this.stopping) return;
+        retryDelay = Math.min(retryDelay * 2, 30_000);
+      }
     }
   }
 
@@ -592,6 +666,8 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
 
+    this.wakeCriticalRetry?.();
+    await this.criticalWrite;
     await this.dailyReset;
     await this.adminMutation?.catch(() => undefined);
     if (this.mode === 'running' && this.world && this.state) {
