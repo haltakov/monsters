@@ -9,7 +9,7 @@ import {
   type PublicWorld,
 } from "./api-client";
 import {
-  createLocalTokenStore,
+  createBrowserTokenStore,
   resolveSession,
   type TokenStore,
 } from "./session";
@@ -53,11 +53,7 @@ export function useGuestSession(options: { tokenStore?: TokenStore } = {}) {
   const mounted = useRef(true);
 
   const tokenStore = useMemo(
-    () =>
-      options.tokenStore ??
-      createLocalTokenStore(
-        typeof window === "undefined" ? null : window.localStorage,
-      ),
+    () => options.tokenStore ?? createBrowserTokenStore(),
     [options.tokenStore],
   );
 

@@ -11,41 +11,46 @@ export type TokenStore = {
 export function createLocalTokenStore(
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null,
 ): TokenStore {
-  if (!storage) {
-    let memory: string | null = null;
-    return {
-      read: () => memory,
-      write: (token) => {
-        memory = token;
-      },
-      clear: () => {
-        memory = null;
-      },
-    };
-  }
+  let memory: string | null = null;
+  let persistent = storage;
   return {
     read: () => {
       try {
-        return storage.getItem(GUEST_TOKEN_STORAGE_KEY);
+        if (persistent) memory = persistent.getItem(GUEST_TOKEN_STORAGE_KEY);
       } catch {
-        return null;
+        persistent = null;
       }
+      return memory;
     },
     write: (token) => {
+      memory = token;
       try {
-        storage.setItem(GUEST_TOKEN_STORAGE_KEY, token);
+        persistent?.setItem(GUEST_TOKEN_STORAGE_KEY, token);
       } catch {
-        // Private browsing: the guest simply will not resume next time.
+        // Keep the same guest in this tab when persistence is unavailable.
+        persistent = null;
       }
     },
     clear: () => {
+      memory = null;
       try {
-        storage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+        persistent?.removeItem(GUEST_TOKEN_STORAGE_KEY);
       } catch {
-        // Nothing else to do.
+        persistent = null;
       }
     },
   };
+}
+
+export function createBrowserTokenStore(): TokenStore {
+  try {
+    return createLocalTokenStore(
+      typeof window === "undefined" ? null : window.localStorage,
+    );
+  } catch {
+    // Accessing the storage property itself can throw in restricted browsers.
+    return createLocalTokenStore(null);
+  }
 }
 
 export type Session = { token: string; guest: GuestProfile; resumed: boolean };

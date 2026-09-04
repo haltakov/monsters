@@ -224,4 +224,68 @@ describe('keeper kill API', () => {
       (await harness.prisma.monster.findUniqueOrThrow({ where: { id } })).alive,
     ).toBe(true);
   });
+
+  it('respawns a lingering corpse atomically and keeps the revived state after restart', async () => {
+    const worlds = harness.app.get(WorldService);
+    const id = harness.runner.getState()!.entities[0].id;
+    await worlds.adminKillMonster(id, identity.user.id);
+    expect(
+      harness.runner.getState()!.entities.find((entity) => entity.id === id)
+        ?.alive,
+    ).toBe(false);
+    const revived = await worlds.adminSpawnMonster(id);
+    expect(revived).toMatchObject({
+      id,
+      alive: true,
+      diedAt: null,
+      ageSeconds: 0,
+      inWorld: true,
+    });
+    expect(
+      harness.runner.getState()!.entities.filter((entity) => entity.id === id),
+    ).toHaveLength(1);
+    expect(
+      harness.runner.getState()!.entities.find((entity) => entity.id === id),
+    ).toMatchObject({ health: 100, energy: 100, alive: true });
+    const born = await harness.prisma.worldEvent.count({
+      where: { type: 'spawned' },
+    });
+    await worlds.adminSpawnMonster(id);
+    expect(
+      await harness.prisma.worldEvent.count({ where: { type: 'spawned' } }),
+    ).toBe(born);
+    await harness.close();
+    harness = await createHarness({ runner: true, listen: true });
+    expect(
+      harness.runner.getState()!.entities.find((entity) => entity.id === id)
+        ?.alive,
+    ).toBe(true);
+  });
+
+  it('keeps a dead record dead when respawn persistence fails or the runner stops', async () => {
+    const worlds = harness.app.get(WorldService);
+    const id = harness.runner.getState()!.entities[0].id;
+    await worlds.adminKillMonster(id, identity.user.id);
+    const save = jest
+      .spyOn(harness.app.get(WorldPersistenceService), 'commitCriticalEvents')
+      .mockRejectedValueOnce(new Error('save unavailable'));
+    await expect(worlds.adminSpawnMonster(id)).rejects.toThrow(
+      'save unavailable',
+    );
+    expect(
+      harness.runner.getState()!.entities.find((entity) => entity.id === id)
+        ?.alive,
+    ).toBe(false);
+    expect(
+      (await harness.prisma.monster.findUniqueOrThrow({ where: { id } })).alive,
+    ).toBe(false);
+    save.mockRestore();
+    await harness.runner.shutdown();
+    await expect(worlds.adminSpawnMonster(id)).rejects.toMatchObject({
+      status: 503,
+    });
+    expect(
+      (await harness.prisma.monster.findUniqueOrThrow({ where: { id } })).alive,
+    ).toBe(false);
+  });
 });

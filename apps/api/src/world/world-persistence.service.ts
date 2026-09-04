@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import {
   createWorldState,
   encodeMonsterDna,
@@ -362,6 +363,7 @@ export class WorldPersistenceService {
     state: WorldSimState,
     events: SimEvent[],
     simulatedAt: Date,
+    batchId: string = randomUUID(),
   ) {
     // As with routine checkpoints, materialize all mutable simulation data
     // before joining the asynchronous write queue.
@@ -377,6 +379,32 @@ export class WorldPersistenceService {
           return entity
             ? [event.entityId, monsterRowData(entity, world.id)]
             : [event.entityId, null];
+        }),
+    );
+    const spawnedEntities = new Map(
+      events
+        .filter((event) => event.type === 'spawned')
+        .map((event) => {
+          const entity = state.entities.find(
+            (candidate) => candidate.id === event.entityId,
+          );
+          return [
+            event.entityId,
+            entity
+              ? {
+                  alive: entity.alive,
+                  diedAt: entity.alive ? null : simulatedAt,
+                  energy: Math.round(entity.energy),
+                  ageSeconds: entity.age,
+                  position: {
+                    x: entity.x,
+                    y: entity.y,
+                    z: entity.z,
+                    yaw: entity.yaw,
+                  },
+                }
+              : null,
+          ] as const;
         }),
     );
 
@@ -397,7 +425,17 @@ export class WorldPersistenceService {
         ).map((parent) => [parent.id, parent.accountOwnerId]),
       );
       const operations: Prisma.PrismaPromise<unknown>[] = [];
-      for (const event of events) {
+      for (const [eventIndex, event] of events.entries()) {
+        if (event.type === 'spawned') {
+          const row = spawnedEntities.get(event.entityId);
+          if (row)
+            operations.push(
+              this.prisma.monster.updateMany({
+                where: { id: event.entityId, worldId: world.id },
+                data: row,
+              }),
+            );
+        }
         if (event.type === 'birth') {
           const row = bornEntities.get(event.entityId);
           if (row) {
@@ -430,8 +468,11 @@ export class WorldPersistenceService {
           );
         }
         operations.push(
-          this.prisma.worldEvent.create({
-            data: {
+          this.prisma.worldEvent.upsert({
+            where: { id: `${batchId}:${eventIndex}` },
+            update: {},
+            create: {
+              id: `${batchId}:${eventIndex}`,
               worldId: world.id,
               tick: event.tick,
               type: event.type,

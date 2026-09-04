@@ -104,7 +104,20 @@ export async function apiRequest<T>(
   });
 
   const text = await response.text();
-  const payload: unknown = text ? JSON.parse(text) : null;
+  let payload: unknown = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      // Proxies commonly return an HTML error page during deployment/outages.
+      throw new ApiError(
+        response.status,
+        response.ok
+          ? "The server returned an invalid response"
+          : `Request failed with ${response.status}`,
+      );
+    }
+  }
   if (!response.ok) {
     throw new ApiError(
       response.status,

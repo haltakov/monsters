@@ -47,6 +47,7 @@ function socketData(socket: { data: unknown }): SocketData {
 }
 
 type Session = {
+  joinVersion: number;
   guestId: string;
   displayName: string;
   entityId: string | null;
@@ -103,6 +104,7 @@ export class WorldGateway
         const socket = this.server?.sockets?.sockets?.get(socketId);
         if (!socket) continue;
         if (reset) {
+          session.joinVersion += 1;
           session.entityId = null;
           session.isController = false;
           session.view = createConnectionView();
@@ -173,6 +175,7 @@ export class WorldGateway
       return;
     }
     this.sessions.set(socket.id, {
+      joinVersion: 0,
       guestId,
       displayName,
       entityId: null,
@@ -240,6 +243,8 @@ export class WorldGateway
       this.fail(socket, 'rateLimited', 'Too many join attempts');
       return;
     }
+    const joinVersion = ++session.joinVersion;
+    await this.runner.waitForPendingCommit();
     const state = this.runner.getState();
     const world = this.runner.getWorld();
     if (!state || !world || !this.runner.isRunning) {
@@ -255,10 +260,31 @@ export class WorldGateway
       payload && typeof payload.monsterId === 'string'
         ? payload.monsterId
         : null;
-    const monster = await this.worlds.resolveControllableMonster(
+    const resolved = await this.worlds.resolveControllableMonster(
       session.guestId,
       requestedId,
     );
+    await this.runner.waitForPendingCommit();
+
+    // Ownership lookups yield to other joins, leaves, disconnects and resets.
+    // Only the latest request on this still-connected socket may gain control.
+    if (
+      !socket.connected ||
+      this.sessions.get(socket.id) !== session ||
+      session.joinVersion !== joinVersion
+    )
+      return;
+    if (!this.runner.isRunning || this.runner.getState() !== state) {
+      this.fail(
+        socket,
+        'worldUnavailable',
+        'The world changed while joining; retry',
+      );
+      return;
+    }
+    const live =
+      resolved && state.entities.find((entity) => entity.id === resolved.id);
+    const monster = live && !live.alive ? null : resolved;
 
     // A socket may switch between monsters without disconnecting. Release its
     // previous entity before assigning the next one; otherwise the old entity
@@ -355,6 +381,7 @@ export class WorldGateway
   @SubscribeMessage(CLIENT_EVENTS.leave)
   onLeave(@ConnectedSocket() socket: Socket) {
     const session = this.requireSession(socket);
+    if (session) session.joinVersion += 1;
     if (!session?.entityId) return;
     if (this.controllers.get(session.entityId) === socket.id) {
       this.controllers.delete(session.entityId);

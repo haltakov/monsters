@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { io } from "socket.io-client";
 import {
   DEFAULT_MONSTER_DNA,
   encodeMonsterDna,
@@ -104,6 +105,66 @@ describe("world connection state mapping", () => {
     expect(connection.eggs.has("egg-1")).toBe(true);
     expect(connection.depletedResources.has("tree-0")).toBe(true);
     expect(connection.self?.net.id).toBe("me");
+  });
+
+  it("never queues gameplay commands during an outage or before control is granted", () => {
+    const handlers = new Map<string, (...args: unknown[]) => void>();
+    const socket = {
+      connected: false,
+      on: vi.fn((name: string, handler: (...args: unknown[]) => void) =>
+        handlers.set(name, handler),
+      ),
+      emit: vi.fn(),
+      close: vi.fn(),
+      removeAllListeners: vi.fn(),
+    };
+    vi.mocked(io).mockReturnValueOnce(
+      socket as unknown as ReturnType<typeof io>,
+    );
+    connection.connect("token");
+    connection.applySnapshot(snapshot());
+    const act = () => {
+      connection.sendInput({
+        seq: 1,
+        forward: 1,
+        strafe: 0,
+        turn: 0,
+        heading: 0,
+        sprint: false,
+      });
+      connection.sendAction("attack");
+      connection.sendLocomotion("fly");
+      connection.respondToPair("request", true);
+      connection.acknowledge(10);
+    };
+    act();
+    expect(socket.emit).not.toHaveBeenCalled();
+    socket.connected = true;
+    act();
+    expect(socket.emit).toHaveBeenCalledTimes(5);
+    socket.emit.mockClear();
+    handlers.get("disconnect")!("transport close");
+    expect(connection.isController).toBe(false);
+    socket.connected = false;
+    act();
+    socket.connected = true;
+    connection.sendAction("attack");
+    expect(socket.emit).not.toHaveBeenCalled();
+    connection.disconnect();
+  });
+
+  it("invalidates cached roster and authority when explicitly disconnected", () => {
+    connection.applySnapshot(snapshot());
+    const previousRoster = connection.getRoster();
+    const listener = vi.fn();
+    connection.on("roster", listener);
+    connection.disconnect();
+    expect(connection.getRoster()).not.toBe(previousRoster);
+    expect(connection.getRoster()).toMatchObject({ entities: [], eggs: [] });
+    expect(connection.isController).toBe(false);
+    expect(connection.worldId).toBeNull();
+    expect(connection.estimateWorldTime()).toBe(0);
+    expect(listener).toHaveBeenCalledOnce();
   });
 
   it("discards the previous season's controller, entities, eggs and depleted resources", () => {

@@ -1018,6 +1018,19 @@ function releaseExpiredControl(state: WorldSimState, events: SimEvent[]) {
   }
 }
 
+/** Trusted keeper operation; ordinary spawn commands never resurrect corpses. */
+export function respawnWorldMonster(
+  state: WorldSimState,
+  spec: SpawnEntitySpec,
+): SimEvent[] {
+  const existing = findEntity(state, spec.id);
+  if (existing?.alive) return [];
+  state.entities = state.entities.filter((entity) => entity.id !== spec.id);
+  const events: SimEvent[] = [];
+  applyCommand(state, { type: "spawn", entity: { ...spec, age: 0 } }, events);
+  return events;
+}
+
 function applyCommand(
   state: WorldSimState,
   command: SimCommand,
