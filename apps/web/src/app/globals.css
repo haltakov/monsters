@@ -4334,8 +4334,7 @@ button[data-gene-option="avian"] .gene-silhouette::after {
 
 .monster-audit {
   min-height: 100svh;
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: block;
   color: #173f35;
   background: #c7e6df;
 }
@@ -4364,11 +4363,13 @@ button[data-gene-option="avian"] .gene-silhouette::after {
 
 .monster-audit-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
 
 .monster-audit-actions button,
+.monster-audit-actions select,
 .monster-audit-actions a {
   min-height: 34px;
   padding: 7px 11px;
@@ -4381,6 +4382,14 @@ button[data-gene-option="avian"] .gene-silhouette::after {
   font-weight: 800;
   text-decoration: none;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.monster-audit-labels button {
+  pointer-events: auto;
+  padding: 2px 4px;
+  min-height: 28px;
+  font-size: 11px;
 }
 
 .monster-audit-actions button:disabled {
@@ -4391,6 +4400,7 @@ button[data-gene-option="avian"] .gene-silhouette::after {
 .monster-audit-stage {
   position: relative;
   min-height: 0;
+  aspect-ratio: 25 / 15;
 }
 
 .monster-audit-stage canvas {
