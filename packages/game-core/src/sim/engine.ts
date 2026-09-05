@@ -297,10 +297,8 @@ export function createInitialWildPopulation(
       energy: 58 + random() * 38,
       health: 74 + random() * 26,
       age: ADULT_AGE_SECONDS + 20 + random() * 120,
-      mateCooldownUntil:
-        index === 0 || index === shuffled.length
-          ? 6 + random() * 4
-          : 18 + random() * 58,
+      // Spread the first breeding opportunities across the recovery window.
+      mateCooldownUntil: MATING_COOLDOWN_SECONDS * (0.25 + random() * 0.75),
     };
     entity.yaw = random() * Math.PI * 2;
     entity.wanderAngle = random() * Math.PI * 2;
@@ -865,7 +863,7 @@ function performPair(
     });
     return;
   }
-  if (entity.health < 55 || entity.energy < 55) {
+  if (!isMateReady(entity, now)) {
     events.push({
       type: "pairFailed",
       tick: state.tick,
@@ -1221,17 +1219,37 @@ function updateAiEntity(
     return;
   }
 
-  let steerX = Math.cos(entity.wanderAngle) * 0.16;
-  let steerZ = Math.sin(entity.wanderAngle) * 0.16;
-  const scores: Array<[SimIntent, number]> = [["wander", 0.16]];
+  const decisionDue = now >= entity.nextDecisionAt;
+  if (decisionDue) {
+    entity.wanderAngle += (random() - 0.5) * 0.7;
+  }
+  // Keep one primary goal instead of summing competing attraction vectors.
+  // Its target is retained until the next decision or until it becomes invalid.
+  const goals: Array<{
+    intent: SimIntent;
+    score: number;
+    x: number;
+    z: number;
+    targetId: string | null;
+  }> = [];
+  const goal = (
+    intent: SimIntent,
+    score: number,
+    x: number,
+    z: number,
+    targetId: string | null = null,
+  ) => goals.push({ intent, score, x, z, targetId });
+  goal(
+    "wander",
+    0.16,
+    Math.cos(entity.wanderAngle),
+    Math.sin(entity.wanderAngle),
+  );
+  const keepsTarget = (intent: SimIntent, id: string) =>
+    !decisionDue && entity.intent === intent && entity.targetId === id;
   const hunger = clamp((72 - entity.energy) / 72, 0, 1);
   const lowHealth = clamp((60 - entity.health) / 60, 0, 1);
   const power = getCreaturePower(entity.dna);
-
-  if (now >= entity.nextDecisionAt) {
-    entity.wanderAngle += (random() - 0.5) * 1.3;
-    entity.nextDecisionAt = now + 0.7 + random() * 1.4;
-  }
 
   let nearestThreat: SimEntity | null = null;
   let threatDistance = 16;
@@ -1259,9 +1277,7 @@ function updateAiEntity(
     );
     const fleeScore =
       clamp((16 - threatDistance) / 12, 0, 1) * (0.8 + lowHealth * 1.4);
-    steerX += away.x * fleeScore * 1.9;
-    steerZ += away.z * fleeScore * 1.9;
-    scores.push(["flee", fleeScore]);
+    goal("flee", fleeScore, away.x, away.z, nearestThreat.id);
   }
 
   if (entity.dna.social === "solitary") {
@@ -1279,9 +1295,7 @@ function updateAiEntity(
       nearby += strength;
     }
     if (nearby > 0) {
-      steerX += repelX * 0.95;
-      steerZ += repelZ * 0.95;
-      scores.push(["socialize", Math.min(0.78, nearby * 0.42)]);
+      goal("socialize", Math.min(0.78, nearby * 0.42), repelX, repelZ);
     }
   } else {
     const desiredNeighbors =
@@ -1317,9 +1331,7 @@ function updateAiEntity(
       socialWeight += Math.abs(distanceError) * weight;
     }
     if (socialWeight > 0.02) {
-      steerX += socialX * 0.9;
-      steerZ += socialZ * 0.9;
-      scores.push(["socialize", Math.min(0.82, socialWeight * 0.45)]);
+      goal("socialize", Math.min(0.82, socialWeight * 0.45), socialX, socialZ);
     }
   }
 
@@ -1333,9 +1345,13 @@ function updateAiEntity(
     for (const edible of EDIBLES) {
       if (!isResourceAvailable(state, edible.id)) continue;
       const distance = Math.hypot(edible.x - entity.x, edible.z - entity.z);
-      if (distance < foodDistance) {
+      if (
+        distance < foodDistance ||
+        (distance < 52 && keepsTarget("forage", edible.id))
+      ) {
         foodDistance = distance;
         nearestFood = edible;
+        if (keepsTarget("forage", edible.id)) break;
       }
     }
     if (nearestFood) {
@@ -1346,9 +1362,7 @@ function updateAiEntity(
         nearestFood.z,
       );
       const forageScore = hunger * (0.72 + Math.min(0.28, foodDistance / 80));
-      steerX += towardFood.x * forageScore * 1.55;
-      steerZ += towardFood.z * forageScore * 1.55;
-      scores.push(["forage", forageScore]);
+      goal("forage", forageScore, towardFood.x, towardFood.z, nearestFood.id);
       if (foodDistance < 2.5 && now >= entity.forageCooldownUntil) {
         const dietFactor = entity.dna.diet === "omnivore" ? 0.72 : 1;
         const restored = Math.min(
@@ -1381,9 +1395,14 @@ function updateAiEntity(
       if (!other.alive || other.id === entity.id) continue;
       const otherPower = getCreaturePower(other.dna);
       const distance = Math.hypot(other.x - entity.x, other.z - entity.z);
-      if (distance < preyDistance && otherPower < power * 1.22) {
+      if (
+        (distance < preyDistance ||
+          (distance < 34 && keepsTarget("hunt", other.id))) &&
+        otherPower < power * 1.22
+      ) {
         prey = other;
         preyDistance = distance;
+        if (keepsTarget("hunt", other.id)) break;
       }
     }
   }
@@ -1410,14 +1429,15 @@ function updateAiEntity(
         : 0.9
       : hunger * 1.08;
     if (defending && entity.health < 25) {
-      steerX -= towardTarget.x * 1.8;
-      steerZ -= towardTarget.z * 1.8;
-      scores.push(["flee", 1]);
+      goal("flee", 1, -towardTarget.x, -towardTarget.z, combatTarget.id);
     } else {
-      steerX += towardTarget.x * combatScore * 1.8;
-      steerZ += towardTarget.z * combatScore * 1.8;
-      scores.push([defending ? "defend" : "hunt", combatScore]);
-      entity.targetId = combatTarget.id;
+      goal(
+        defending ? "defend" : "hunt",
+        combatScore,
+        towardTarget.x,
+        towardTarget.z,
+        combatTarget.id,
+      );
       if (towardTarget.distance < 2.8 && now >= entity.attackCooldownUntil) {
         entity.attackCooldownUntil = now + 1.35 + random() * 0.35;
         entity.energy = Math.max(0, entity.energy - 3.6);
@@ -1473,8 +1493,10 @@ function updateAiEntity(
       .filter((candidate) => candidate.similarity >= 0.28)
       .sort(
         (first, second) =>
+          Number(keepsTarget("mate", second.other.id)) -
+            Number(keepsTarget("mate", first.other.id)) ||
           second.similarity / (1 + second.distance * 0.035) -
-          first.similarity / (1 + first.distance * 0.035),
+            first.similarity / (1 + first.distance * 0.035),
       )[0];
     if (partner) {
       const towardPartner = direction(
@@ -1484,10 +1506,13 @@ function updateAiEntity(
         partner.other.z,
       );
       const mateScore = 0.42 + partner.similarity * 0.48;
-      steerX += towardPartner.x * mateScore;
-      steerZ += towardPartner.z * mateScore;
-      scores.push(["mate", mateScore]);
-      entity.targetId = partner.other.id;
+      goal(
+        "mate",
+        mateScore,
+        towardPartner.x,
+        towardPartner.z,
+        partner.other.id,
+      );
       if (partner.distance < 2.8) {
         const cooldownUntil = now + MATING_COOLDOWN_SECONDS;
         entity.mateCooldownUntil = cooldownUntil;
@@ -1498,6 +1523,36 @@ function updateAiEntity(
       }
     }
   }
+
+  const best = goals.reduce((first, second) =>
+    second.score > first.score ? second : first,
+  );
+  const current = goals.find((candidate) => candidate.intent === entity.intent);
+  const urgent = goals
+    .filter(
+      (candidate) =>
+        (candidate.intent === "flee" && candidate.score > 0.35) ||
+        candidate.intent === "defend" ||
+        (entity.energy < 20 &&
+          (candidate.intent === "forage" || candidate.intent === "hunt")),
+    )
+    .sort((first, second) => second.score - first.score)[0];
+  const selected =
+    urgent ??
+    (current && (!decisionDue || best.score < current.score + 0.12)
+      ? current
+      : best);
+  if (
+    decisionDue ||
+    selected.intent !== entity.intent ||
+    selected.targetId !== entity.targetId
+  ) {
+    entity.nextDecisionAt = now + 5 + random() * 4;
+  }
+  entity.intent = selected.intent;
+  entity.targetId = selected.targetId;
+  let steerX = selected.x;
+  let steerZ = selected.z;
 
   // Local separation is always active, even for armies, so a group stays a
   // readable cluster rather than collapsing into one overlapping mesh.
@@ -1517,8 +1572,6 @@ function updateAiEntity(
     steerZ += (-entity.z / radius) * 2;
   }
   const length = Math.hypot(steerX, steerZ);
-  const dominant = scores.sort((first, second) => second[1] - first[1])[0];
-  entity.intent = dominant?.[0] ?? "wander";
   // Wings are an escape tool, not an always-on habitat. AI takes off only
   // while actively fleeing and lands again before feeding, fighting or mating.
   const shouldFly =
@@ -1541,9 +1594,54 @@ function updateAiEntity(
     const speed =
       getCreatureSpeed(entity.dna) *
       speedScale *
-      getAgeSpeedMultiplier(entity.dna, entity.age);
-    const moveX = (steerX / length) * speed * dt;
-    const moveZ = (steerZ / length) * speed * dt;
+      getAgeSpeedMultiplier(entity.dna, entity.age) *
+      // Ease off near a settled social spacing instead of overshooting it.
+      Math.min(1, length);
+    const canCrossWater = shouldFly || canMonsterSwim(entity.dna);
+    let desiredYaw = Math.atan2(-steerX, -steerZ);
+    // Look ahead before reaching a shore. Choose a clear arc close to the
+    // current heading so avoidance does not flip left/right on every tick.
+    const lookAhead = Math.max(2.5, speed * 1.5);
+    const blockedAhead = (yaw: number) => {
+      const samples = Math.ceil(lookAhead / 0.75);
+      for (let sample = 1; sample <= samples; sample++) {
+        const distance = (lookAhead * sample) / samples;
+        if (
+          isMovementBlocked(
+            entity.x,
+            entity.z,
+            entity.x - Math.sin(yaw) * distance,
+            entity.z - Math.cos(yaw) * distance,
+            canCrossWater,
+          )
+        )
+          return true;
+      }
+      return false;
+    };
+    if (blockedAhead(desiredYaw)) {
+      const alternatives = [0.45, -0.45, 0.9, -0.9, 1.4, -1.4, 2, -2, Math.PI]
+        .map((offset) => normalizeAngle(desiredYaw + offset))
+        .filter((yaw) => !blockedAhead(yaw))
+        .sort(
+          (first, second) =>
+            Math.abs(normalizeAngle(first - entity.yaw)) -
+            Math.abs(normalizeAngle(second - entity.yaw)),
+        );
+      desiredYaw = alternatives[0] ?? normalizeAngle(entity.yaw + Math.PI / 2);
+    }
+    const turnRate =
+      entity.intent === "flee" || entity.intent === "defend" ? 2.4 : 1.2;
+    const turn = normalizeAngle(
+      dampAngle(entity.yaw, desiredYaw, 3, dt) - entity.yaw,
+    );
+    entity.yaw = normalizeAngle(
+      entity.yaw + clamp(turn, -turnRate * dt, turnRate * dt),
+    );
+    // Translation follows the eased facing, producing an arc instead of a
+    // sudden sideways jump while the rendered body catches up.
+    const moveX = -Math.sin(entity.yaw) * speed * dt;
+    const moveZ = -Math.cos(entity.yaw) * speed * dt;
     const nextX = entity.x + moveX;
     const nextZ = entity.z + moveZ;
     const blocked = isMovementBlocked(
@@ -1556,7 +1654,6 @@ function updateAiEntity(
     if (!blocked) {
       entity.x = nextX;
       entity.z = nextZ;
-      entity.yaw = Math.atan2(-moveX, -moveZ);
       if (!shouldFly) {
         entity.energy = Math.max(
           0,
@@ -1567,8 +1664,6 @@ function updateAiEntity(
               dt,
         );
       }
-    } else {
-      entity.wanderAngle += Math.PI * (0.45 + random() * 0.4);
     }
   }
 

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { TICK_SECONDS } from "../src/sim/constants";
 import { createWorldState, stepWorld } from "../src/sim/engine";
 import { EDIBLES } from "../src/world/resources";
-import { WORLD_RADIUS } from "../src/world/terrain";
+import { normalizeAngle } from "../src/mathx";
+import { isWaterAt, riverX, WORLD_RADIUS } from "../src/world/terrain";
 import {
   emptyWorld,
   makeEntity,
@@ -15,6 +16,118 @@ import {
 const tree = EDIBLES[0];
 
 describe("AI objective selection", () => {
+  it("follows a wandering heading for several seconds and turns along an arc", () => {
+    const state = emptyWorld();
+    const walker = makeEntity("walker", {
+      x: -40,
+      z: 0,
+      yaw: 0,
+      wanderAngle: Math.PI,
+      mateCooldownUntil: 9999,
+    });
+    state.entities.push(walker);
+    stepWorld(state, TICK_SECONDS);
+    const plannedAngle = walker.wanderAngle;
+    const decisionAt = walker.nextDecisionAt;
+    expect(decisionAt - state.time).toBeGreaterThanOrEqual(5);
+    for (let tick = 0; tick < 40; tick++) {
+      const before = { x: walker.x, z: walker.z, yaw: walker.yaw };
+      stepWorld(state, TICK_SECONDS);
+      expect(walker.wanderAngle).toBe(plannedAngle);
+      expect(walker.nextDecisionAt).toBe(decisionAt);
+      expect(
+        Math.abs(normalizeAngle(walker.yaw - before.yaw)),
+      ).toBeLessThanOrEqual(0.120001);
+      const dx = walker.x - before.x;
+      const dz = walker.z - before.z;
+      expect(Math.hypot(dx, dz)).toBeGreaterThan(0);
+      expect(normalizeAngle(Math.atan2(-dx, -dz) - walker.yaw)).toBeCloseTo(
+        0,
+        6,
+      );
+    }
+  });
+
+  it("keeps a food target when a closer resource becomes available, and replaces depleted food", () => {
+    const state = emptyWorld();
+    const grazer = makeEntity("grazer", {
+      x: tree.x,
+      z: tree.z + 8,
+      energy: 40,
+      mateCooldownUntil: 9999,
+    });
+    for (const food of EDIBLES) state.depletedResources[food.id] = 9999;
+    delete state.depletedResources[tree.id];
+    state.entities.push(grazer);
+    stepWorld(state, TICK_SECONDS);
+    expect(grazer.targetId).toBe(tree.id);
+    const closer = EDIBLES.find(
+      (food) =>
+        food.id !== tree.id &&
+        Math.hypot(food.x - tree.x, food.z - tree.z) > 6 &&
+        Math.hypot(food.x - tree.x, food.z - tree.z) < 45,
+    )!;
+    grazer.x = closer.x;
+    grazer.z = closer.z + 3;
+    // Keep the original target within sensing range while making the new one closer.
+    const original = EDIBLES.find((food) => food.id === grazer.targetId)!;
+    expect(
+      Math.hypot(original.x - grazer.x, original.z - grazer.z),
+    ).toBeLessThan(52);
+    delete state.depletedResources[closer.id];
+    stepWorld(state, TICK_SECONDS);
+    expect(grazer.intent).toBe("forage");
+    expect(grazer.targetId).toBe(tree.id);
+    state.depletedResources[tree.id] = 9999;
+    stepWorld(state, TICK_SECONDS);
+    expect(grazer.targetId).toBe(closer.id);
+  });
+
+  it("keeps a valid goal despite a competing social attraction", () => {
+    const state = emptyWorld();
+    const walker = makeEntity("walker", {
+      x: -40,
+      z: 0,
+      mateCooldownUntil: 9999,
+    });
+    state.entities.push(walker);
+    stepWorld(state, TICK_SECONDS);
+    const decisionAt = walker.nextDecisionAt;
+    state.entities.push(makePlayer("friend", { x: -10, z: 0 }));
+    run(state, 30);
+    expect(walker.intent).toBe("wander");
+    expect(walker.nextDecisionAt).toBe(decisionAt);
+  });
+
+  it.each(["medium", "tiny"] as const)(
+    "turns a %s monster away from a river bank without getting stuck",
+    (size) => {
+      const state = emptyWorld();
+      const walker = makeEntity("walker", {
+        dna: withDna({ size, build: "lean", legShape: "springy" }),
+        x: riverX(0) - 4,
+        z: 0,
+        yaw: -Math.PI / 2,
+        wanderAngle: 0,
+        nextDecisionAt: 100,
+        mateCooldownUntil: 9999,
+      });
+      const start = { x: walker.x, z: walker.z };
+      state.entities.push(walker);
+      for (let tick = 0; tick < 120; tick++) {
+        const yaw = walker.yaw;
+        stepWorld(state, TICK_SECONDS);
+        expect(isWaterAt(walker.x, walker.z)).toBe(false);
+        expect(Math.abs(normalizeAngle(walker.yaw - yaw))).toBeLessThanOrEqual(
+          0.120001,
+        );
+      }
+      expect(
+        Math.hypot(walker.x - start.x, walker.z - start.z),
+      ).toBeGreaterThan(5);
+    },
+  );
+
   it("forages when hungry", () => {
     const state = emptyWorld();
     const grazer = makeEntity("grazer", {

@@ -23,8 +23,10 @@ import { pickRandom } from "../rng";
 
 export const INITIAL_WILD_MONSTERS = 10;
 export const EGG_HATCH_SECONDS = 30;
-export const MATING_COOLDOWN_SECONDS = 120;
-export const ADULT_AGE_SECONDS = 45;
+/** Both parents recover for twenty simulated minutes after each egg. */
+export const MATING_COOLDOWN_SECONDS = 20 * 60;
+/** Hatchlings spend fifteen simulated minutes growing before they can breed. */
+export const ADULT_AGE_SECONDS = 15 * 60;
 
 export type GeneticMix = {
   dna: MonsterDna;

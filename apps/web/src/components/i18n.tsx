@@ -384,7 +384,8 @@ const en = {
   "game.mateCooldown": "Pairing recovers in {{seconds}} seconds.",
   "game.noMate": "No healthy adult partner is nearby.",
   "game.mateCloser": "Move closer to {{name}} to pair.",
-  "game.mateNeeds": "You need at least 55 health and 55 energy to pair.",
+  "game.mateNeeds":
+    "You must be an adult with at least 55 health and 55 energy to pair.",
   "game.populationFull": "The island is at its safe population limit.",
   "game.simWatching": "The wild population is choosing what to do.",
   "game.simBirth": "{{name}} hatched with {{mutations}} mutations.",
@@ -848,7 +849,8 @@ const bg: Record<TranslationKey, string> = {
   "game.mateCooldown": "Ново сдвояване след {{seconds}} секунди.",
   "game.noMate": "Наблизо няма здрав възрастен партньор.",
   "game.mateCloser": "Приближи се до {{name}}, за да се сдвоите.",
-  "game.mateNeeds": "Трябват поне 55 здраве и 55 енергия за сдвояване.",
+  "game.mateNeeds":
+    "За сдвояване трябва да си възрастен с поне 55 здраве и 55 енергия.",
   "game.populationFull": "Островът достигна безопасния брой обитатели.",
   "game.simWatching": "Дивите чудовища избират какво да правят.",
   "game.simBirth": "{{name}} се излюпи с {{mutations}} мутации.",
@@ -1319,7 +1321,7 @@ const de: Record<TranslationKey, string> = {
   "game.noMate": "Kein gesunder erwachsener Partner ist in der Nähe.",
   "game.mateCloser": "Gehe näher zu {{name}}, um euch zu paaren.",
   "game.mateNeeds":
-    "Zum Paaren brauchst du mindestens 55 Gesundheit und 55 Energie.",
+    "Zum Paaren musst du erwachsen sein und mindestens 55 Gesundheit und 55 Energie haben.",
   "game.populationFull":
     "Die Insel hat ihre sichere Populationsgrenze erreicht.",
   "game.simWatching": "Die wilde Population entscheidet, was sie tut.",

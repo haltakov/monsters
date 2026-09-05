@@ -1,5 +1,6 @@
 import { DEFAULT_MONSTER_DNA, type MonsterDna } from "../src/dna/dna";
 import { createWorldState, stepWorld } from "../src/sim/engine";
+import { ADULT_AGE_SECONDS } from "../src/sim/genetics";
 import { TICK_SECONDS } from "../src/sim/constants";
 import type {
   PlayerInput,
@@ -34,7 +35,7 @@ export function makeEntity(
     yaw: 0,
     energy: 100,
     health: 100,
-    age: 200,
+    age: ADULT_AGE_SECONDS + 200,
     intent: "wander",
     targetId: null,
     wanderAngle: 0,

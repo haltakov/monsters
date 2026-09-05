@@ -15,7 +15,7 @@ import {
   mixMonsterDna,
 } from "../src/sim/genetics";
 import { TICK_SECONDS } from "../src/sim/constants";
-import { stepWorld } from "../src/sim/engine";
+import { createWorldState, stepWorld } from "../src/sim/engine";
 import { emptyWorld, makeEntity, makePlayer, run, withDna } from "./helpers";
 
 describe("genetics", () => {
@@ -106,6 +106,90 @@ describe("genetics", () => {
 });
 
 describe("pairing and eggs", () => {
+  it.each(["player", "wild"])(
+    "requires a mature %s initiator and a mature partner",
+    (kind) => {
+      const state = emptyWorld();
+      const first = (kind === "player" ? makePlayer : makeEntity)("first", {
+        x: 0,
+        z: 0,
+        age: ADULT_AGE_SECONDS - 1,
+      });
+      const second = makeEntity("second", { x: 1, z: 0 });
+      state.entities.push(first, second);
+      const commands =
+        kind === "player"
+          ? [
+              {
+                type: "action" as const,
+                entityId: first.id,
+                action: "pair" as const,
+              },
+            ]
+          : [];
+      const rejected = stepWorld(state, TICK_SECONDS, commands);
+      expect(state.eggs).toHaveLength(0);
+      if (kind === "player")
+        expect(rejected).toContainEqual(
+          expect.objectContaining({ type: "pairFailed", reason: "notReady" }),
+        );
+      first.age = ADULT_AGE_SECONDS;
+      second.age = ADULT_AGE_SECONDS - 1;
+      stepWorld(state, TICK_SECONDS, commands);
+      expect(state.eggs).toHaveLength(0);
+      second.age = ADULT_AGE_SECONDS;
+      stepWorld(state, TICK_SECONDS, commands);
+      expect(state.eggs).toHaveLength(1);
+    },
+  );
+
+  it("prevents either parent from breeding with a fresh partner until recovery ends", () => {
+    const state = emptyWorld();
+    const first = makePlayer("first", { x: 0, z: 0 });
+    const second = makeEntity("second", { x: 1, z: 0 });
+    state.entities.push(first, second);
+    stepWorld(state, TICK_SECONDS, [
+      { type: "action", entityId: first.id, action: "pair" },
+    ]);
+    const recoveryAt = first.mateCooldownUntil;
+    expect(recoveryAt - state.time).toBe(20 * 60);
+    state.entities.push(makeEntity("fresh", { x: 2, z: 0 }));
+    state.time = recoveryAt - 1;
+    const denied = stepWorld(
+      state,
+      TICK_SECONDS,
+      [first, second].map((parent) => ({
+        type: "action" as const,
+        entityId: parent.id,
+        action: "pair" as const,
+      })),
+    );
+    expect(denied.filter((event) => event.type === "egg")).toHaveLength(0);
+    expect(
+      denied.filter(
+        (event) => event.type === "pairFailed" && event.reason === "cooldown",
+      ),
+    ).toHaveLength(2);
+    state.time = recoveryAt;
+    first.energy = second.energy = 100;
+    first.x = second.x - 1;
+    first.z = second.z;
+    const accepted = stepWorld(state, TICK_SECONDS, [
+      { type: "action", entityId: first.id, action: "pair" },
+    ]);
+    expect(accepted.filter((event) => event.type === "egg")).toHaveLength(1);
+  });
+
+  it("cannot grow the ten-monster starting population beyond fifteen in its first fifteen minutes", () => {
+    const state = createWorldState({ seed: 42 });
+    run(state, (15 * 60) / TICK_SECONDS);
+    expect(state.stats.births + state.eggs.length).toBeLessThanOrEqual(5);
+    expect(
+      state.entities.filter((entity) => entity.alive).length +
+        state.eggs.length,
+    ).toBeLessThanOrEqual(15);
+  });
+
   it("refuses to pair while a cooldown is active and when too far away", () => {
     const state = emptyWorld();
     const player = makePlayer("p1", { x: 0, z: 0, mateCooldownUntil: 50 });
