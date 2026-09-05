@@ -328,6 +328,70 @@ export class WorldService {
     });
   }
 
+  async respawnMonster(
+    guestId: string,
+    monsterId: string,
+    accountId?: string | null,
+  ) {
+    const world = await this.requireWorld();
+    const monster = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.guestPlayer.update({
+          where: { id: guestId },
+          data: { lastSeenAt: new Date() },
+        });
+        const source = await tx.monster.findUnique({
+          where: { id: monsterId },
+        });
+        if (!source || source.worldId !== world.id)
+          throw new NotFoundException('Monster not found');
+        if (
+          source.ownerId !== guestId &&
+          !(accountId && source.accountOwnerId === accountId)
+        )
+          throw new ForbiddenException(
+            'That monster belongs to another player',
+          );
+        const live = this.runner
+          .getState()
+          ?.entities.find((entity) => entity.id === monsterId);
+        const needsRespawn = live ? !live.alive : !source.alive;
+        // A retry selects the living monster without healing or duplicating it.
+        if (needsRespawn || source.ownerId !== guestId) {
+          const count = await tx.monster.count({
+            where: {
+              worldId: world.id,
+              ownerId: guestId,
+              alive: true,
+              id: { not: monsterId },
+            },
+          });
+          if (count >= MAX_OWNED_MONSTERS)
+            throw new BadRequestException(
+              `A guest may keep at most ${MAX_OWNED_MONSTERS} living monsters`,
+            );
+        }
+        if (needsRespawn) {
+          await this.runner.spawnMonster(
+            this.buildSpawnCommand({ ...source, ownerId: guestId }).entity,
+          );
+        }
+        const rebound = await tx.monster.update({
+          where: { id: monsterId },
+          data: { ownerId: guestId },
+        });
+        await tx.worldMember.upsert({
+          where: { worldId_guestId: { worldId: world.id, guestId } },
+          create: { worldId: world.id, guestId, selectedMonsterId: monsterId },
+          update: { selectedMonsterId: monsterId, lastSeenAt: new Date() },
+        });
+        return rebound;
+      },
+      { timeout: 15000 },
+    );
+    return this.toMonsterView(monster, { selectedId: monster.id, accountId });
+  }
+
   async copyMonster(
     guestId: string,
     monsterId: string,
@@ -338,7 +402,8 @@ export class WorldService {
     });
     if (
       !source ||
-      (source.ownerId !== guestId && source.accountOwnerId !== accountId)
+      (source.ownerId !== guestId &&
+        !(accountId && source.accountOwnerId === accountId))
     ) {
       throw new NotFoundException('Monster not found');
     }

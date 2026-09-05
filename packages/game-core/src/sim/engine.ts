@@ -322,8 +322,12 @@ export function createInitialWildPopulation(
     const base = shuffled[index % shuffled.length].archetype;
     const angle = random() * Math.PI * 2;
     const radius = 14 + random() * 34;
-    const matchingAdult =
-      index >= shuffled.length ? population[index % shuffled.length] : null;
+    const island = ISLANDS[index % ISLANDS.length];
+    const matchingAdult = population.find(
+      (candidate, candidateIndex) =>
+        candidateIndex % shuffled.length === index % shuffled.length &&
+        candidateIndex % ISLANDS.length === index % ISLANDS.length,
+    );
     const entity: SimEntity = {
       ...blankEntity(
         {
@@ -338,11 +342,11 @@ export function createInitialWildPopulation(
       ),
       x: matchingAdult
         ? matchingAdult.x + Math.cos(angle) * 4.2
-        : Math.cos(angle) * radius,
+        : island.x + Math.cos(angle) * radius,
       y: 0,
       z: matchingAdult
         ? matchingAdult.z + Math.sin(angle) * 4.2
-        : Math.sin(angle) * radius,
+        : island.z + Math.sin(angle) * radius,
       energy: 58 + random() * 38,
       health: 74 + random() * 26,
       age: ADULT_AGE_SECONDS + 20 + random() * 120,
@@ -350,12 +354,13 @@ export function createInitialWildPopulation(
       mateCooldownUntil: MATING_COOLDOWN_SECONDS * (0.25 + random() * 0.75),
     };
     if (!options.terrestrialOnly) {
-      if (index % 5 === 0) entity.dna = habitatDna(entity.dna, "sea");
-      else if (index % 5 === 1) entity.dna = habitatDna(entity.dna, "sky");
+      // Start with one land animal per island, then add sea and sky wildlife.
+      const habitatSlot = index - ISLANDS.length;
+      if (habitatSlot >= 0 && habitatSlot % 5 === 0)
+        entity.dna = habitatDna(entity.dna, "sea");
+      else if (habitatSlot >= 0 && habitatSlot % 5 === 1)
+        entity.dna = habitatDna(entity.dna, "sky");
       else entity.dna = terrestrialVariant(entity.dna, random);
-      const island = ISLANDS[index % ISLANDS.length];
-      entity.x += island.x;
-      entity.z += island.z;
     }
     entity.yaw = random() * Math.PI * 2;
     entity.wanderAngle = random() * Math.PI * 2;
@@ -1232,7 +1237,7 @@ function releaseExpiredControl(state: WorldSimState, events: SimEvent[]) {
   }
 }
 
-/** Trusted keeper operation; ordinary spawn commands never resurrect corpses. */
+/** Authorized respawn operation; ordinary spawn commands never resurrect corpses. */
 export function respawnWorldMonster(
   state: WorldSimState,
   spec: SpawnEntitySpec,

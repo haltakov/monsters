@@ -203,7 +203,8 @@ export class WorldPersistenceService {
 
   /**
    * Replaces one world's simulation atomically. Daily resets archive monsters
-   * and preserve lineage/history; explicit admin resets may erase that history.
+   * and preserve lineage/history; admin resets clear unowned wildlife history.
+   * Owned designs and the last selected owned monster always survive.
    * Accounts, guest devices and memberships are always preserved.
    */
   resetWorld(world: WorldRecord, options: ResetWorldOptions) {
@@ -223,27 +224,39 @@ export class WorldPersistenceService {
 
     return this.enqueue(async () => {
       const updatedWorld = await this.prisma.$transaction(async (tx) => {
+        const saved = await tx.monster.findMany({
+          where: {
+            worldId: world.id,
+            OR: [{ ownerId: { not: null } }, { accountOwnerId: { not: null } }],
+          },
+          select: { id: true },
+        });
         await tx.worldMember.updateMany({
-          where: { worldId: world.id },
+          where: {
+            worldId: world.id,
+            selectedMonsterId: { notIn: saved.map((monster) => monster.id) },
+          },
           data: { selectedMonsterId: null },
         });
         if (!options.preserveHistory) {
           await tx.worldEvent.deleteMany({ where: { worldId: world.id } });
         }
         await tx.worldSnapshot.deleteMany({ where: { worldId: world.id } });
-        if (options.preserveHistory) {
+        // Retire the outgoing lives without deleting any player configuration.
+        await tx.monster.updateMany({
+          where: { worldId: world.id, alive: true },
+          data: { alive: false, diedAt: now },
+        });
+        for (const entity of ages) {
           await tx.monster.updateMany({
-            where: { worldId: world.id, alive: true },
-            data: { alive: false, diedAt: now },
+            where: { id: entity.id, worldId: world.id },
+            data: { ageSeconds: entity.ageSeconds },
           });
-          for (const entity of ages) {
-            await tx.monster.updateMany({
-              where: { id: entity.id, worldId: world.id },
-              data: { ageSeconds: entity.ageSeconds },
-            });
-          }
-        } else {
-          await tx.monster.deleteMany({ where: { worldId: world.id } });
+        }
+        if (!options.preserveHistory) {
+          await tx.monster.deleteMany({
+            where: { worldId: world.id, ownerId: null, accountOwnerId: null },
+          });
         }
         await tx.monster.createMany({
           data: state.entities.map((entity) => ({

@@ -326,7 +326,7 @@ const en = {
   "game.killedByKeeper": "{{name}} was killed by an island keeper.",
   "game.diedOfAge": "{{name}} reached the end of its natural life.",
   "game.worldReset":
-    "A fresh day on the island. Create a monster or spawn a copy from your history.",
+    "The world was reset. Respawn your last monster or choose one from your inventory.",
   "game.worldResetHelp":
     "The island resets daily at 00:00 UTC. Accounts and monster history are kept.",
   "game.ecosystem": "ECOSYSTEM LIVE",
@@ -448,14 +448,22 @@ const en = {
   "game.playerProtected": "Players cannot hurt each other on this island.",
   "game.saveFailed": "Could not save: {{message}}",
   "game.aiTookOver": "{{name}} went back to wild AI control.",
-  "game.monsterDied": "{{name}} died. Pick or create another monster.",
+  "game.monsterDied":
+    "{{name}} died. Your design is saved—respawn it or choose another monster from your inventory.",
   "game.createFirst": "Create your first monster",
   "game.deadLabel": "dead",
-  "account.open": "Open monster archive",
+  "account.signInOptions": "Sign-in and device options",
+  "account.inventory": "Inventory",
+  "account.inventoryHint":
+    "Your monster designs survive resets and death. Respawn any saved monster with the same name and DNA.",
+  "account.respawn": "Respawn",
+  "game.respawnNamed": "Respawn {{name}}",
+  "game.respawning": "Respawning…",
+  "account.open": "Open monster inventory",
   "account.close": "Close account",
   "account.kicker": "KEEPER'S FIELD LEDGER",
   "account.local": "Local player",
-  "account.localTitle": "Your local family",
+  "account.localTitle": "Your monster inventory",
   "account.playingLocal": "Playing on this device",
   "account.localWarning":
     "Your monsters stay in this browser. Sign in to keep their history on every device.",
@@ -469,13 +477,13 @@ const en = {
   "account.localAgain": "Signed out. This device can still play locally.",
   "account.savedAcross": "Monster history saved across devices",
   "account.signOut": "Sign out",
-  "account.family": "My family",
+  "account.family": "My monsters",
   "account.islandArchive": "Island archive",
   "account.publicRecord": "PUBLIC FAMILY RECORD",
   "account.islandKeeper": "Island keeper",
   "account.archive": "SPECIMEN ARCHIVE",
-  "account.history": "Monster history",
-  "account.empty": "Create a monster to begin this family record.",
+  "account.history": "Saved monsters",
+  "account.empty": "Create a monster to save your first design.",
   "account.alive": "alive",
   "account.dead": "dead",
   "account.spawn": "Spawn",
@@ -495,13 +503,13 @@ const en = {
   "account.dangerZone": "DANGER ZONE",
   "account.resetWorld": "Reset the living world",
   "account.resetWorldHelp":
-    "Permanently removes every monster, egg, family line, and world event. Accounts remain. The replacement population inhabits land, sea, and sky.",
+    "Reseeds wildlife across all three islands, the sea, and sky. Player monster designs and the last selection are kept, ready to respawn. Eggs and unowned wildlife history are cleared.",
   "account.resetPopulation": "New wild population",
   "account.resetAction": "Reset and reseed",
   "account.resetConfirm":
-    "Permanently reset Monster Island and replace everything with {{count}} new land monsters? This cannot be undone.",
+    "Reset the world with {{count}} wild monsters across the islands? Player designs will be saved for respawning.",
   "account.resetComplete":
-    "The island was reset with {{count}} new land monsters.",
+    "Reset complete: {{count}} wild monsters across the islands. Player designs are saved.",
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -818,7 +826,7 @@ const bg: Record<TranslationKey, string> = {
   "game.killedByKeeper": "{{name}} беше убито от пазител на острова.",
   "game.diedOfAge": "{{name}} достигна края на естествения си живот.",
   "game.worldReset":
-    "Нов ден на острова. Създай чудовище или копие от историята си.",
+    "Светът е нулиран. Съживи последното си чудовище или избери от инвентара.",
   "game.worldResetHelp":
     "Островът се обновява всеки ден в 00:00 UTC. Профилите и историята се запазват.",
   "game.ecosystem": "ЖИВА ЕКОСИСТЕМА",
@@ -942,14 +950,22 @@ const bg: Record<TranslationKey, string> = {
     "Играчите не могат да си причиняват вреда на този остров.",
   "game.saveFailed": "Неуспешно записване: {{message}}",
   "game.aiTookOver": "{{name}} се върна под контрола на дивия AI.",
-  "game.monsterDied": "{{name}} умря. Избери или създай друго чудовище.",
+  "game.monsterDied":
+    "{{name}} умря. Дизайнът е запазен — съживи го или избери друго чудовище от инвентара.",
   "game.createFirst": "Създай първото си чудовище",
   "game.deadLabel": "мъртво",
-  "account.open": "Отвори архива с чудовища",
+  "account.signInOptions": "Вход и опции за устройството",
+  "account.inventory": "Инвентар",
+  "account.inventoryHint":
+    "Дизайните ти се запазват след нулиране и смърт. Съживи запазено чудовище със същото име и ДНК.",
+  "account.respawn": "Съживи",
+  "game.respawnNamed": "Съживи {{name}}",
+  "game.respawning": "Съживяване…",
+  "account.open": "Отвори инвентара с чудовища",
   "account.close": "Затвори профила",
   "account.kicker": "ДНЕВНИК НА ПАЗИТЕЛЯ",
   "account.local": "Локален играч",
-  "account.localTitle": "Твоето локално семейство",
+  "account.localTitle": "Твоят инвентар с чудовища",
   "account.playingLocal": "Играеш на това устройство",
   "account.localWarning":
     "Чудовищата са само в този браузър. Влез в профил, за да пазиш историята им на всички устройства.",
@@ -964,13 +980,13 @@ const bg: Record<TranslationKey, string> = {
     "Излезе от профила. Това устройство остава за локална игра.",
   "account.savedAcross": "Историята се пази на всички устройства",
   "account.signOut": "Изход",
-  "account.family": "Моето семейство",
+  "account.family": "Моите чудовища",
   "account.islandArchive": "Архив на острова",
   "account.publicRecord": "ПУБЛИЧНО РОДОСЛОВИЕ",
   "account.islandKeeper": "Пазител на острова",
   "account.archive": "АРХИВ НА ЕКЗЕМПЛЯРИТЕ",
-  "account.history": "История на чудовищата",
-  "account.empty": "Създай чудовище, за да започнеш семейната история.",
+  "account.history": "Запазени чудовища",
+  "account.empty": "Създай чудовище, за да запазиш първия си дизайн.",
   "account.alive": "живо",
   "account.dead": "мъртво",
   "account.spawn": "Създай в света",
@@ -990,13 +1006,13 @@ const bg: Record<TranslationKey, string> = {
   "account.dangerZone": "ОПАСНА ЗОНА",
   "account.resetWorld": "Нулирай живия свят",
   "account.resetWorldHelp":
-    "Изтрива завинаги всички чудовища, яйца, родословия и събития. Профилите остават. Новата популация обитава сушата, водата и небето.",
+    "Заселва отново трите острова, морето и небето. Запазва дизайните на играчите и последния избор за съживяване. Яйцата и историята на дивите животни се изчистват.",
   "account.resetPopulation": "Нова дива популация",
   "account.resetAction": "Нулирай и засели",
   "account.resetConfirm":
-    "Да нулирам ли завинаги Острова на чудовищата и да заменя всичко с {{count}} нови сухоземни чудовища? Това не може да се отмени.",
+    "Нулиране на света с {{count}} диви чудовища по островите? Дизайните на играчите се запазват за съживяване.",
   "account.resetComplete":
-    "Островът беше нулиран с {{count}} нови сухоземни чудовища.",
+    "Нулирането приключи: {{count}} диви чудовища по островите. Дизайните на играчите са запазени.",
 };
 
 const de: Record<TranslationKey, string> = {
@@ -1315,7 +1331,7 @@ const de: Record<TranslationKey, string> = {
   "game.diedOfAge":
     "{{name}} hat das Ende seiner natürlichen Lebensdauer erreicht.",
   "game.worldReset":
-    "Ein neuer Tag auf der Insel. Erstelle ein Monster oder eine Kopie aus deinem Verlauf.",
+    "Die Welt wurde zurückgesetzt. Belebe dein letztes Monster wieder oder wähle eines aus deinem Inventar.",
   "game.worldResetHelp":
     "Die Insel wird täglich um 00:00 UTC zurückgesetzt. Konten und Monsterverlauf bleiben erhalten.",
   "game.ecosystem": "ÖKOSYSTEM LIVE",
@@ -1444,14 +1460,21 @@ const de: Record<TranslationKey, string> = {
   "game.saveFailed": "Speichern fehlgeschlagen: {{message}}",
   "game.aiTookOver": "{{name}} steht wieder unter wilder KI-Kontrolle.",
   "game.monsterDied":
-    "{{name}} ist gestorben. Wähle oder erstelle ein anderes Monster.",
+    "{{name}} ist gestorben. Dein Entwurf ist gespeichert. Belebe es wieder oder wähle ein anderes Monster aus deinem Inventar.",
   "game.createFirst": "Erstelle dein erstes Monster",
   "game.deadLabel": "tot",
-  "account.open": "Monsterarchiv öffnen",
+  "account.signInOptions": "Anmeldung und Geräteoptionen",
+  "account.inventory": "Inventar",
+  "account.inventoryHint":
+    "Deine Monster bleiben nach Tod und Zurücksetzen gespeichert. Lass sie mit demselben Namen und derselben DNA wieder erscheinen.",
+  "account.respawn": "Wiederbeleben",
+  "game.respawnNamed": "{{name}} wiederbeleben",
+  "game.respawning": "Wird wiederbelebt…",
+  "account.open": "Monsterinventar öffnen",
   "account.close": "Konto schließen",
   "account.kicker": "FELDBUCH DES HÜTERS",
   "account.local": "Lokaler Spieler",
-  "account.localTitle": "Deine lokale Familie",
+  "account.localTitle": "Dein Monsterinventar",
   "account.playingLocal": "Du spielst auf diesem Gerät",
   "account.localWarning":
     "Deine Monster bleiben in diesem Browser. Melde dich an, um ihre Geschichte auf allen Geräten zu behalten.",
@@ -1467,13 +1490,14 @@ const de: Record<TranslationKey, string> = {
     "Abgemeldet. Dieses Gerät kann weiterhin lokal spielen.",
   "account.savedAcross": "Monsterverlauf auf allen Geräten gespeichert",
   "account.signOut": "Abmelden",
-  "account.family": "Meine Familie",
+  "account.family": "Meine Monster",
   "account.islandArchive": "Inselarchiv",
   "account.publicRecord": "ÖFFENTLICHES FAMILIENREGISTER",
   "account.islandKeeper": "Inselhüter",
   "account.archive": "EXEMPLAR-ARCHIV",
-  "account.history": "Monsterverlauf",
-  "account.empty": "Erstelle ein Monster, um die Familienakte zu beginnen.",
+  "account.history": "Gespeicherte Monster",
+  "account.empty":
+    "Erstelle ein Monster, um deinen ersten Entwurf zu speichern.",
   "account.alive": "lebendig",
   "account.dead": "tot",
   "account.spawn": "Spawnen",
@@ -1493,13 +1517,13 @@ const de: Record<TranslationKey, string> = {
   "account.dangerZone": "GEFAHRENBEREICH",
   "account.resetWorld": "Lebende Welt zurücksetzen",
   "account.resetWorldHelp":
-    "Löscht dauerhaft alle Monster, Eier, Stammbäume und Weltereignisse. Konten bleiben erhalten. Die neue Population lebt an Land, im Wasser und in der Luft.",
+    "Besiedelt alle drei Inseln, Meer und Himmel neu. Spielermonster und die letzte Auswahl bleiben zum Wiederbeleben gespeichert. Eier und die Geschichte unbesessener Wildtiere werden gelöscht.",
   "account.resetPopulation": "Neue Wildpopulation",
   "account.resetAction": "Zurücksetzen und neu besiedeln",
   "account.resetConfirm":
-    "Monster Island dauerhaft zurücksetzen und alles durch {{count}} neue Landmonster ersetzen? Dies kann nicht rückgängig gemacht werden.",
+    "Die Welt mit {{count}} wilden Monstern auf den Inseln zurücksetzen? Spielermonster bleiben zum Wiederbeleben gespeichert.",
   "account.resetComplete":
-    "Die Insel wurde mit {{count}} neuen Landmonstern zurückgesetzt.",
+    "Zurückgesetzt: {{count}} wilde Monster auf den Inseln. Spielermonster sind gespeichert.",
 };
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {

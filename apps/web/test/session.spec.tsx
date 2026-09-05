@@ -255,6 +255,7 @@ describe("monster ownership calls", () => {
     await api.createMonster("tok", { name: "Pebble", dna: DNA });
     await api.updateMonster("tok", "monster-1", { name: "Pebble II" });
     await api.selectMonster("tok", "monster-1");
+    await api.respawnMonster("tok", "monster-1");
 
     expect(calls[0].url).toMatch(/\/api\/monsters$/);
     expect(calls[0].init?.method).toBe("POST");
@@ -264,6 +265,8 @@ describe("monster ownership calls", () => {
     expect(calls[1].init?.method).toBe("PATCH");
     expect(calls[1].url).toMatch(/\/api\/monsters\/monster-1$/);
     expect(calls[2].url).toMatch(/\/api\/monsters\/monster-1\/select$/);
+    expect(calls[3].url).toMatch(/\/api\/monsters\/monster-1\/respawn$/);
+    expect(calls[3].init?.method).toBe("POST");
   });
 
   it("reports server-side validation failures", async () => {

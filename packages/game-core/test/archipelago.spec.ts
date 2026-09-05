@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyPlayerMovement,
   createWorldState,
+  createInitialWildPopulation,
   stepWorld,
   sanitizeInput,
 } from "../src/sim/engine";
@@ -20,6 +21,7 @@ import {
   isBlockedByWater,
   swimmingFloor,
   terrainHeight,
+  islandAt,
 } from "../src/world/terrain";
 import { FISH, KELP, EDIBLES, resourceHeight } from "../src/world/resources";
 import { canMonsterSwim } from "../src/dna/dna";
@@ -40,6 +42,39 @@ const swimmerDna = withDna({
 });
 
 describe("archipelago and vertical movement", () => {
+  it("seeds every island with land animals without accumulating island offsets", () => {
+    for (const seed of [1, 42, 12345, 0x4d4f4e53]) {
+      for (const count of [3, 10, 30, 100]) {
+        for (const terrestrialOnly of [true, false]) {
+          const creatures = createInitialWildPopulation(seed, count, "reset:", {
+            terrestrialOnly,
+          });
+          expect(creatures).toHaveLength(count);
+          for (const island of ISLANDS)
+            expect(
+              creatures.some(
+                (entity) =>
+                  entity.locomotion === "land" &&
+                  islandAt(entity.x, entity.z)?.id === island.id,
+              ),
+            ).toBe(true);
+          for (const creature of creatures) {
+            expect(Math.hypot(creature.x, creature.z)).toBeLessThan(
+              OCEAN_RADIUS,
+            );
+            if (creature.locomotion === "land")
+              expect(islandAt(creature.x, creature.z)).toBeDefined();
+          }
+          expect(
+            createInitialWildPopulation(seed, count, "reset:", {
+              terrestrialOnly,
+            }),
+          ).toEqual(creatures);
+        }
+      }
+    }
+  });
+
   it("has three separate islands with distinct terrain and sea-only gaps", () => {
     const [home, lakes, peaks] = ISLANDS;
     expect(terrainHeight(peaks.x - 24, peaks.z + 16)).toBeGreaterThan(25);

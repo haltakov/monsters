@@ -88,6 +88,7 @@ import {
   type SimEvent,
   type WorldPopulation,
 } from "@monsters/game-core";
+import { MonsterRecovery } from "./monster-recovery";
 import { BreathEffects } from "./breath-effects";
 import { BreathControl } from "./breath-control";
 import { ArchipelagoMap } from "./archipelago-map";
@@ -454,6 +455,10 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   const [creatorSaving, setCreatorSaving] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [respawning, setRespawning] = useState(false);
+  const [respawnError, setRespawnError] = useState<string | null>(null);
+  const respawnPending = useRef(false);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const [controlsHelpOpen, setControlsHelpOpen] = useState(false);
   const [mouseHintDismissed, setMouseHintDismissed] = useState(false);
@@ -500,6 +505,13 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     );
     return selected ?? livingMonsters[0] ?? null;
   }, [livingMonsters, session.monsters, session.selectedMonsterId]);
+
+  const lastMonster =
+    activeMonster ??
+    [...session.monsters].sort(
+      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
+    )[0] ??
+    null;
 
   const monsterDna = useMemo(() => {
     if (!activeMonster) return DEFAULT_MONSTER_DNA;
@@ -627,6 +639,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             controls.current.isDead = false;
             controls.current.agent.enabled = false;
             setIsDead(false);
+            setRespawnError(null);
             setPairing(null);
             mateCooldownUntil.current = 0;
             setStatus({ key: "game.worldReset" });
@@ -1055,9 +1068,51 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     setStatus({ key: "game.dived" });
   }, [connection, monsterDna]);
 
+  const changeInventoryOpen = useCallback(
+    (open: boolean) => {
+      controls.current.keys.clear();
+      controls.current.move = { x: 0, y: 0 };
+      controls.current.paused = open || Boolean(creatorDraft || mobileMenuOpen);
+      if (open && document.pointerLockElement) document.exitPointerLock();
+      setInventoryOpen(open);
+    },
+    [creatorDraft, mobileMenuOpen],
+  );
+
+  const respawnMonster = useCallback(
+    async (id: string) => {
+      if (respawnPending.current) return;
+      respawnPending.current = true;
+      setRespawning(true);
+      setRespawnError(null);
+      try {
+        const revived = await session.respawnMonster(id);
+        controls.current.keys.clear();
+        controls.current.move = { x: 0, y: 0 };
+        controls.current.isDead = false;
+        controls.current.action = null;
+        controls.current.agent.enabled = false;
+        mateCooldownUntil.current = 0;
+        setMatingCooldown(0);
+        setIsDead(false);
+        setEnergyLevel(100);
+        setHealthLevel(100);
+        connection.join(revived.id);
+        setStatus({ key: "game.nowPlaying", values: { name: revived.name } });
+      } catch (error) {
+        setRespawnError((error as Error).message);
+        throw error;
+      } finally {
+        respawnPending.current = false;
+        setRespawning(false);
+      }
+    },
+    [connection, session, setEnergyLevel, setHealthLevel],
+  );
+
   const switchMonster = useCallback(
     async (id: string) => {
-      if (!id || id === session.selectedMonsterId) return;
+      if (!id) return;
       const next = session.monsters.find((monster) => monster.id === id);
       if (!next?.alive) return;
       controls.current.keys.clear();
@@ -2094,7 +2149,11 @@ function ConnectedGame({ session }: { session: SessionApi }) {
   const monsterName = activeMonster?.name ?? t("game.genericMonster");
   const canPlay = Boolean(selfEntityId) && isController && !isDead;
   const touchDisabled = Boolean(
-    creatorDraft || mobileMenuOpen || settingsOpen || controlsHelpOpen,
+    creatorDraft ||
+    mobileMenuOpen ||
+    settingsOpen ||
+    controlsHelpOpen ||
+    inventoryOpen,
   );
   const isSpectating =
     phase === "connected" && !selfEntityId && !creatorDraft && !isDead;
@@ -2157,6 +2216,9 @@ function ConnectedGame({ session }: { session: SessionApi }) {
         aria-live="polite"
       >
         <AccountHub
+          open={inventoryOpen}
+          onOpenChange={changeInventoryOpen}
+          onRespawn={respawnMonster}
           guestToken={token}
           monsters={session.monsters}
           selectedDna={encodeMonsterDna(monsterDna)}
@@ -2697,8 +2759,18 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               <strong>{t("game.spectating")}</strong>
               <span>{t("game.spectatorHint")}</span>
             </div>
+            {session.monsters.length > 0 && (
+              <MonsterRecovery
+                monster={lastMonster}
+                busy={respawning}
+                error={respawnError}
+                onRespawn={respawnMonster}
+                onInventory={() => changeInventoryOpen(true)}
+              />
+            )}
             <button type="button" onClick={openNewMonster}>
-              <Plus size={15} /> {t("game.createFirst")}
+              <Plus size={15} />{" "}
+              {t(session.monsters.length ? "game.new" : "game.createFirst")}
             </button>
           </div>
         )}
@@ -2730,6 +2802,13 @@ function ConnectedGame({ session }: { session: SessionApi }) {
                 </small>
               </div>
             )}
+            <MonsterRecovery
+              monster={lastMonster ? { ...lastMonster, alive: false } : null}
+              busy={respawning}
+              error={respawnError}
+              onRespawn={respawnMonster}
+              onInventory={() => changeInventoryOpen(true)}
+            />
             <div className="death-actions">
               {livingMonsters.length > 0 && (
                 <button

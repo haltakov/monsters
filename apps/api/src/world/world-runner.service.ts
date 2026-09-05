@@ -353,7 +353,7 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
         this.state,
       );
       this.logger.warn(
-        `Reset world "${this.world.slug}" with ${this.state.entities.length} terrestrial monsters`,
+        `Reset world "${this.world.slug}" with ${this.state.entities.length} wild monsters across the archipelago`,
       );
       return {
         seed: this.world.seed,

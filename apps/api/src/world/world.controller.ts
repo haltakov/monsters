@@ -111,6 +111,21 @@ export class MonsterController {
     return { monster };
   }
 
+  @Post(':id/respawn')
+  @HttpCode(200)
+  async respawn(
+    @CurrentGuest() guest: GuestRecord,
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const monster = await this.worlds.respawnMonster(
+      guest.id,
+      id,
+      request.account?.user.id,
+    );
+    return { monster };
+  }
+
   @Post(':id/copy')
   @HttpCode(201)
   async copy(

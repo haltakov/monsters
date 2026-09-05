@@ -49,7 +49,7 @@ Swimmers can cross the ocean and dive for fish and seaweed; winged monsters can 
 
 Breath fires a 14-unit cone in the direction the monster faces and works on land, in the air, and underwater. It costs 12 energy and has a shared four-second cooldown across all elements. Terrain blocks it, and actively controlled players remain protected. Wild monsters can breathe during combat, with a longer twelve-second cooldown.
 
-Walking gradually uses energy, sprinting drains it faster, and every attack costs 7 energy. Eat a compatible nearby resource to recover energy. Health recovers over time according to current energy. Reaching zero health or energy permanently kills the monster; its owner can then select another living monster or create a new one.
+Walking gradually uses energy, sprinting drains it faster, and every attack costs 7 energy. Eat a compatible nearby resource to recover energy. Health recovers over time according to current energy. Reaching zero health or energy ends the current life. The monster design stays in your **Inventory**: respawn it with the same name and DNA, select another living monster, or create a new design. Respawning starts a fresh life with full health and energy; it never heals an already-living monster.
 
 ## Monster DNA
 
@@ -63,20 +63,23 @@ Monsters age in real-time hours, including API downtime. Functional DNA (body,
 size, build, armor, metabolism and diet) determines a reproducible **2–12 hour**
 lifespan; cosmetic changes do not extend it. The first 75% of life is at full
 speed, followed by gradual slowing to 40% of normal speed. Maximum age causes
-permanent death, even with full health and energy. Age and lifespan appear in
-the HUD and monster history, with lifespan also shown in the creator.
+death, even with full health and energy. The saved design can still be respawned.
+Age and lifespan appear in the HUD and monster history, with lifespan also shown in the creator.
 
 Every day at **00:00 UTC**, the authoritative API resets the public island and
-its resources, spawning ten new land-based wild monsters. Accounts, player
-monster history and lineage remain intact; living monsters from the previous
+its resources, spawning ten new wild monsters across all three islands, the sea,
+and sky. Accounts, player monster history and lineage remain intact; living monsters from the previous
 season are archived as dead. Connected players return to spectating and can
-spawn new copies. The next reset is stored in PostgreSQL and performed once
+respawn their last selected monster or choose a saved design from Inventory.
+The next reset is stored in PostgreSQL and performed once
 on startup if midnight was missed. Deploying this feature does not immediately
 reset an existing world: its first deadline is the next UTC midnight.
 
 No separate cron service is required. The world-owning API process handles the
 schedule under its existing advisory lock. The explicit admin reset remains
-a separate destructive operation that also removes the world's monster history.
+a separate operation that clears eggs, unowned wildlife and the world event log,
+while always preserving owned monster designs and the last owned selection.
+Resets seed at least three animals so every island has land wildlife.
 
 ## Project layout
 

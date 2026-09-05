@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Boxes,
   ChevronRight,
   Copy,
   Dna,
@@ -44,6 +45,9 @@ type AdminMonster = MonsterSummary & {
 };
 
 type Props = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRespawn: (id: string) => Promise<void>;
   guestToken: string;
   monsters: MonsterSummary[];
   selectedDna: string;
@@ -73,6 +77,9 @@ function OriginBadge({ origin }: { origin: string }) {
 }
 
 export function AccountHub({
+  open,
+  onOpenChange: setOpen,
+  onRespawn,
   guestToken,
   monsters,
   selectedDna,
@@ -83,7 +90,6 @@ export function AccountHub({
   const { t } = useI18n();
   const session = authClient.useSession();
   const user = (session.data?.user ?? null) as AccountUser | null;
-  const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"family" | "archive" | "admin">("family");
   const [configuration, setConfiguration] = useState<AuthConfiguration>({
     google: false,
@@ -139,7 +145,7 @@ export function AccountHub({
   const closePanel = useCallback(() => {
     setOpen(false);
     setLineage(null);
-  }, []);
+  }, [setOpen]);
 
   useEffect(() => {
     if (open) {
@@ -289,6 +295,8 @@ export function AccountHub({
         onClick={(event) => {
           event.stopPropagation();
           opener.current = event.currentTarget;
+          setTab("family");
+          setLineage(null);
           setOpen(true);
         }}
         aria-label={t("account.open")}
@@ -296,9 +304,11 @@ export function AccountHub({
         {user?.image ? (
           <Image src={user.image} alt="" width={29} height={29} unoptimized />
         ) : (
-          <UserRound size={18} />
+          <Boxes size={18} />
         )}
-        <span>{user ? user.name : t("account.local")}</span>
+        <span>
+          {t("account.inventory")} · {monsters.length}
+        </span>
       </button>
       <button
         type="button"
@@ -309,6 +319,8 @@ export function AccountHub({
         onClick={(event) => {
           event.stopPropagation();
           opener.current = event.currentTarget;
+          setTab("family");
+          setLineage(null);
           setOpen(true);
         }}
         aria-label={t("account.open")}
@@ -316,8 +328,9 @@ export function AccountHub({
         {user?.image ? (
           <Image src={user.image} alt="" width={29} height={29} unoptimized />
         ) : (
-          <UserRound size={19} />
+          <Boxes size={19} />
         )}
+        <span>{t("account.inventory")}</span>
       </button>
 
       {open && (
@@ -386,74 +399,77 @@ export function AccountHub({
                   </button>
                 </div>
               ) : (
-                <div className="account-login">
-                  <div className="account-local-note">
-                    <Dna size={22} />
-                    <div>
-                      <strong>{t("account.playingLocal")}</strong>
-                      <p>{t("account.localWarning")}</p>
+                <details className="inventory-account-options">
+                  <summary>{t("account.signInOptions")}</summary>
+                  <div className="account-login">
+                    <div className="account-local-note">
+                      <Dna size={22} />
+                      <div>
+                        <strong>{t("account.playingLocal")}</strong>
+                        <p>{t("account.localWarning")}</p>
+                      </div>
+                    </div>
+                    {configuration.google && (
+                      <button
+                        type="button"
+                        className="account-google"
+                        onClick={signInGoogle}
+                        disabled={busy}
+                      >
+                        <LogIn size={17} /> {t("account.google")}
+                      </button>
+                    )}
+                    {configuration.magicLink && (
+                      <form
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void sendMagicLink();
+                        }}
+                      >
+                        <label>
+                          <span>{t("account.email")}</span>
+                          <input
+                            type="email"
+                            required
+                            value={email}
+                            onChange={(event) => setEmail(event.target.value)}
+                            placeholder="you@example.com"
+                          />
+                        </label>
+                        <button type="submit" disabled={busy}>
+                          <Mail size={17} /> {t("account.magic")}
+                        </button>
+                      </form>
+                    )}
+                    {!configuration.google && !configuration.magicLink && (
+                      <p className="account-setup-note">
+                        {t("account.setupPending")}
+                      </p>
+                    )}
+                    <div className="account-legal">
+                      <p>{t("legal.notice")}</p>
+                      <nav
+                        className="legal-links"
+                        aria-label={t("legal.navigation")}
+                      >
+                        <Link
+                          href="/terms/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {t("legal.terms")}
+                        </Link>
+                        <Link
+                          href="/privacy/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {t("legal.privacy")}
+                        </Link>
+                      </nav>
                     </div>
                   </div>
-                  {configuration.google && (
-                    <button
-                      type="button"
-                      className="account-google"
-                      onClick={signInGoogle}
-                      disabled={busy}
-                    >
-                      <LogIn size={17} /> {t("account.google")}
-                    </button>
-                  )}
-                  {configuration.magicLink && (
-                    <form
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void sendMagicLink();
-                      }}
-                    >
-                      <label>
-                        <span>{t("account.email")}</span>
-                        <input
-                          type="email"
-                          required
-                          value={email}
-                          onChange={(event) => setEmail(event.target.value)}
-                          placeholder="you@example.com"
-                        />
-                      </label>
-                      <button type="submit" disabled={busy}>
-                        <Mail size={17} /> {t("account.magic")}
-                      </button>
-                    </form>
-                  )}
-                  {!configuration.google && !configuration.magicLink && (
-                    <p className="account-setup-note">
-                      {t("account.setupPending")}
-                    </p>
-                  )}
-                  <div className="account-legal">
-                    <p>{t("legal.notice")}</p>
-                    <nav
-                      className="legal-links"
-                      aria-label={t("legal.navigation")}
-                    >
-                      <Link
-                        href="/terms/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {t("legal.terms")}
-                      </Link>
-                      <Link
-                        href="/privacy/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {t("legal.privacy")}
-                      </Link>
-                    </nav>
-                  </div>
-                </div>
+                </details>
               )}
 
               <nav className="account-tabs" aria-label="Account sections">
@@ -572,6 +588,9 @@ export function AccountHub({
                       </div>
                       <strong>{history.length}</strong>
                     </div>
+                    <p className="inventory-hint">
+                      {t("account.inventoryHint")}
+                    </p>
                     {history.length === 0 ? (
                       <p className="account-empty">{t("account.empty")}</p>
                     ) : (
@@ -608,6 +627,20 @@ export function AccountHub({
                               <ChevronRight size={17} />
                             </button>
                             <div className="account-monster-actions">
+                              {!monster.alive && (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void run(async () => {
+                                      await onRespawn(monster.id);
+                                      closePanel();
+                                    })
+                                  }
+                                >
+                                  <RotateCcw size={14} /> {t("account.respawn")}
+                                </button>
+                              )}
                               {monster.alive && (
                                 <button
                                   type="button"
@@ -864,14 +897,14 @@ export function AccountHub({
                       <span>{t("account.resetPopulation")}</span>
                       <input
                         type="number"
-                        min={1}
+                        min={3}
                         max={100}
                         value={resetPopulation}
                         onChange={(event) =>
                           setResetPopulation(
                             Math.max(
-                              1,
-                              Math.min(100, Number(event.target.value) || 1),
+                              3,
+                              Math.min(100, Number(event.target.value) || 3),
                             ),
                           )
                         }

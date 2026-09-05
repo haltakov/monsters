@@ -155,6 +155,23 @@ export function useGuestSession(options: { tokenStore?: TokenStore } = {}) {
     [state.token],
   );
 
+  const respawnMonster = useCallback(
+    async (id: string) => {
+      if (!state.token) throw new Error("No session");
+      const { monster } = await api.respawnMonster(state.token, id);
+      if (!mounted.current) throw new Error("The game session was closed.");
+      setState((current) => ({
+        ...current,
+        monsters: current.monsters.map((entry) =>
+          entry.id === monster.id ? monster : entry,
+        ),
+        selectedMonsterId: monster.id,
+      }));
+      return monster;
+    },
+    [state.token],
+  );
+
   const copyMonster = useCallback(
     async (id: string) => {
       if (!state.token) throw new Error("No session");
@@ -186,6 +203,7 @@ export function useGuestSession(options: { tokenStore?: TokenStore } = {}) {
     updateMonster,
     selectMonster,
     copyMonster,
+    respawnMonster,
     markMonsterDead,
   };
 }

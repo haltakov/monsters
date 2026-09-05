@@ -4,7 +4,7 @@ export const WORLD_RESET_CONFIRMATION = 'RESET MONSTER ISLAND';
 
 export class AdminResetWorldDto {
   @IsInt()
-  @Min(1)
+  @Min(3)
   @Max(100)
   population!: number;
 

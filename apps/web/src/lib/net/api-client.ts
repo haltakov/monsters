@@ -183,6 +183,12 @@ export const api = {
       method: "POST",
       token,
     }),
+  respawnMonster: (token: string, id: string, options: RequestOptions = {}) =>
+    apiRequest<{ monster: MonsterSummary }>(`/api/monsters/${id}/respawn`, {
+      ...options,
+      token,
+      method: "POST",
+    }),
   copyMonster: (token: string, id: string, options: RequestOptions = {}) =>
     apiRequest<{ monster: MonsterSummary }>(`/api/monsters/${id}/copy`, {
       ...options,

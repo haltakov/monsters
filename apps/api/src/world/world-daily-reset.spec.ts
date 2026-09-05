@@ -85,7 +85,7 @@ describe('daily world rollover', () => {
       const member = await harness.prisma.worldMember.findUniqueOrThrow({
         where: { worldId_guestId: { worldId: world.id, guestId: guest.id } },
       });
-      expect(member.selectedMonsterId).toBeNull();
+      expect(member.selectedMonsterId).toBe(old.id);
       expect(
         await harness.prisma.monster.count({ where: { worldId: world.id } }),
       ).toBe(20);
