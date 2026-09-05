@@ -92,8 +92,7 @@ export function createAuditSpecimens(count = 100, seed = 0x5a17c0de) {
         ],
         adaptation:
           ADAPTATIONS[
-            (index * 4 + attempt + Math.floor(random() * 3)) %
-              ADAPTATIONS.length
+            (index + attempt + Math.floor(random() * 3)) % ADAPTATIONS.length
           ],
         diet: pick(DIETS, random),
         breathing: pick(RESPIRATIONS, random),
@@ -112,3 +111,31 @@ export function createAuditSpecimens(count = 100, seed = 0x5a17c0de) {
 }
 
 export const AUDIT_SPECIMENS = createAuditSpecimens();
+
+/** One gene at a time: a random gallery alone can hide ineffective traits. */
+function compare<T extends keyof MonsterDna>(
+  trait: T,
+  values: readonly MonsterDna[T][],
+): AuditSpecimen[] {
+  return values.map((value, index) => ({
+    id: index + 1,
+    dna: { ...FOOT_AUDIT_SPECIMENS[0].dna, body: "round", [trait]: value },
+  }));
+}
+
+export const AUDIT_COMPARISONS = {
+  morphology: AUDIT_SPECIMENS,
+  feet: FOOT_AUDIT_SPECIMENS,
+  bodies: compare("body", BODY_SHAPES),
+  legs: compare("legs", LEG_COUNTS),
+  tails: compare("tail", TAIL_SHAPES),
+  horns: compare("horns", SMOOTH_HORN_SHAPES),
+  ears: compare("ears", EAR_SHAPES),
+  adaptations: compare("adaptation", ADAPTATIONS),
+  patterns: compare("pattern", SMOOTH_PATTERNS),
+  mouths: compare("mouth", MOUTH_SHAPES),
+  eyes: compare("eyes", EYE_COUNTS),
+  builds: compare("build", MONSTER_BUILDS),
+  sizes: compare("size", MONSTER_SIZES),
+  breathing: compare("breathing", RESPIRATIONS),
+};
