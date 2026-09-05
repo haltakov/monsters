@@ -26,6 +26,7 @@ RUN pnpm install --frozen-lockfile --filter @monsters/web...
 
 COPY packages/game-core packages/game-core
 COPY apps/web apps/web
+COPY deploy/check-analytics.mjs deploy/check-analytics.mjs
 
 RUN pnpm --filter @monsters/game-core build \
   && pnpm --filter @monsters/web build

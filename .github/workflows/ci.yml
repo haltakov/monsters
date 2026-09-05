@@ -37,3 +37,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # Next typechecks test imports too. Build the real, restricted Docker
+      # context so a missing COPY cannot pass CI and then fail in Coolify.
+      # This public placeholder is never served and records no analytics.
+      - name: Verify frontend production image
+        run: docker build --build-arg NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID=pa-ci-build -f Dockerfile.app -t monsters-web-ci .
