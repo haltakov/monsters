@@ -68,10 +68,13 @@ describe('daily world rollover', () => {
       const fresh = harness.runner.getState()!;
       expect(fresh.entities).toHaveLength(10);
       expect(
-        fresh.entities.every(
-          (entity) =>
-            entity.locomotion === 'land' && !canMonsterSwim(entity.dna),
-        ),
+        fresh.entities.some((entity) => entity.locomotion === 'land'),
+      ).toBe(true);
+      expect(fresh.entities.some((entity) => canMonsterSwim(entity.dna))).toBe(
+        true,
+      );
+      expect(
+        fresh.entities.some((entity) => entity.dna.adaptation === 'wings'),
       ).toBe(true);
       const archived = await harness.prisma.monster.findUniqueOrThrow({
         where: { id: old.id },

@@ -11,11 +11,17 @@ import {
   EXTRA_PLANTS,
   EXTRA_ROCKS,
   PLANTS,
-  PLAYABLE_RADIUS,
-  PREY,
+  LAND_PREY,
+  FISH,
+  KELP,
+  resourceHeight,
+  ISLANDS,
+  OCEAN_RADIUS,
+  SEA_LEVEL,
+  islandAt,
+  type Island,
   ROCKS,
   TREES,
-  WORLD_RADIUS,
   riverX,
   terrainHeight,
   type Prey,
@@ -41,70 +47,96 @@ export function isVisibleSceneryItem(
   );
 }
 
-function Terrain({ quality }: { quality: SceneQuality }) {
+function Terrain({
+  quality,
+  island,
+}: {
+  quality: SceneQuality;
+  island: Island;
+}) {
   const geometry = useMemo(() => {
-    const size = WORLD_RADIUS * 2 + 4;
-    const segments = quality === "mobile" ? 112 : 184;
-    const vertices: number[] = [];
-    const indices: number[] = [];
-
-    for (let zIndex = 0; zIndex <= segments; zIndex += 1) {
-      for (let xIndex = 0; xIndex <= segments; xIndex += 1) {
-        const x = (xIndex / segments - 0.5) * size;
-        const z = (zIndex / segments - 0.5) * size;
-        vertices.push(x, terrainHeight(x, z), z);
-      }
+    const size = island.radius * 2 + 24;
+    const segments = quality === "mobile" ? 128 : 208;
+    const result = new THREE.PlaneGeometry(size, size, segments, segments);
+    result.rotateX(-Math.PI / 2);
+    const position = result.attributes.position;
+    const colors: number[] = [];
+    for (let index = 0; index < position.count; index++) {
+      const x = position.getX(index) + island.x;
+      const z = position.getZ(index) + island.z;
+      const y = terrainHeight(x, z);
+      position.setXYZ(index, x, y, z);
+      const color = new THREE.Color(
+        y < SEA_LEVEL
+          ? "#C8B783"
+          : y > 24
+            ? "#E6E8D9"
+            : y > 12
+              ? "#8C9080"
+              : island.color,
+      );
+      colors.push(color.r, color.g, color.b);
     }
-
-    for (let zIndex = 0; zIndex < segments; zIndex += 1) {
-      for (let xIndex = 0; xIndex < segments; xIndex += 1) {
-        const x = ((xIndex + 0.5) / segments - 0.5) * size;
-        const z = ((zIndex + 0.5) / segments - 0.5) * size;
-        if (Math.hypot(x, z) > WORLD_RADIUS - 0.3) continue;
-        const a = zIndex * (segments + 1) + xIndex;
-        const b = a + 1;
-        const c = a + segments + 1;
-        const d = c + 1;
-        indices.push(a, c, b, b, c, d);
-      }
-    }
-
-    const result = new THREE.BufferGeometry();
-    result.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(vertices, 3),
-    );
-    result.setIndex(indices);
+    result.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
     result.computeVertexNormals();
     return result;
-  }, [quality]);
-
+  }, [quality, island]);
   return (
-    <>
-      <mesh geometry={geometry} receiveShadow={quality === "desktop"}>
-        <meshStandardMaterial color="#72B95A" roughness={0.92} />
-      </mesh>
-      <mesh position={[0, -0.5, 0]} receiveShadow={quality === "desktop"}>
-        <cylinderGeometry
-          args={[
-            WORLD_RADIUS,
-            WORLD_RADIUS - 1.4,
-            1.08,
-            quality === "mobile" ? 96 : 192,
-          ]}
-        />
-        <meshStandardMaterial color="#E4C16E" roughness={1} />
-      </mesh>
-    </>
+    <mesh geometry={geometry} receiveShadow={quality === "desktop"}>
+      <meshStandardMaterial vertexColors roughness={0.95} />
+    </mesh>
+  );
+}
+
+function OceanFloor() {
+  const geometry = useMemo(() => {
+    const result = new THREE.PlaneGeometry(
+      OCEAN_RADIUS * 2 + 100,
+      OCEAN_RADIUS * 2 + 100,
+      128,
+      128,
+    );
+    result.rotateX(-Math.PI / 2);
+    const position = result.attributes.position;
+    for (let index = 0; index < position.count; index++) {
+      const x = position.getX(index),
+        z = position.getZ(index);
+      position.setY(index, islandAt(x, z) ? -35 : terrainHeight(x, z) - 0.1);
+    }
+    const clipped: number[] = [];
+    const indices = result.index!;
+    for (let index = 0; index < indices.count; index += 3) {
+      const a = indices.getX(index),
+        b = indices.getX(index + 1),
+        c = indices.getX(index + 2);
+      if (
+        [a, b, c].every(
+          (vertex) =>
+            Math.hypot(position.getX(vertex), position.getZ(vertex)) <
+            OCEAN_RADIUS + 60,
+        )
+      )
+        clipped.push(a, b, c);
+    }
+    result.setIndex(clipped);
+    result.computeVertexNormals();
+    return result;
+  }, []);
+  return (
+    <mesh geometry={geometry}>
+      <meshStandardMaterial color="#A5B89C" roughness={1} />
+    </mesh>
   );
 }
 
 function Sea({ quality }: { quality: SceneQuality }) {
   const sea = useRef<THREE.Mesh>(null);
-  useFrame(({ clock }) => {
-    if (sea.current)
-      sea.current.position.y =
-        -0.42 + Math.sin(clock.elapsedTime * 0.7) * 0.035;
+  useFrame(({ camera, clock }) => {
+    if (!sea.current) return;
+    sea.current.position.y =
+      SEA_LEVEL + Math.sin(clock.elapsedTime * 0.7) * 0.025;
+    (sea.current.material as THREE.MeshStandardMaterial).opacity =
+      camera.position.y < SEA_LEVEL ? 0.28 : 0.7;
   });
 
   return (
@@ -114,94 +146,31 @@ function Sea({ quality }: { quality: SceneQuality }) {
       rotation={[-Math.PI / 2, 0, 0]}
       receiveShadow={quality === "desktop"}
     >
-      <circleGeometry args={[420, quality === "mobile" ? 96 : 192]} />
+      <circleGeometry
+        args={[OCEAN_RADIUS + 100, quality === "mobile" ? 96 : 192]}
+      />
       <meshStandardMaterial
         color="#4AAFC5"
         roughness={0.32}
         metalness={0.05}
         side={THREE.DoubleSide}
         transparent
-        opacity={0.88}
+        opacity={0.7}
+        depthWrite={false}
       />
     </mesh>
   );
 }
 
 function River({ quality }: { quality: SceneQuality }) {
-  const segments = useMemo(() => {
-    const segmentCount = quality === "mobile" ? 64 : 128;
-    return Array.from({ length: segmentCount }, (_, index) => {
-      const riverExtent = PLAYABLE_RADIUS + 0.5;
-      const segmentLength = (riverExtent * 2) / (segmentCount - 1);
-      const z = -riverExtent + index * segmentLength;
-      const nextZ = Math.min(riverExtent, z + segmentLength);
-      const x = riverX(z);
-      const nextX = riverX(nextZ);
-      return {
-        x: (x + nextX) / 2,
-        z: (z + nextZ) / 2,
-        angle: Math.atan2(nextX - x, nextZ - z),
-        length: segmentLength + 0.25,
-      };
-    });
-  }, [quality]);
-
-  return (
-    <group>
-      {quality === "mobile" ? (
-        <MobileRiver segments={segments} />
-      ) : (
-        segments.map((segment, index) => (
-          <mesh
-            key={index}
-            position={[segment.x, 0.16, segment.z]}
-            rotation={[0, segment.angle, 0]}
-            receiveShadow={quality === "desktop"}
-          >
-            <boxGeometry args={[2.85, 0.09, segment.length]} />
-            <meshStandardMaterial
-              color="#55B8CE"
-              roughness={0.2}
-              metalness={0.06}
-            />
-          </mesh>
-        ))
-      )}
-      {quality === "mobile" ? (
-        <MobileBridges />
-      ) : (
-        BRIDGE_POSITIONS.map((z) => <Bridge key={z} z={z} quality={quality} />)
-      )}
-    </group>
-  );
-}
-
-type RiverSegment = {
-  x: number;
-  z: number;
-  angle: number;
-  length: number;
-};
-
-function MobileRiver({ segments }: { segments: RiverSegment[] }) {
-  const water = useRef<THREE.InstancedMesh>(null);
-  useLayoutEffect(() => {
-    segments.forEach((segment, index) => {
-      setInstanceTransform(
-        water.current,
-        index,
-        [segment.x, 0.16, segment.z],
-        [1, 1, segment.length],
-        [0, segment.angle, 0],
-      );
-    });
-    finishInstances(water.current);
-  }, [segments]);
-  return (
-    <instancedMesh ref={water} args={[undefined, undefined, segments.length]}>
-      <boxGeometry args={[2.85, 0.09, 1]} />
-      <meshLambertMaterial color="#55B8CE" transparent opacity={0.94} />
-    </instancedMesh>
+  return quality === "mobile" ? (
+    <MobileBridges />
+  ) : (
+    <>
+      {BRIDGE_POSITIONS.map((z) => (
+        <Bridge key={z} z={z} quality={quality} />
+      ))}
+    </>
   );
 }
 
@@ -1122,6 +1091,88 @@ function SnackCritter({
   );
 }
 
+/** Instancing keeps the underwater food graph visible without hundreds of draw calls. */
+function MarineLife({
+  depletedResources,
+}: {
+  depletedResources: ReadonlySet<string>;
+}) {
+  const kelp = useRef<THREE.InstancedMesh>(null);
+  const frond = useMemo(() => {
+    const geometry = new THREE.PlaneGeometry(0.75, 2.8, 1, 8);
+    geometry.translate(0, 1.4, 0);
+    const position = geometry.attributes.position;
+    for (let index = 0; index < position.count; index++) {
+      const y = position.getY(index);
+      position.setX(
+        index,
+        position.getX(index) * Math.sin((Math.PI * y) / 2.8) +
+          Math.sin(y * 2) * 0.22,
+      );
+      position.setZ(index, Math.sin(y * 1.8) * 0.15);
+    }
+    geometry.computeVertexNormals();
+    return geometry;
+  }, []);
+  const fish = useRef<THREE.InstancedMesh>(null);
+  const tails = useRef<THREE.InstancedMesh>(null);
+  useLayoutEffect(() => {
+    KELP.forEach((food, index) => {
+      const visible = !depletedResources.has(food.id);
+      for (let blade = 0; blade < 3; blade++)
+        setInstanceTransform(
+          kelp.current,
+          index * 3 + blade,
+          [food.x + (blade - 1) * 0.2, resourceHeight(food) - 1.5, food.z],
+          visible ? [0.8, 0.85 + blade * 0.12, 0.8] : [0, 0, 0],
+          [0, index * 1.7 + blade * 1.1, (blade - 1) * 0.22],
+        );
+    });
+    FISH.forEach((food, index) => {
+      const visible = !depletedResources.has(food.id);
+      const y = resourceHeight(food);
+      setInstanceTransform(
+        fish.current,
+        index,
+        [food.x, y, food.z],
+        visible ? [0.65, 0.32, 0.28] : [0, 0, 0],
+      );
+      setInstanceTransform(
+        tails.current,
+        index,
+        [food.x + 0.7, y, food.z],
+        visible ? [0.45, 0.4, 0.15] : [0, 0, 0],
+        [0, 0, Math.PI / 2],
+      );
+    });
+    finishInstances(kelp.current, fish.current, tails.current);
+  }, [depletedResources]);
+  return (
+    <>
+      <instancedMesh ref={kelp} args={[frond, undefined, KELP.length * 3]}>
+        <meshStandardMaterial
+          side={THREE.DoubleSide}
+          color="#55C99C"
+          emissive="#174D3A"
+          emissiveIntensity={0.25}
+        />
+      </instancedMesh>
+      <instancedMesh ref={fish} args={[undefined, undefined, FISH.length]}>
+        <sphereGeometry args={[1, 10, 7]} />
+        <meshStandardMaterial
+          color="#FFD37A"
+          emissive="#796431"
+          emissiveIntensity={0.2}
+        />
+      </instancedMesh>
+      <instancedMesh ref={tails} args={[undefined, undefined, FISH.length]}>
+        <coneGeometry args={[1, 1, 3]} />
+        <meshStandardMaterial color="#EF9970" />
+      </instancedMesh>
+    </>
+  );
+}
+
 /** Every static prop on the island, in one component. */
 export function Scenery({
   quality,
@@ -1133,7 +1184,11 @@ export function Scenery({
   return (
     <>
       <Sea quality={quality} />
-      <Terrain quality={quality} />
+      <OceanFloor />
+      {ISLANDS.map((island) => (
+        <Terrain key={island.id} quality={quality} island={island} />
+      ))}
+      <MarineLife depletedResources={depletedResources} />
       <River quality={quality} />
       {quality === "mobile" ? (
         <MobileScenery depletedResources={depletedResources} />
@@ -1195,7 +1250,7 @@ export function Scenery({
           )}
         </>
       )}
-      {PREY.map((prey) =>
+      {LAND_PREY.map((prey) =>
         depletedResources.has(prey.id) ? null : (
           <SnackCritter key={prey.id} prey={prey} quality={quality} />
         ),

@@ -14,6 +14,16 @@ export const LOCALES = ["bg", "de", "en"] as const;
 export type Locale = (typeof LOCALES)[number];
 
 const en = {
+  "game.ascend": "↑ Rise",
+  "game.descend": "↓ Descend",
+  "game.verticalHelp": "Hold to rise or descend in water and air",
+  "game.flightDiveHelp": "Take off / land · Dive / surface",
+  "game.island.home": "Home",
+  "game.island.lakes": "Lakes",
+  "game.island.peaks": "Mountains",
+  "game.seaTravel": "Travel between islands by sea or air",
+  "game.heightReading": "Height: {{height}} m",
+
   "language.label": "Language",
   "language.bg": "Bulgarian",
   "language.de": "German",
@@ -333,7 +343,8 @@ const en = {
     "There is water below. This monster cannot land here.",
   "game.dived": "Diving beneath the waves.",
   "game.surfaced": "Back at the surface.",
-  "game.findDeepWater": "Enter the deep sea before diving.",
+  "game.findDeepWater":
+    "Find deeper water in the sea, a lake, or a river to dive.",
   "game.outOfEnergy": "OUT OF ENERGY",
   "game.outOfHealth": "OUT OF HEALTH",
   "game.collapsed": "{{name}} has collapsed!",
@@ -468,7 +479,7 @@ const en = {
   "account.dangerZone": "DANGER ZONE",
   "account.resetWorld": "Reset the living world",
   "account.resetWorldHelp":
-    "Permanently removes every monster, egg, family line, and world event. Accounts remain. The replacement population is land-only.",
+    "Permanently removes every monster, egg, family line, and world event. Accounts remain. The replacement population inhabits land, sea, and sky.",
   "account.resetPopulation": "New wild population",
   "account.resetAction": "Reset and reseed",
   "account.resetConfirm":
@@ -480,6 +491,16 @@ const en = {
 export type TranslationKey = keyof typeof en;
 
 const bg: Record<TranslationKey, string> = {
+  "game.ascend": "↑ Нагоре",
+  "game.descend": "↓ Надолу",
+  "game.verticalHelp": "Задръж за издигане или спускане във вода и въздух",
+  "game.flightDiveHelp": "Излитане / кацане · Гмуркане / изплуване",
+  "game.island.home": "Дом",
+  "game.island.lakes": "Езера",
+  "game.island.peaks": "Планини",
+  "game.seaTravel": "Пътувай между островите по вода или въздух",
+  "game.heightReading": "Височина: {{height}} м",
+
   "language.label": "Език",
   "language.bg": "Български",
   "language.de": "Немски",
@@ -798,7 +819,8 @@ const bg: Record<TranslationKey, string> = {
     "Отдолу има вода. Това чудовище не може да кацне тук.",
   "game.dived": "Гмурна се под вълните.",
   "game.surfaced": "Отново си на повърхността.",
-  "game.findDeepWater": "Влез в дълбокото море, за да се гмурнеш.",
+  "game.findDeepWater":
+    "Намери по-дълбока вода в морето, езеро или река, за да се гмурнеш.",
   "game.outOfEnergy": "НЯМА ЕНЕРГИЯ",
   "game.outOfHealth": "НЯМА ЗДРАВЕ",
   "game.collapsed": "{{name}} припадна!",
@@ -936,7 +958,7 @@ const bg: Record<TranslationKey, string> = {
   "account.dangerZone": "ОПАСНА ЗОНА",
   "account.resetWorld": "Нулирай живия свят",
   "account.resetWorldHelp":
-    "Изтрива завинаги всички чудовища, яйца, родословия и събития. Профилите остават. Новата популация е само сухоземна.",
+    "Изтрива завинаги всички чудовища, яйца, родословия и събития. Профилите остават. Новата популация обитава сушата, водата и небето.",
   "account.resetPopulation": "Нова дива популация",
   "account.resetAction": "Нулирай и засели",
   "account.resetConfirm":
@@ -946,6 +968,17 @@ const bg: Record<TranslationKey, string> = {
 };
 
 const de: Record<TranslationKey, string> = {
+  "game.ascend": "↑ Aufsteigen",
+  "game.descend": "↓ Absteigen",
+  "game.verticalHelp":
+    "Gedrückt halten, um im Wasser oder in der Luft auf- oder abzusteigen",
+  "game.flightDiveHelp": "Starten / landen · Tauchen / auftauchen",
+  "game.island.home": "Heimat",
+  "game.island.lakes": "Seen",
+  "game.island.peaks": "Berge",
+  "game.seaTravel": "Zwischen den Inseln schwimmen oder fliegen",
+  "game.heightReading": "Höhe: {{height}} m",
+
   "language.label": "Sprache",
   "language.bg": "Bulgarisch",
   "language.de": "Deutsch",
@@ -1267,7 +1300,8 @@ const de: Record<TranslationKey, string> = {
     "Unter dir ist Wasser. Dieses Monster kann hier nicht landen.",
   "game.dived": "Du tauchst unter die Wellen.",
   "game.surfaced": "Zurück an der Oberfläche.",
-  "game.findDeepWater": "Gehe zum tiefen Meer, bevor du tauchst.",
+  "game.findDeepWater":
+    "Suche tieferes Wasser im Meer, in einem See oder Fluss zum Tauchen.",
   "game.outOfEnergy": "KEINE ENERGIE",
   "game.outOfHealth": "KEINE GESUNDHEIT",
   "game.collapsed": "{{name}} ist zusammengebrochen!",
@@ -1411,7 +1445,7 @@ const de: Record<TranslationKey, string> = {
   "account.dangerZone": "GEFAHRENBEREICH",
   "account.resetWorld": "Lebende Welt zurücksetzen",
   "account.resetWorldHelp":
-    "Löscht dauerhaft alle Monster, Eier, Stammbäume und Weltereignisse. Konten bleiben erhalten. Die neue Population lebt nur an Land.",
+    "Löscht dauerhaft alle Monster, Eier, Stammbäume und Weltereignisse. Konten bleiben erhalten. Die neue Population lebt an Land, im Wasser und in der Luft.",
   "account.resetPopulation": "Neue Wildpopulation",
   "account.resetAction": "Zurücksetzen und neu besiedeln",
   "account.resetConfirm":

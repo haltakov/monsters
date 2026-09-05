@@ -43,7 +43,7 @@ import {
   subscribeMonsterDetailSetting,
   type MonsterDetailPreset,
 } from "@/lib/monster-detail-settings";
-import { Joystick, WorldInputSurface } from "./touch-controls";
+import { Joystick, WorldInputSurface, HoldButton } from "./touch-controls";
 import { swipeCamera } from "@/lib/touch-input";
 import {
   AgentActionError,
@@ -67,7 +67,8 @@ import {
   MONSTER_SIZES,
   MOUTH_SHAPES,
   PAIR_REQUEST_TIMEOUT_SECONDS,
-  PLAYABLE_RADIUS,
+  OCEAN_RADIUS,
+  SEA_LEVEL,
   PREY,
   RESPIRATIONS,
   SOCIAL_BEHAVIORS,
@@ -86,6 +87,7 @@ import {
   type SimEvent,
   type WorldPopulation,
 } from "@monsters/game-core";
+import { ArchipelagoMap } from "./archipelago-map";
 import { Scenery, type SceneQuality } from "@/components/game/world-scenery";
 import { NetworkPopulation } from "@/components/game/network-monsters";
 import { ConnectionBadge } from "@/components/game/connection-badge";
@@ -199,7 +201,7 @@ function World({
   return (
     <>
       <color attach="background" args={["#9CDCE5"]} />
-      <fog attach="fog" args={["#9CDCE5", 95, 285]} />
+      <fog attach="fog" args={["#9CDCE5", 220, 950]} />
       <Sky
         distance={450000}
         sunPosition={[30, 24, -18]}
@@ -220,6 +222,7 @@ function World({
         shadow-camera-top={140}
         shadow-camera-bottom={-140}
       />
+      <WaterAtmosphere />
       <Scenery quality={quality} depletedResources={depletedResources} />
       <Float
         speed={1.2}
@@ -308,12 +311,12 @@ function SpectatorCamera({
       const speed = state.keys.has("ShiftLeft") ? 34 : 20;
       camera.position.addScaledVector(movement, speed * delta);
       const radius = Math.hypot(camera.position.x, camera.position.z);
-      const limit = PLAYABLE_RADIUS + 42;
+      const limit = OCEAN_RADIUS;
       if (radius > limit) {
         camera.position.x *= limit / radius;
         camera.position.z *= limit / radius;
       }
-      camera.position.y = THREE.MathUtils.clamp(camera.position.y, 2.5, 58);
+      camera.position.y = THREE.MathUtils.clamp(camera.position.y, -30, 100);
     }
     target.copy(camera.position).add(forward);
     camera.lookAt(target);
@@ -361,6 +364,20 @@ export function GameExperience() {
 }
 
 type SessionApi = ReturnType<typeof useGuestSession>;
+
+function WaterAtmosphere() {
+  useFrame(({ camera, scene }) => {
+    const underwater = camera.position.y < SEA_LEVEL;
+    if (scene.fog instanceof THREE.Fog) {
+      scene.fog.color.set(underwater ? "#176D83" : "#9CDCE5");
+      scene.fog.near = underwater ? 10 : 220;
+      scene.fog.far = underwater ? 85 : 950;
+    }
+    if (scene.background instanceof THREE.Color)
+      scene.background.set(underwater ? "#176D83" : "#9CDCE5");
+  });
+  return null;
+}
 
 function ConnectedGame({ session }: { session: SessionApi }) {
   const { t } = useI18n();
@@ -1334,6 +1351,10 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             "The controlled monster changed. Observe before acting again.",
           );
         const humanKeys = [
+          "KeyR",
+          "KeyV",
+          "AscendTouch",
+          "DescendTouch",
           "KeyW",
           "KeyS",
           "KeyA",
@@ -1630,13 +1651,13 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           properties: {
             targetX: {
               type: "number",
-              minimum: -PLAYABLE_RADIUS,
-              maximum: PLAYABLE_RADIUS,
+              minimum: -OCEAN_RADIUS,
+              maximum: OCEAN_RADIUS,
             },
             targetZ: {
               type: "number",
-              minimum: -PLAYABLE_RADIUS,
-              maximum: PLAYABLE_RADIUS,
+              minimum: -OCEAN_RADIUS,
+              maximum: OCEAN_RADIUS,
             },
             headingRadians: { type: "number", minimum: -6.284, maximum: 6.284 },
             durationSeconds: {
@@ -1661,15 +1682,15 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           const x = hasTarget
             ? THREE.MathUtils.clamp(
                 input.targetX as number,
-                -PLAYABLE_RADIUS,
-                PLAYABLE_RADIUS,
+                -OCEAN_RADIUS,
+                OCEAN_RADIUS,
               )
             : 0;
           const z = hasTarget
             ? THREE.MathUtils.clamp(
                 input.targetZ as number,
-                -PLAYABLE_RADIUS,
-                PLAYABLE_RADIUS,
+                -OCEAN_RADIUS,
+                OCEAN_RADIUS,
               )
             : 0;
           const heading = hasTarget
@@ -2054,7 +2075,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           <Canvas
             shadows={sceneQuality === "desktop" ? "percentage" : false}
             dpr={sceneQuality === "mobile" ? 1 : [1, 1.6]}
-            camera={{ fov: 48, near: 0.1, far: 420, position: [8, 8, 12] }}
+            camera={{ fov: 48, near: 0.1, far: 1100, position: [8, 8, 12] }}
             gl={{
               antialias: sceneQuality === "desktop",
               powerPreference: "high-performance",
@@ -2743,6 +2764,16 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               <span>{t("game.mate")}</span>
             </div>
             <div>
+              <kbd>R</kbd>
+              <kbd>V</kbd>
+              <span>{t("game.verticalHelp")}</span>
+            </div>
+            <div>
+              <kbd>F</kbd>
+              <kbd>C</kbd>
+              <span>{t("game.flightDiveHelp")}</span>
+            </div>
+            <div>
               <kbd>SHIFT</kbd>
               <span>{t("game.sprint")}</span>
             </div>
@@ -2818,6 +2849,33 @@ function ConnectedGame({ session }: { session: SessionApi }) {
           </div>
         )}
 
+        <ArchipelagoMap controls={controls} />
+        {canPlay &&
+          (monsterDna.adaptation === "wings" || canMonsterSwim(monsterDna)) && (
+            <div
+              className="vertical-controls"
+              aria-label={t("game.verticalHelp")}
+            >
+              <HoldButton
+                label={t("game.ascend")}
+                shortcut="R"
+                disabled={touchDisabled}
+                onHold={(held) => {
+                  if (held) controls.current.keys.add("AscendTouch");
+                  else controls.current.keys.delete("AscendTouch");
+                }}
+              />
+              <HoldButton
+                label={t("game.descend")}
+                shortcut="V"
+                disabled={touchDisabled}
+                onHold={(held) => {
+                  if (held) controls.current.keys.add("DescendTouch");
+                  else controls.current.keys.delete("DescendTouch");
+                }}
+              />
+            </div>
+          )}
         {canPlay &&
           (monsterDna.adaptation === "wings" || canMonsterSwim(monsterDna)) && (
             <div className="ability-controls">

@@ -602,7 +602,7 @@ export class WorldService {
     }
     return this.runner.resetWorld({
       initialPopulation: population,
-      terrestrialOnly: true,
+      terrestrialOnly: false,
     });
   }
 

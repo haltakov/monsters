@@ -143,6 +143,27 @@ describe('world websocket protocol', () => {
     ).toBeLessThan(0.001);
   });
 
+  it('applies vertical input over the socket and holds altitude when released', async () => {
+    const player = await createPlayer('Climber');
+    const client = await connect(player.token);
+    await client.join(player.monsterId);
+    const live = await joinedEntity(player.monsterId);
+    isolate([live], -30, 20);
+    live.dna = { ...live.dna, adaptation: 'wings' };
+    live.energy = 100;
+    client.input({ vertical: 1 });
+    await waitFor(() => live.y > 5);
+    expect(live.locomotion).toBe('fly');
+    client.input({ vertical: 0 });
+    await waitFor(() => live.input?.vertical === 0);
+    const height = live.y;
+    await client.waitForDeltas(3);
+    expect(live.y).toBeCloseTo(height, 4);
+    client.input({ vertical: -1 });
+    await waitFor(() => live.y < height - 1);
+    client.input({ vertical: 0 });
+  });
+
   it('cannot be tricked into superhuman speed or forged vitals', async () => {
     const player = await createPlayer('Cheater');
     const client = await connect(player.token);

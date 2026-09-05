@@ -434,7 +434,7 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
       const reset = await this.persistence.resetWorld(world, {
         seed: randomInt(1, 0x7fffffff),
         initialPopulation: INITIAL_WILD_MONSTERS,
-        terrestrialOnly: true,
+        terrestrialOnly: false,
         preserveHistory: true,
         previousState: checkpoint?.state,
       });
@@ -515,7 +515,7 @@ export class WorldRunnerService implements OnModuleInit, OnApplicationShutdown {
     ) {
       this.dailyReset = this.resetWorld({
         initialPopulation: INITIAL_WILD_MONSTERS,
-        terrestrialOnly: true,
+        terrestrialOnly: false,
         preserveHistory: true,
       })
         .catch((error: unknown) => {

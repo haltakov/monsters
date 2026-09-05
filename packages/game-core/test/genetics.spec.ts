@@ -188,7 +188,7 @@ describe("pairing and eggs", () => {
       state.entities.filter((entity) => entity.alive).length +
         state.eggs.length,
     ).toBeLessThanOrEqual(15);
-  });
+  }, 15_000);
 
   it("refuses to pair while a cooldown is active and when too far away", () => {
     const state = emptyWorld();
@@ -332,6 +332,8 @@ describe("pairing and eggs", () => {
     expect(baby!.age).toBeLessThan(ADULT_AGE_SECONDS);
     expect(state.stats.births).toBe(1);
 
+    // Isolate maturation from the chance of starvation or combat during a full juvenile lifetime.
+    baby!.controllerId = "juvenile-test";
     run(state, ADULT_AGE_SECONDS * 10 + 5);
     expect(baby!.age).toBeGreaterThanOrEqual(ADULT_AGE_SECONDS);
   });

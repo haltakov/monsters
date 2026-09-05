@@ -192,3 +192,76 @@ export function WorldInputSurface({
     </div>
   );
 }
+
+/** A held action always releases on cancellation, focus loss, or unmount. */
+export function HoldButton({
+  label,
+  shortcut,
+  onHold,
+  disabled = false,
+}: {
+  label: string;
+  shortcut: string;
+  onHold: (held: boolean) => void;
+  disabled?: boolean;
+}) {
+  const button = useRef<HTMLButtonElement>(null);
+  const pointer = useRef<number | null>(null);
+  const callback = useRef(onHold);
+  useEffect(() => {
+    callback.current = onHold;
+  }, [onHold]);
+  const release = useCallback(() => {
+    pointer.current = null;
+    callback.current(false);
+  }, []);
+  useEffect(() => {
+    if (disabled) release();
+  }, [disabled, release]);
+  useEffect(() => {
+    const hidden = () => {
+      if (document.hidden) release();
+    };
+    window.addEventListener("blur", release);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      release();
+      window.removeEventListener("blur", release);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, [release]);
+  return (
+    <button
+      ref={button}
+      type="button"
+      className="ability-button"
+      disabled={disabled}
+      aria-label={label}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        if (event.button !== 0 || pointer.current !== null) return;
+        event.preventDefault();
+        pointer.current = event.pointerId;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        callback.current(true);
+      }}
+      onPointerUp={release}
+      onPointerCancel={release}
+      onLostPointerCapture={release}
+      onBlur={release}
+      onKeyDown={(event) => {
+        if (event.key === " " || event.key === "Enter") {
+          event.preventDefault();
+          event.stopPropagation();
+          callback.current(true);
+        }
+      }}
+      onKeyUp={(event) => {
+        if (event.key === " " || event.key === "Enter") release();
+      }}
+    >
+      <span>{label}</span>
+      <small>{shortcut}</small>
+    </button>
+  );
+}

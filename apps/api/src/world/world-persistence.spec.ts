@@ -33,14 +33,12 @@ describe('world persistence', () => {
     );
     const storedDna = monsters[0].dna as { code?: unknown };
     expect(typeof storedDna.code).toBe('string');
-    expect(
-      harness.runner
-        .getState()!
-        .entities.every(
-          (entity) =>
-            entity.locomotion === 'land' && !canMonsterSwim(entity.dna),
-        ),
-    ).toBe(true);
+    const entities = harness.runner.getState()!.entities;
+    expect(entities.some((entity) => entity.locomotion === 'land')).toBe(true);
+    expect(entities.some((entity) => canMonsterSwim(entity.dna))).toBe(true);
+    expect(entities.some((entity) => entity.dna.adaptation === 'wings')).toBe(
+      true,
+    );
   });
 
   it('checkpoints and reloads the exact simulation state', async () => {

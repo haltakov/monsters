@@ -155,7 +155,7 @@ export class WorldPersistenceService {
       seed: world.seed,
       idPrefix,
       initialPopulation: getSeedPopulation(),
-      terrestrialOnly: true,
+      terrestrialOnly: false,
     });
     const now = new Date();
     await this.prisma.$transaction([

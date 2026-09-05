@@ -16,6 +16,7 @@ import {
   PLAYABLE_RADIUS,
   riverX,
   WORLD_RADIUS,
+  OCEAN_RADIUS,
 } from "../src/world/terrain";
 import { emptyWorld, input, makePlayer, run, withDna } from "./helpers";
 
@@ -145,7 +146,7 @@ describe("authoritative movement", () => {
   it("keeps flying players inside the simulated ocean boundary", () => {
     const state = emptyWorld();
     const player = makePlayer("flyer", {
-      x: WORLD_RADIUS + 18,
+      x: OCEAN_RADIUS - 4,
       z: 0,
       locomotion: "fly",
       dna: withDna({ adaptation: "wings" }),
@@ -161,14 +162,14 @@ describe("authoritative movement", () => {
     ]);
 
     expect(Math.hypot(player.x, player.z)).toBeLessThanOrEqual(
-      WORLD_RADIUS + 22.01,
+      OCEAN_RADIUS + 0.01,
     );
   });
 
   it("lets a persisted flyer beyond the boundary travel back inward", () => {
     const state = emptyWorld();
     const player = makePlayer("returning-flyer", {
-      x: WORLD_RADIUS + 30,
+      x: OCEAN_RADIUS + 8,
       z: 0,
       locomotion: "fly",
       dna: withDna({ adaptation: "wings" }),
@@ -186,7 +187,7 @@ describe("authoritative movement", () => {
 
     expect(Math.hypot(player.x, player.z)).toBeLessThan(startingRadius);
     expect(Math.hypot(player.x, player.z)).toBeLessThanOrEqual(
-      WORLD_RADIUS + 22.01,
+      OCEAN_RADIUS + 0.01,
     );
   });
 
@@ -252,7 +253,7 @@ describe("authoritative movement", () => {
   it("agrees with the shared boundary predicate", () => {
     expect(isBlockedByWater(riverX(0), 0, false)).toBe(true);
     expect(isBlockedByWater(riverX(0), 0, true)).toBe(false);
-    expect(isBlockedByWater(WORLD_RADIUS + 100, 0, true)).toBe(true);
+    expect(isBlockedByWater(OCEAN_RADIUS + 100, 0, true)).toBe(true);
     // A bridge is walkable even though it crosses the river.
     expect(isBlockedByWater(riverX(-20), -20, false)).toBe(false);
   });
@@ -298,6 +299,7 @@ describe("authoritative movement", () => {
       seq: -3,
     });
     expect(cleaned).toEqual({
+      vertical: 0,
       forward: 0,
       strafe: 1,
       turn: -1,

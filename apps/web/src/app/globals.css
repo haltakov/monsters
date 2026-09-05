@@ -4872,3 +4872,69 @@ button[data-gene-option="avian"] .gene-silhouette::after {
   outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
+
+.vertical-controls {
+  position: absolute;
+  z-index: 5;
+  top: 278px;
+  right: 20px;
+  display: grid;
+  gap: 8px;
+  pointer-events: auto;
+}
+.vertical-controls button {
+  touch-action: none;
+  user-select: none;
+  grid-template-columns: 1fr auto;
+}
+.archipelago-map {
+  position: absolute;
+  z-index: 3;
+  bottom: 24px;
+  left: 20px;
+  width: 185px;
+  padding: 8px;
+  border: 1px solid rgb(23 63 53 / 30%);
+  border-radius: 14px;
+  background: rgb(255 249 232 / 91%);
+  color: var(--ink);
+  pointer-events: auto;
+}
+.archipelago-map summary {
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.archipelago-map svg {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+}
+.archipelago-map small {
+  display: block;
+  font-size: 9px;
+  margin-top: 5px;
+}
+@media (max-width: 900px) {
+  .vertical-controls {
+    top: 158px;
+    right: 12px;
+    gap: 5px;
+  }
+  .vertical-controls .ability-button {
+    min-width: 100px;
+    height: 44px;
+  }
+  .archipelago-map {
+    width: 126px;
+    left: 12px;
+    bottom: 160px;
+  }
+  .archipelago-map small {
+    display: none;
+  }
+}
+
+.vertical-controls .ability-button > span {
+  font-size: 12px;
+}

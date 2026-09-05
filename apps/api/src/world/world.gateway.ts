@@ -425,6 +425,7 @@ export class WorldGateway
       entityId,
       input: sanitizeInput({
         forward: payload.forward,
+        vertical: payload.vertical,
         strafe: payload.strafe,
         turn: payload.turn,
         heading: payload.heading,

@@ -19,8 +19,10 @@ export const SERVER_EVENTS = {
   error: "world:error",
 } as const;
 
-export type ClientEventName = (typeof CLIENT_EVENTS)[keyof typeof CLIENT_EVENTS];
-export type ServerEventName = (typeof SERVER_EVENTS)[keyof typeof SERVER_EVENTS];
+export type ClientEventName =
+  (typeof CLIENT_EVENTS)[keyof typeof CLIENT_EVENTS];
+export type ServerEventName =
+  (typeof SERVER_EVENTS)[keyof typeof SERVER_EVENTS];
 
 export type JoinPayload = {
   /** Owned, living monster the client wants to control, if any. */
@@ -28,6 +30,8 @@ export type JoinPayload = {
 };
 
 export type InputPayload = {
+  /** -1 descend … 1 ascend; omitted by older clients. */
+  vertical?: number;
   seq: number;
   forward: number;
   strafe: number;

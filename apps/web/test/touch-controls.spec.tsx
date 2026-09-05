@@ -1,6 +1,10 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { Joystick, WorldInputSurface } from "@/components/game/touch-controls";
+import {
+  Joystick,
+  WorldInputSurface,
+  HoldButton,
+} from "@/components/game/touch-controls";
 import { readInput, type ControlState } from "@/components/game/player-monster";
 import { sampleJoystick, swipeCamera } from "@/lib/touch-input";
 import { normalizeAngle } from "@monsters/game-core";
@@ -36,6 +40,22 @@ function controls(): ControlState {
 }
 
 describe("analog touch input", () => {
+  it("combines vertical keys with movement and releases them while paused or dead", () => {
+    const state = controls();
+    state.keys.add("KeyR");
+    state.move = { x: 0, y: 0.5 };
+    expect(readInput(state)).toMatchObject({ vertical: 1, forward: 0.5 });
+    state.keys.add("DescendTouch");
+    expect(readInput(state).vertical).toBe(0);
+    state.keys.delete("KeyR");
+    expect(readInput(state).vertical).toBe(-1);
+    state.paused = true;
+    expect(readInput(state).vertical).toBe(0);
+    state.paused = false;
+    state.isDead = true;
+    expect(readInput(state).vertical).toBe(0);
+  });
+
   it("uses a circular neutral zone and gradual throttle without changing bearing", () => {
     expect(sampleJoystick(3, -3, 40)).toMatchObject({ x: 0, y: 0 });
     const half = sampleJoystick(0, -20, 40);
@@ -165,6 +185,26 @@ describe("touch gesture ownership", () => {
     });
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  it("holds ascent and releases it on cancellation, focus loss, and disabling", () => {
+    const hold = vi.fn();
+    const { rerender, unmount } = render(
+      <HoldButton label="Rise" shortcut="R" onHold={hold} />,
+    );
+    const button = screen.getByRole("button", { name: "Rise" });
+    fireEvent.pointerDown(button, { pointerId: 1, button: 0 });
+    expect(hold).toHaveBeenLastCalledWith(true);
+    fireEvent.pointerCancel(button, { pointerId: 1 });
+    expect(hold).toHaveBeenLastCalledWith(false);
+    fireEvent.pointerDown(button, { pointerId: 2, button: 0 });
+    fireEvent(window, new Event("blur"));
+    expect(hold).toHaveBeenLastCalledWith(false);
+    fireEvent.pointerDown(button, { pointerId: 3, button: 0 });
+    rerender(<HoldButton label="Rise" shortcut="R" onHold={hold} disabled />);
+    expect(hold).toHaveBeenLastCalledWith(false);
+    unmount();
+    expect(hold).toHaveBeenLastCalledWith(false);
+  });
 
   it("ignores a second finger and resets only when its owner releases", () => {
     const onMove = vi.fn();

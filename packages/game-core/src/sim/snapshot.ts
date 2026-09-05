@@ -1,4 +1,8 @@
-import { WORLD_STATE_VERSION, defaultWorldSettings } from "./engine";
+import {
+  WORLD_STATE_VERSION,
+  defaultWorldSettings,
+  migrateWorldHabitats,
+} from "./engine";
 import type { WorldSimState } from "./types";
 
 export class SnapshotVersionError extends Error {
@@ -67,9 +71,7 @@ export function deserializeWorldState(value: unknown): WorldSimState {
   state.pairRequests = Array.isArray(value.pairRequests)
     ? state.pairRequests
     : [];
-  state.stats = isRecord(value.stats)
-    ? state.stats
-    : { births: 0, deaths: 0 };
+  state.stats = isRecord(value.stats) ? state.stats : { births: 0, deaths: 0 };
   state.settings = { ...defaultWorldSettings(), ...(state.settings ?? {}) };
   state.idPrefix = typeof value.idPrefix === "string" ? value.idPrefix : "";
   state.nextEggId = typeof value.nextEggId === "number" ? value.nextEggId : 1;
@@ -85,6 +87,7 @@ export function deserializeWorldState(value: unknown): WorldSimState {
     entity.input = null;
     entity.lastInputSeq = 0;
   }
+  migrateWorldHabitats(state);
   return state;
 }
 

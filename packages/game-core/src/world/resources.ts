@@ -1,7 +1,16 @@
 import { createSeededRandom } from "../rng";
-import { PLAYABLE_RADIUS, isWaterAt, riverX } from "./terrain";
+import {
+  PLAYABLE_RADIUS,
+  ISLANDS,
+  OCEAN_RADIUS,
+  SEA_LEVEL,
+  islandAt,
+  terrainHeight,
+  isWaterAt,
+  riverX,
+} from "./terrain";
 
-export type EdibleKind = "tree" | "bush";
+export type EdibleKind = "tree" | "bush" | "kelp";
 export type ResourceKind = EdibleKind | "prey";
 export type ResourceHabitat = ResourceKind | "rock" | "plant" | "mixed";
 
@@ -10,10 +19,12 @@ export type Edible = {
   kind: EdibleKind;
   x: number;
   z: number;
+  y?: number;
   energy: number;
 };
 
 export type Prey = {
+  y?: number;
   id: string;
   x: number;
   z: number;
@@ -28,6 +39,7 @@ type HabitatRegion = {
 };
 
 const HABITAT_REGIONS: Record<ResourceHabitat, HabitatRegion[]> = {
+  kelp: [],
   tree: [
     { x: -68, z: 45, radiusX: 45, radiusZ: 38, strength: 1 },
     { x: 67, z: 49, radiusX: 38, radiusZ: 48, strength: 0.94 },
@@ -85,6 +97,7 @@ const NO_GROWTH_REGIONS: Partial<Record<ResourceHabitat, HabitatRegion[]>> = {
 };
 
 const HABITAT_BASE_DENSITY: Record<ResourceHabitat, number> = {
+  kelp: 0,
   tree: 0.045,
   bush: 0.075,
   plant: 0.08,
@@ -113,7 +126,11 @@ export function resourceHabitatDensity(
   x: number,
   z: number,
 ) {
-  if (Math.hypot(x, z) >= PLAYABLE_RADIUS - 4 || isWaterAt(x, z)) return 0;
+  if (habitat === "kelp") return isWaterAt(x, z) ? 0.85 : 0;
+  const island = islandAt(x, z);
+  if (!island || isWaterAt(x, z)) return 0;
+  if (island.id !== "home") return habitat === "rock" ? 0.85 : 0.7;
+  if (Math.hypot(x, z) >= PLAYABLE_RADIUS - 4) return 0;
   if (Math.abs(x - riverX(z)) < 4.2) return 0;
 
   const exclusions = NO_GROWTH_REGIONS[habitat] ?? [];
@@ -194,6 +211,67 @@ function scaledPositions(
   ]);
 }
 
+/** New island props append to the old arrays, preserving existing resource IDs. */
+function islandResources(
+  count: number,
+  seed: number,
+): Array<[number, number, number]> {
+  const random = createSeededRandom(seed);
+  return ISLANDS.slice(1).flatMap((island) => {
+    const positions: Array<[number, number, number]> = [];
+    for (
+      let attempt = 0;
+      positions.length < count && attempt < count * 100;
+      attempt++
+    ) {
+      const angle = random() * Math.PI * 2;
+      const radius = Math.sqrt(random()) * (island.radius - 8);
+      const x = island.x + Math.cos(angle) * radius;
+      const z = island.z + Math.sin(angle) * radius;
+      if (isWaterAt(x, z) || terrainHeight(x, z) > 18) continue;
+      positions.push([x, z, 0.7 + random() * 0.45]);
+    }
+    return positions;
+  });
+}
+
+export function resourceHeight(resource: { x: number; z: number; y?: number }) {
+  return resource.y ?? terrainHeight(resource.x, resource.z);
+}
+
+const marinePositions: Array<{ x: number; z: number }> = [];
+// Food spans the sea routes as well as the lakes: crossings have places to feed.
+for (let x = -594; x <= 594; x += 36) {
+  for (let z = -594; z <= 594; z += 36) {
+    if (
+      Math.hypot(x, z) < OCEAN_RADIUS - 12 &&
+      isWaterAt(x, z) &&
+      terrainHeight(x, z) < SEA_LEVEL - 3
+    )
+      marinePositions.push({ x, z });
+  }
+}
+export const KELP: Edible[] = marinePositions.map(({ x, z }, index) => ({
+  id: `kelp-${index}`,
+  kind: "kelp",
+  x,
+  z,
+  // Some kelp reaches the surface; deeper beds reward diving.
+  y: index % 3 === 0 ? SEA_LEVEL - 1.6 : terrainHeight(x, z) + 1.5,
+  energy: 42,
+}));
+export const FISH: Prey[] = marinePositions
+  .map(({ x, z }, index) => ({
+    id: `fish-${index}`,
+    x: x + 1,
+    z,
+    y:
+      index % 2 === 0
+        ? SEA_LEVEL - 2
+        : (terrainHeight(x + 1, z) + SEA_LEVEL) / 2,
+  }))
+  .filter((fish) => isWaterAt(fish.x, fish.z));
+
 const TREE_POSITIONS = scaledPositions(128, 1847, "tree", 0.68, 0.065, 8);
 export const TREES = TREE_POSITIONS.slice(0, 28);
 export const EXTRA_TREES = TREE_POSITIONS.slice(28);
@@ -216,12 +294,22 @@ const PLANT_POSITIONS = scatterPositions(136, 4213, "plant");
 export const PLANTS = PLANT_POSITIONS.slice(0, 24);
 export const EXTRA_PLANTS = PLANT_POSITIONS.slice(24);
 
-export const PREY: Prey[] = scatterPositions(16, 8191, "prey").map(
-  ([x, z], index) => ({ id: `critter-${index}`, x, z }),
-);
+export const LAND_PREY: Prey[] = [
+  ...scatterPositions(16, 8191, "prey"),
+  ...islandResources(8, 8192),
+].map(([x, z], index) => ({ id: `critter-${index}`, x, z }));
+export const PREY = [...LAND_PREY, ...FISH];
 
-export const ALL_TREES = [...TREES, ...EXTRA_TREES];
-export const ALL_BUSHES = [...BUSHES, ...EXTRA_BUSHES];
+export const ALL_TREES = [
+  ...TREES,
+  ...EXTRA_TREES,
+  ...islandResources(36, 1877),
+];
+export const ALL_BUSHES = [
+  ...BUSHES,
+  ...EXTRA_BUSHES,
+  ...islandResources(32, 7329),
+];
 
 export const EDIBLES: Edible[] = [
   ...ALL_TREES.map(([x, z], index) => ({
@@ -229,6 +317,7 @@ export const EDIBLES: Edible[] = [
     kind: "tree" as const,
     x,
     z,
+    y: terrainHeight(x, z),
     energy: 42,
   })),
   ...ALL_BUSHES.map(([x, z], index) => ({
@@ -236,8 +325,10 @@ export const EDIBLES: Edible[] = [
     kind: "bush" as const,
     x,
     z,
+    y: terrainHeight(x, z),
     energy: 28,
   })),
+  ...KELP,
 ];
 
 export const EDIBLES_BY_ID: ReadonlyMap<string, Edible> = new Map(
@@ -276,7 +367,7 @@ export function adaptiveResourceRegrowSeconds(
   const base =
     kind === "tree"
       ? EDIBLE_REGROW_SECONDS
-      : kind === "bush"
+      : kind === "bush" || kind === "kelp"
         ? BUSH_REGROW_SECONDS
         : PREY_REGROW_SECONDS;
   const abundanceFactor = 0.48 + clamp01(availableRatio) * 0.98;

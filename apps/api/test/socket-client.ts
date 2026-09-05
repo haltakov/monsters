@@ -80,6 +80,7 @@ export class TestClient {
 
   input(
     overrides: Partial<{
+      vertical: number;
       forward: number;
       strafe: number;
       turn: number;
@@ -92,6 +93,7 @@ export class TestClient {
     this.socket.emit(CLIENT_EVENTS.input, {
       seq: overrides.seq ?? this.seq,
       forward: overrides.forward ?? 0,
+      vertical: overrides.vertical ?? 0,
       strafe: overrides.strafe ?? 0,
       turn: overrides.turn ?? 0,
       heading: overrides.heading ?? 0,

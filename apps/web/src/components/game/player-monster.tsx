@@ -12,6 +12,8 @@ import {
   type PlayerInput,
   type SimEntity,
   normalizeAngle,
+  SEA_LEVEL,
+  terrainHeight,
 } from "@monsters/game-core";
 import {
   MonsterVisual,
@@ -93,6 +95,10 @@ function blankPredictedEntity(dna: MonsterDna): SimEntity {
 export function readInput(state: ControlState): Omit<PlayerInput, "seq"> {
   const keys = state.keys;
   const blocked = state.paused || state.isDead;
+  const vertical = blocked
+    ? 0
+    : (keys.has("KeyR") || keys.has("AscendTouch") ? 1 : 0) -
+      (keys.has("KeyV") || keys.has("DescendTouch") ? 1 : 0);
   const stickMagnitude = Math.hypot(state.move.x, state.move.y);
   const hasKeyboardMovement = [
     "KeyW",
@@ -109,6 +115,7 @@ export function readInput(state: ControlState): Omit<PlayerInput, "seq"> {
   if (!blocked && !hasKeyboardMovement && stickMagnitude > 0.05) {
     return {
       forward: Math.min(1, stickMagnitude),
+      vertical,
       strafe: 0,
       turn: 0,
       heading: normalizeAngle(
@@ -118,6 +125,7 @@ export function readInput(state: ControlState): Omit<PlayerInput, "seq"> {
     };
   }
   const hasHumanMovement =
+    vertical !== 0 ||
     keys.has("KeyW") ||
     keys.has("KeyS") ||
     keys.has("KeyA") ||
@@ -148,6 +156,7 @@ export function readInput(state: ControlState): Omit<PlayerInput, "seq"> {
       : (keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0);
   return {
     forward: THREE.MathUtils.clamp(forward, -1, 1),
+    vertical,
     strafe: THREE.MathUtils.clamp(strafe, -1, 1),
     turn,
     heading: useAgent
@@ -169,6 +178,7 @@ function sameInput(
     Math.abs(first.forward - second.forward) < 0.01 &&
     Math.abs(first.strafe - second.strafe) < 0.01 &&
     first.turn === second.turn &&
+    first.vertical === second.vertical &&
     Math.abs(first.heading - second.heading) < 0.01 &&
     first.sprint === second.sprint
   );
@@ -216,9 +226,10 @@ export function PlayerMonster({
   const sequence = useRef(0);
   const lastSent = useRef<Omit<PlayerInput, "seq"> | null>(null);
   const cameraTarget = useMemo(() => new THREE.Vector3(), []);
-  const desiredCamera = useMemo(() => new THREE.Vector3(), []);
+  const desiredCameraRef = useRef(new THREE.Vector3());
 
   useFrame(({ camera, clock }, delta) => {
+    const desiredCamera = desiredCameraRef.current;
     const state = controls.current;
     if (!root.current || !visual.current) return;
 
@@ -251,6 +262,7 @@ export function PlayerMonster({
       entity.input = {
         ...raw,
         forward: 0,
+        vertical: 0,
         strafe: 0,
         turn: 0,
         seq: sequence.current,
@@ -301,6 +313,7 @@ export function PlayerMonster({
     const swimming = entity.locomotion === "swim";
     const previousX = root.current.position.x;
     const previousZ = root.current.position.z;
+    const previousY = root.current.position.y;
 
     root.current.position.x = entity.x;
     root.current.position.z = entity.z;
@@ -322,6 +335,7 @@ export function PlayerMonster({
     const travelled = Math.hypot(
       root.current.position.x - previousX,
       root.current.position.z - previousZ,
+      raw.vertical ? root.current.position.y - previousY : 0,
     );
     const moving = entity.alive && !state.isDead && travelled > 0.0008;
     const sprinting = moving && raw.sprint;
@@ -459,7 +473,11 @@ export function PlayerMonster({
       delta,
     );
 
-    const distance = flying ? 12 : diving ? 7.2 : 9.4;
+    const portraitScale =
+      (flying || diving) && camera instanceof THREE.PerspectiveCamera
+        ? Math.max(1, Math.min(1.9, 0.9 / camera.aspect))
+        : 1;
+    const distance = (flying ? 12 : diving ? 7.2 : 9.4) * portraitScale;
     const horizontalDistance = Math.cos(state.cameraPitch) * distance;
     const cameraLift = flying ? 3.3 : diving ? 0.55 : 2.6;
     desiredCamera.set(
@@ -469,6 +487,15 @@ export function PlayerMonster({
         Math.sin(state.cameraPitch) * distance,
       root.current.position.z + Math.cos(state.cameraYaw) * horizontalDistance,
     );
+    desiredCamera.y = Math.max(
+      desiredCamera.y,
+      terrainHeight(desiredCamera.x, desiredCamera.z) + 0.7,
+    );
+    if (diving && entity.y < SEA_LEVEL - 2)
+      desiredCamera.y = Math.max(
+        terrainHeight(desiredCamera.x, desiredCamera.z) + 0.7,
+        Math.min(desiredCamera.y, SEA_LEVEL - 0.45),
+      );
     camera.position.lerp(desiredCamera, 1 - Math.exp(-delta * 6));
     cameraTarget.set(
       root.current.position.x,

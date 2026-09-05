@@ -200,6 +200,7 @@ export class WorldConnection {
   }
 
   sendInput(input: {
+    vertical?: number;
     seq: number;
     forward: number;
     strafe: number;

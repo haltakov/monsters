@@ -15,6 +15,7 @@ export function emptyWorld(overrides: Partial<WorldSimState> = {}) {
   const state = createWorldState({ seed: SEED });
   state.entities = [];
   state.eggs = [];
+  state.ecosystemEnabled = false;
   return Object.assign(state, overrides);
 }
 

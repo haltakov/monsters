@@ -3,7 +3,7 @@ import { TICK_SECONDS } from "../src/sim/constants";
 import { createWorldState, stepWorld } from "../src/sim/engine";
 import { EDIBLES } from "../src/world/resources";
 import { normalizeAngle } from "../src/mathx";
-import { isWaterAt, riverX, WORLD_RADIUS } from "../src/world/terrain";
+import { isWaterAt, riverX, OCEAN_RADIUS } from "../src/world/terrain";
 import {
   emptyWorld,
   makeEntity,
@@ -172,7 +172,7 @@ describe("AI objective selection", () => {
     expect(Math.hypot(prey.x - hunter.x, prey.z - hunter.z)).toBeGreaterThan(6);
   });
 
-  it("keeps winged AI grounded unless it is actively fleeing", () => {
+  it("lets healthy winged AI cruise and react to a nearby threat", () => {
     const state = emptyWorld();
     const flyer = makeEntity("flyer", {
       x: 0,
@@ -187,7 +187,7 @@ describe("AI objective selection", () => {
     });
     state.entities.push(flyer);
     run(state, 2);
-    expect(flyer.locomotion).toBe("land");
+    expect(flyer.locomotion).toBe("fly");
 
     const threat = makeEntity("threat", {
       x: 5,
@@ -204,7 +204,7 @@ describe("AI objective selection", () => {
   it("keeps a fleeing winged AI inside the simulated ocean boundary", () => {
     const state = emptyWorld();
     const flyer = makeEntity("edge-flyer", {
-      x: WORLD_RADIUS + 21,
+      x: OCEAN_RADIUS - 1,
       z: 0,
       energy: 100,
       health: 20,
@@ -217,9 +217,16 @@ describe("AI objective selection", () => {
       }),
     });
     const threat = makePlayer("edge-threat", {
-      x: WORLD_RADIUS + 19,
+      x: OCEAN_RADIUS - 3,
       z: 0,
-      dna: withDna({ diet: "carnivore", size: "huge", mouth: "fangs" }),
+      y: 8,
+      locomotion: "fly",
+      dna: withDna({
+        diet: "carnivore",
+        size: "huge",
+        mouth: "fangs",
+        adaptation: "wings",
+      }),
     });
     state.entities.push(flyer, threat);
 
@@ -228,7 +235,7 @@ describe("AI objective selection", () => {
     expect(flyer.intent).toBe("flee");
     expect(flyer.locomotion).toBe("fly");
     expect(Math.hypot(flyer.x, flyer.z)).toBeLessThanOrEqual(
-      WORLD_RADIUS + 22.01,
+      OCEAN_RADIUS + 0.01,
     );
   });
 

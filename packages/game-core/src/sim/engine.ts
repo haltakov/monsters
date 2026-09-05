@@ -37,13 +37,20 @@ import {
   PREY_BY_ID,
   type Edible,
   type ResourceKind,
+  resourceHeight,
+  KELP,
 } from "../world/resources";
 import {
   isBlockedByWater,
   isDeepWaterAt,
   isWaterAt,
   PLAYABLE_RADIUS,
-  riverX,
+  OCEAN_RADIUS,
+  ISLANDS,
+  SEA_LEVEL,
+  FLIGHT_CEILING,
+  islandAt,
+  swimmingFloor,
   terrainHeight,
   waterBlendAt,
 } from "../world/terrain";
@@ -55,6 +62,8 @@ import {
   DEFAULT_MAX_POPULATION,
   EAT_DISTANCE,
   FLY_ENERGY_PER_SECOND,
+  FLY_VERTICAL_SPEED,
+  SWIM_VERTICAL_SPEED,
   HEALTH_REGEN_DELAY_SECONDS,
   HUNT_DISTANCE,
   INPUT_DEADZONE,
@@ -180,31 +189,64 @@ export function defaultWorldSettings(): WorldSettings {
 }
 
 function settleHabitat(entity: SimEntity, index = 0) {
-  const aquatic =
-    canMonsterSwim(entity.dna) && entity.dna.adaptation !== "wings";
-  if (aquatic) {
-    entity.z = clamp(entity.z, -96, 96);
-    entity.x = riverX(entity.z) + ((index % 3) - 1) * 0.35;
-    entity.y = -0.72;
-    entity.locomotion = "swim";
+  if (canMonsterSwim(entity.dna) && entity.dna.adaptation !== "wings") {
+    if (!isWaterAt(entity.x, entity.z)) {
+      const bed = KELP.reduce((closest, food) =>
+        Math.hypot(food.x - entity.x, food.z - entity.z) <
+        Math.hypot(closest.x - entity.x, closest.z - entity.z)
+          ? food
+          : closest,
+      );
+      entity.x = bed.x;
+      entity.z = bed.z;
+    }
+    entity.y = clamp(
+      entity.y < SEA_LEVEL - 1 ? entity.y : SEA_LEVEL - 5,
+      swimmingFloor(entity.x, entity.z),
+      SEA_LEVEL - 0.9,
+    );
+    entity.locomotion = "dive";
     return entity;
   }
-
+  const island =
+    islandAt(entity.x, entity.z) ?? ISLANDS[index % ISLANDS.length];
   let attempts = 0;
-  while (
-    (isWaterAt(entity.x, entity.z) ||
-      Math.hypot(entity.x, entity.z) > PLAYABLE_RADIUS - 8) &&
-    attempts < 12
-  ) {
+  while (isWaterAt(entity.x, entity.z) && attempts < 40) {
     const angle = entity.wanderAngle + attempts * 0.83;
     const radius = 14 + ((index * 13 + attempts * 7) % 42);
-    entity.x = Math.cos(angle) * radius;
-    entity.z = Math.sin(angle) * radius;
-    attempts += 1;
+    entity.x = island.x + Math.cos(angle) * radius;
+    entity.z = island.z + Math.sin(angle) * radius;
+    attempts++;
   }
-  entity.y = terrainHeight(entity.x, entity.z);
-  entity.locomotion = "land";
+  entity.locomotion =
+    entity.dna.adaptation === "wings" && entity.ownerGuestId === null
+      ? "fly"
+      : "land";
+  entity.y =
+    terrainHeight(entity.x, entity.z) + (entity.locomotion === "fly" ? 12 : 0);
   return entity;
+}
+
+function habitatDna(base: MonsterDna, habitat: "sea" | "sky"): MonsterDna {
+  return habitat === "sea"
+    ? {
+        ...base,
+        body: "aquatic",
+        adaptation: "fins",
+        breathing: "gills",
+        legShape: "flippers",
+        tail: "fin",
+        diet: "herbivore",
+      }
+    : {
+        ...base,
+        body: "avian",
+        adaptation: "wings",
+        breathing: "lungs",
+        diet: "herbivore",
+        legShape: "stubby",
+        tail: "none",
+      };
 }
 
 function blankEntity(spec: SpawnEntitySpec, random: () => number): SimEntity {
@@ -300,6 +342,14 @@ export function createInitialWildPopulation(
       // Spread the first breeding opportunities across the recovery window.
       mateCooldownUntil: MATING_COOLDOWN_SECONDS * (0.25 + random() * 0.75),
     };
+    if (!options.terrestrialOnly) {
+      if (index % 5 === 0) entity.dna = habitatDna(entity.dna, "sea");
+      else if (index % 5 === 1) entity.dna = habitatDna(entity.dna, "sky");
+      else entity.dna = terrestrialVariant(entity.dna, random);
+      const island = ISLANDS[index % ISLANDS.length];
+      entity.x += island.x;
+      entity.z += island.z;
+    }
     entity.yaw = random() * Math.PI * 2;
     entity.wanderAngle = random() * Math.PI * 2;
     population.push(settleHabitat(entity, index));
@@ -327,6 +377,8 @@ export function createWorldState(options: {
   );
   return {
     version: WORLD_STATE_VERSION,
+    archipelagoVersion: 1,
+    ecosystemEnabled: initialPopulation > 0 && !options.terrestrialOnly,
     seed: options.seed >>> 0,
     idPrefix,
     tick: 0,
@@ -474,7 +526,7 @@ function layEgg(
     parentNames: [first.name, second.name],
     generation: Math.max(first.generation, second.generation) + 1,
     x,
-    y: terrainHeight(x, z),
+    y: terrainHeight(x, z) + (isWaterAt(x, z) ? 0.9 : 0),
     z,
     laidAt: state.time,
     hatchAt: state.time + EGG_HATCH_SECONDS,
@@ -526,12 +578,42 @@ function resolveLocomotion(
 }
 
 function locomotionHeight(entity: SimEntity, mode: LocomotionMode) {
-  if (mode === "fly") return terrainHeight(entity.x, entity.z) + 7.4;
-  if (mode === "dive") return -3.55;
-  if (mode === "swim") {
-    return isDeepWaterAt(entity.x, entity.z) ? -1.05 : -0.72;
-  }
+  if (mode === "fly")
+    return clamp(
+      entity.y,
+      Math.max(SEA_LEVEL + 1, terrainHeight(entity.x, entity.z) + 0.2),
+      FLIGHT_CEILING,
+    );
+  if (mode === "dive")
+    return clamp(entity.y, swimmingFloor(entity.x, entity.z), SEA_LEVEL - 0.8);
+  if (mode === "swim") return SEA_LEVEL - 0.9;
   return terrainHeight(entity.x, entity.z);
+}
+
+function distance3d(
+  first: { x: number; y: number; z: number },
+  second: { x: number; y: number; z: number },
+) {
+  return Math.hypot(first.x - second.x, first.y - second.y, first.z - second.z);
+}
+
+function distanceToFood(
+  entity: SimEntity,
+  food: { x: number; z: number; y?: number },
+) {
+  return Math.hypot(
+    food.x - entity.x,
+    resourceHeight(food) - entity.y,
+    food.z - entity.z,
+  );
+}
+
+/** Ground creatures stay on their island; swimmers seek food in their own medium. */
+function canReachHabitat(entity: SimEntity, point: { x: number; z: number }) {
+  if (isWaterAt(point.x, point.z)) return canMonsterSwim(entity.dna);
+  if (canMonsterSwim(entity.dna) && isWaterAt(entity.x, entity.z)) return false;
+  if (entity.dna.adaptation === "wings") return true;
+  return islandAt(entity.x, entity.z)?.id === islandAt(point.x, point.z)?.id;
 }
 
 /** Sanitizes anything a client may have sent before it reaches the world. */
@@ -540,6 +622,7 @@ export function sanitizeInput(input: PlayerInput): PlayerInput {
     typeof value === "number" && Number.isFinite(value) ? value : 0;
   return {
     forward: clamp(safe(input.forward), -1, 1),
+    vertical: clamp(safe(input.vertical ?? 0), -1, 1),
     strafe: clamp(safe(input.strafe), -1, 1),
     turn: clamp(safe(input.turn), -1, 1),
     heading: normalizeAngle(safe(input.heading)),
@@ -580,6 +663,18 @@ export function applyPlayerMovement(entity: SimEntity, dt: number) {
   const sprinting = input ? input.sprint : false;
   const canSwim = canMonsterSwim(entity.dna);
   const canFly = entity.dna.adaptation === "wings";
+  const vertical = clamp(input?.vertical ?? 0, -1, 1);
+  if (vertical > INPUT_DEADZONE && canFly && entity.locomotion === "land") {
+    entity.locomotion = "fly";
+    entity.y = Math.max(entity.y, terrainHeight(entity.x, entity.z) + 0.3);
+  }
+  if (
+    vertical < -INPUT_DEADZONE &&
+    canSwim &&
+    isDeepWaterAt(entity.x, entity.z) &&
+    entity.locomotion === "swim"
+  )
+    entity.locomotion = "dive";
 
   if (input && input.turn !== 0) {
     entity.yaw = normalizeAngle(
@@ -638,7 +733,24 @@ export function applyPlayerMovement(entity: SimEntity, dt: number) {
   }
 
   entity.locomotion = resolveLocomotion(entity, entity.locomotion);
+  const previousY = entity.y;
+  if (entity.locomotion === "fly") {
+    entity.y += vertical * FLY_VERTICAL_SPEED * dt;
+    if (
+      vertical < 0 &&
+      !isWaterAt(entity.x, entity.z) &&
+      entity.y <= terrainHeight(entity.x, entity.z) + 0.2
+    )
+      entity.locomotion = "land";
+  } else if (entity.locomotion === "dive") {
+    entity.y += vertical * SWIM_VERTICAL_SPEED * dt;
+    if (vertical > 0 && entity.y >= SEA_LEVEL - 0.9) entity.locomotion = "swim";
+  }
   entity.y = locomotionHeight(entity, entity.locomotion);
+  moved =
+    moved ||
+    (Math.abs(vertical) > INPUT_DEADZONE &&
+      Math.abs(previousY - entity.y) > 0.0001);
 
   if (entity.locomotion === "fly") {
     const rate = FLY_ENERGY_PER_SECOND * (moved && sprinting ? 1.65 : 1);
@@ -661,7 +773,7 @@ function nearestEdible(state: WorldSimState, entity: SimEntity, range: number) {
   let nearestDistance = range;
   for (const edible of EDIBLES) {
     if (!isResourceAvailable(state, edible.id)) continue;
-    const distance = Math.hypot(edible.x - entity.x, edible.z - entity.z);
+    const distance = distanceToFood(entity, edible);
     if (distance <= nearestDistance) {
       nearest = edible;
       nearestDistance = distance;
@@ -756,7 +868,7 @@ function performAttack(
   let blockedByProtection = false;
   for (const other of state.entities) {
     if (!other.alive || other.id === entity.id) continue;
-    const distance = Math.hypot(other.x - entity.x, other.z - entity.z);
+    const distance = distance3d(entity, other);
     if (distance >= nearestDistance) continue;
     // Player versus player damage is disabled in this release. The server
     // returns a clear no-op instead of trusting the attacking client.
@@ -801,7 +913,7 @@ function performAttack(
   if (canMonsterHunt(entity.dna) && entity.locomotion !== "fly") {
     for (const prey of PREY) {
       if (!isResourceAvailable(state, prey.id)) continue;
-      const distance = Math.hypot(prey.x - entity.x, prey.z - entity.z);
+      const distance = distanceToFood(entity, prey);
       if (distance > HUNT_DISTANCE) continue;
       const huntEnergy = entity.dna.diet === "carnivore" ? 45 : 28;
       const restored = Math.min(huntEnergy, 100 - entity.energy);
@@ -893,7 +1005,7 @@ function performPair(
   for (const other of state.entities) {
     if (other.id === entity.id || !isPlayerControlled(other)) continue;
     if (!isMateReady(other, now)) continue;
-    const distance = Math.hypot(other.x - entity.x, other.z - entity.z);
+    const distance = distance3d(entity, other);
     if (distance < playerDistance) {
       playerPartner = other;
       playerDistance = distance;
@@ -930,7 +1042,7 @@ function performPair(
   for (const other of state.entities) {
     if (other.id === entity.id || isPlayerControlled(other)) continue;
     if (!isMateReady(other, now)) continue;
-    const distance = Math.hypot(other.x - entity.x, other.z - entity.z);
+    const distance = distance3d(entity, other);
     if (distance < nearestDistance) {
       nearest = other;
       nearestDistance = distance;
@@ -1137,8 +1249,7 @@ function applyCommand(
     );
     const from = findEntity(state, request.fromEntityId);
     const to = findEntity(state, request.toEntityId);
-    const distance =
-      from && to ? Math.hypot(from.x - to.x, from.z - to.z) : Infinity;
+    const distance = from && to ? distance3d(from, to) : Infinity;
     const acceptable =
       command.accept &&
       from &&
@@ -1184,12 +1295,17 @@ function applyCommand(
   if (command.type === "locomotion") {
     const canSwim = canMonsterSwim(entity.dna);
     const canFly = entity.dna.adaptation === "wings";
-    if (command.mode === "fly" && canFly) entity.locomotion = "fly";
-    else if (command.mode === "land")
+    if (command.mode === "fly" && canFly) {
+      if (entity.locomotion !== "fly")
+        entity.y = Math.max(SEA_LEVEL, terrainHeight(entity.x, entity.z)) + 3;
+      entity.locomotion = "fly";
+    } else if (command.mode === "land")
       entity.locomotion = resolveLocomotion(entity, "land");
-    else if (command.mode === "dive" && canSwim)
+    else if (command.mode === "dive" && canSwim) {
       entity.locomotion = resolveLocomotion(entity, "dive");
-    else if (command.mode === "surface" && canSwim)
+      if (entity.locomotion === "dive")
+        entity.y = Math.min(entity.y, SEA_LEVEL - 2.5);
+    } else if (command.mode === "surface" && canSwim)
       entity.locomotion = resolveLocomotion(entity, "swim");
     entity.locomotion = resolveLocomotion(entity, entity.locomotion);
     entity.y = locomotionHeight(entity, entity.locomotion);
@@ -1256,15 +1372,15 @@ function updateAiEntity(
   for (const other of living) {
     if (!other.alive || other.id === entity.id) continue;
     if (!canMonsterHunt(other.dna)) continue;
-    const separation = direction(entity.x, entity.z, other.x, other.z);
+    const threatRange = distance3d(entity, other);
     const dangerous =
       other.lastAttackerId === entity.id ||
       (other.dna.diet === "carnivore" &&
         (entity.dna.diet === "herbivore" ||
           getCreaturePower(other.dna) > power * 1.08));
-    if (dangerous && separation.distance < threatDistance) {
+    if (dangerous && threatRange < threatDistance) {
       nearestThreat = other;
-      threatDistance = separation.distance;
+      threatDistance = threatRange;
     }
   }
 
@@ -1286,7 +1402,7 @@ function updateAiEntity(
     let nearby = 0;
     for (const other of living) {
       if (!other.alive || other.id === entity.id) continue;
-      const distance = Math.hypot(other.x - entity.x, other.z - entity.z);
+      const distance = distance3d(entity, other);
       if (distance > 11 || distance < 0.001) continue;
       const away = direction(other.x, other.z, entity.x, entity.z);
       const strength = (11 - distance) / 11;
@@ -1301,11 +1417,16 @@ function updateAiEntity(
     const desiredNeighbors =
       entity.dna.social === "pair" ? 1 : entity.dna.social === "pack" ? 3 : 7;
     const preferred = living
-      .filter((other) => other.alive && other.id !== entity.id)
+      .filter(
+        (other) =>
+          other.alive &&
+          other.id !== entity.id &&
+          canReachHabitat(entity, other),
+      )
       .map((other) => ({
         x: other.x,
         z: other.z,
-        distance: Math.hypot(other.x - entity.x, other.z - entity.z),
+        distance: distance3d(entity, other),
         similarity: dnaSimilarity(entity.dna, other.dna),
       }))
       .sort(
@@ -1343,8 +1464,13 @@ function updateAiEntity(
     let nearestFood: Edible | null = null;
     let foodDistance = 52;
     for (const edible of EDIBLES) {
-      if (!isResourceAvailable(state, edible.id)) continue;
-      const distance = Math.hypot(edible.x - entity.x, edible.z - entity.z);
+      const distance = distanceToFood(entity, edible);
+      if (
+        distance >= 52 ||
+        !isResourceAvailable(state, edible.id) ||
+        !canReachHabitat(entity, edible)
+      )
+        continue;
       if (
         distance < foodDistance ||
         (distance < 52 && keepsTarget("forage", edible.id))
@@ -1385,6 +1511,49 @@ function updateAiEntity(
     }
   }
 
+  if (
+    canMonsterHunt(entity.dna) &&
+    entity.energy < 68 &&
+    entity.locomotion !== "fly"
+  ) {
+    const snack = PREY.filter(
+      (food) =>
+        isResourceAvailable(state, food.id) &&
+        canReachHabitat(entity, food) &&
+        distanceToFood(entity, food) < 52,
+    ).sort(
+      (first, second) =>
+        Number(keepsTarget("hunt", second.id)) -
+          Number(keepsTarget("hunt", first.id)) ||
+        distanceToFood(entity, first) - distanceToFood(entity, second),
+    )[0];
+    if (snack) {
+      const toward = direction(entity.x, entity.z, snack.x, snack.z);
+      goal("hunt", hunger * 1.15, toward.x, toward.z, snack.id);
+      if (
+        distanceToFood(entity, snack) < 2.8 &&
+        now >= entity.forageCooldownUntil
+      ) {
+        const restored = Math.min(
+          entity.dna.diet === "carnivore" ? 45 : 28,
+          100 - entity.energy,
+        );
+        entity.energy += restored;
+        entity.forageCooldownUntil = now + 5.5;
+        depleteResource(state, snack.id);
+        events.push({
+          type: "feed",
+          tick: state.tick,
+          entityId: entity.id,
+          entityName: entity.name,
+          resourceId: snack.id,
+          energy: restored,
+          kind: "prey",
+        });
+      }
+    }
+  }
+
   let prey: SimEntity | null = null;
   let preyDistance = 34;
   const shouldHunt =
@@ -1392,9 +1561,14 @@ function updateAiEntity(
     (entity.dna.diet === "carnivore" ? entity.energy < 68 : entity.energy < 38);
   if (shouldHunt) {
     for (const other of living) {
-      if (!other.alive || other.id === entity.id) continue;
+      if (
+        !other.alive ||
+        other.id === entity.id ||
+        !canReachHabitat(entity, other)
+      )
+        continue;
       const otherPower = getCreaturePower(other.dna);
-      const distance = Math.hypot(other.x - entity.x, other.z - entity.z);
+      const distance = distance3d(entity, other);
       if (
         (distance < preyDistance ||
           (distance < 34 && keepsTarget("hunt", other.id))) &&
@@ -1438,7 +1612,10 @@ function updateAiEntity(
         towardTarget.z,
         combatTarget.id,
       );
-      if (towardTarget.distance < 2.8 && now >= entity.attackCooldownUntil) {
+      if (
+        distance3d(entity, combatTarget) < 2.8 &&
+        now >= entity.attackCooldownUntil
+      ) {
         entity.attackCooldownUntil = now + 1.35 + random() * 0.35;
         entity.energy = Math.max(0, entity.energy - 3.6);
         const damage = 4.5 + power * (3.2 + random() * 2.4);
@@ -1478,6 +1655,7 @@ function updateAiEntity(
       .filter(
         (other) =>
           other.alive &&
+          canReachHabitat(entity, other) &&
           !isPlayerControlled(other) &&
           other.id !== entity.id &&
           other.age >= ADULT_AGE_SECONDS &&
@@ -1488,7 +1666,7 @@ function updateAiEntity(
       .map((other) => ({
         other,
         similarity: dnaSimilarity(entity.dna, other.dna),
-        distance: Math.hypot(other.x - entity.x, other.z - entity.z),
+        distance: distance3d(entity, other),
       }))
       .filter((candidate) => candidate.similarity >= 0.28)
       .sort(
@@ -1527,11 +1705,16 @@ function updateAiEntity(
   const best = goals.reduce((first, second) =>
     second.score > first.score ? second : first,
   );
-  const current = goals.find((candidate) => candidate.intent === entity.intent);
+  const current =
+    goals.find(
+      (candidate) =>
+        candidate.intent === entity.intent &&
+        candidate.targetId === entity.targetId,
+    ) ?? goals.find((candidate) => candidate.intent === entity.intent);
   const urgent = goals
     .filter(
       (candidate) =>
-        (candidate.intent === "flee" && candidate.score > 0.35) ||
+        (candidate.intent === "flee" && candidate.score > 0.2) ||
         candidate.intent === "defend" ||
         (entity.energy < 20 &&
           (candidate.intent === "forage" || candidate.intent === "hunt")),
@@ -1553,35 +1736,54 @@ function updateAiEntity(
   entity.targetId = selected.targetId;
   let steerX = selected.x;
   let steerZ = selected.z;
+  const selectedFood = selected.targetId
+    ? (EDIBLES_BY_ID.get(selected.targetId) ??
+      PREY_BY_ID.get(selected.targetId))
+    : undefined;
+  if (
+    selectedFood &&
+    Math.hypot(selectedFood.x - entity.x, selectedFood.z - entity.z) < 2
+  ) {
+    steerX = 0;
+    steerZ = 0;
+  }
 
   // Local separation is always active, even for armies, so a group stays a
   // readable cluster rather than collapsing into one overlapping mesh.
   for (const other of living) {
     if (!other.alive || other.id === entity.id) continue;
     const separation = direction(other.x, other.z, entity.x, entity.z);
-    if (separation.distance < 2.6 && separation.distance > 0.001) {
+    if (distance3d(entity, other) < 2.6 && separation.distance > 0.001) {
       const strength = (2.6 - separation.distance) / 2.6;
       steerX += separation.x * strength * 1.4;
       steerZ += separation.z * strength * 1.4;
     }
   }
 
-  const radius = Math.hypot(entity.x, entity.z);
-  if (radius > PLAYABLE_RADIUS - 12) {
-    steerX += (-entity.x / radius) * 2;
-    steerZ += (-entity.z / radius) * 2;
+  const habitat = islandAt(entity.x, entity.z);
+  const freeTravel =
+    canMonsterSwim(entity.dna) || entity.dna.adaptation === "wings";
+  const centerX = freeTravel ? 0 : (habitat?.x ?? 0);
+  const centerZ = freeTravel ? 0 : (habitat?.z ?? 0);
+  const radius = Math.hypot(entity.x - centerX, entity.z - centerZ);
+  const habitatRadius = freeTravel
+    ? OCEAN_RADIUS
+    : (habitat?.radius ?? PLAYABLE_RADIUS);
+  if (radius > habitatRadius - 12) {
+    steerX += ((centerX - entity.x) / radius) * 2;
+    steerZ += ((centerZ - entity.z) / radius) * 2;
   }
   const length = Math.hypot(steerX, steerZ);
-  // Wings are an escape tool, not an always-on habitat. AI takes off only
-  // while actively fleeing and lands again before feeding, fighting or mating.
+  // Healthy winged wildlife cruises above the islands and lands to feed.
   const shouldFly =
     entity.dna.adaptation === "wings" &&
-    entity.intent === "flee" &&
-    entity.energy > 32;
+    ((entity.energy > 35 &&
+      !["forage", "hunt", "defend", "mate"].includes(entity.intent)) ||
+      (isWaterAt(entity.x, entity.z) && !canMonsterSwim(entity.dna)));
   const blend = canMonsterSwim(entity.dna)
     ? waterBlendAt(entity.x, entity.z)
     : 0;
-  entity.locomotion = shouldFly ? "fly" : blend > 0.52 ? "swim" : "land";
+  entity.locomotion = shouldFly ? "fly" : blend > 0.52 ? "dive" : "land";
   if (length > 0.0001) {
     const speedScale =
       entity.intent === "flee"
@@ -1674,12 +1876,39 @@ function updateAiEntity(
       return;
     }
   }
+  const targetEntity = entity.targetId
+    ? living.find((other) => other.id === entity.targetId)
+    : undefined;
+  const targetFood = entity.targetId
+    ? (EDIBLES_BY_ID.get(entity.targetId) ?? PREY_BY_ID.get(entity.targetId))
+    : undefined;
   const targetY = shouldFly
-    ? terrainHeight(entity.x, entity.z) + 4.2
+    ? Math.min(
+        FLIGHT_CEILING - 5,
+        Math.max(SEA_LEVEL, terrainHeight(entity.x, entity.z)) +
+          12 +
+          Math.sin(now * 0.05 + entity.wanderAngle) * 3,
+      )
     : blend > 0.52
-      ? -0.72
+      ? clamp(
+          targetFood
+            ? resourceHeight(targetFood)
+            : (targetEntity?.y ??
+                SEA_LEVEL - 7 - Math.sin(entity.wanderAngle) * 3),
+          swimmingFloor(entity.x, entity.z),
+          SEA_LEVEL - 0.9,
+        )
       : terrainHeight(entity.x, entity.z);
-  entity.y += (targetY - entity.y) * clamp(dt * 2.8, 0, 1);
+  entity.y =
+    entity.locomotion === "land"
+      ? targetY
+      : entity.y + clamp(targetY - entity.y, -3 * dt, 3 * dt);
+  if (blend > 0.52 && !shouldFly)
+    entity.y = clamp(
+      entity.y,
+      swimmingFloor(entity.x, entity.z),
+      SEA_LEVEL - 0.9,
+    );
 }
 
 function hatchEggs(state: WorldSimState, events: SimEvent[]) {
@@ -1768,6 +1997,64 @@ export function ageWorldEntities(
   }
 }
 
+/** Upgrade existing wild habitats without changing owned monsters or their DNA. */
+export function migrateWorldHabitats(state: WorldSimState) {
+  if (state.archipelagoVersion === 1) return;
+  state.archipelagoVersion = 1;
+  state.ecosystemEnabled = state.entities.some(
+    (entity) => entity.alive && entity.ownerGuestId === null,
+  );
+  state.entities
+    .filter((entity) => entity.alive && entity.ownerGuestId === null)
+    .forEach((entity, index) => {
+      const island = ISLANDS[index % ISLANDS.length];
+      entity.x = island.x + Math.cos(index * 2.4) * 35;
+      entity.z = island.z + Math.sin(index * 2.4) * 35;
+      settleHabitat(entity, index);
+    });
+}
+
+function welcomeHabitatWildlife(state: WorldSimState, events: SimEvent[]) {
+  if (!state.ecosystemEnabled || state.tick % 300 !== 0) return;
+  const random = randomFn(state.rng);
+  for (const habitat of ["sea", "sky"] as const) {
+    const count = state.entities.filter(
+      (entity) =>
+        entity.alive &&
+        (habitat === "sea"
+          ? canMonsterSwim(entity.dna)
+          : entity.dna.adaptation === "wings"),
+    ).length;
+    if (
+      count >= 3 ||
+      livingCount(state) + state.eggs.length >= state.settings.maxPopulation
+    )
+      continue;
+    const island = ISLANDS[count % ISLANDS.length];
+    const visitor = blankEntity(
+      {
+        id: `${state.idPrefix}visitor-${state.nextCreatureId++}`,
+        name: createRandomName(random),
+        dna: habitatDna(DEFAULT_MONSTER_DNA, habitat),
+        ownerGuestId: null,
+        x: island.x + 25,
+        z: island.z + 30,
+      },
+      random,
+    );
+    visitor.mateCooldownUntil = state.time + MATING_COOLDOWN_SECONDS;
+    settleHabitat(visitor, count);
+    state.entities.push(visitor);
+    events.push({
+      type: "spawned",
+      tick: state.tick,
+      entityId: visitor.id,
+      name: visitor.name,
+      ownerGuestId: null,
+    });
+  }
+}
+
 /**
  * Advances the world by one explicit fixed step. The state object is mutated
  * in place; callers that need history should clone it first. The function is
@@ -1789,6 +2076,7 @@ export function stepWorld(
   releaseExpiredControl(state, events);
   expirePairRequests(state, events);
   regrowResources(state);
+  welcomeHabitatWildlife(state, events);
 
   const living = state.entities.filter((entity) => entity.alive);
   for (const entity of living) {

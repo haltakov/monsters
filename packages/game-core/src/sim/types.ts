@@ -17,6 +17,8 @@ export type LocomotionMode = "land" | "swim" | "dive" | "fly";
  * wants to move and where it wants to face.
  */
 export type PlayerInput = {
+  /** -1 descend … 1 ascend; omitted by older clients. */
+  vertical?: number;
   /** -1 (back) … 1 (forward) */
   forward: number;
   /** -1 (left) … 1 (right), camera relative */
@@ -100,6 +102,9 @@ export type WorldSettings = {
 
 export type WorldSimState = {
   version: number;
+  /** Enables habitat immigration for populated worlds; empty test/sandbox worlds stay empty. */
+  ecosystemEnabled?: boolean;
+  archipelagoVersion?: number;
   seed: number;
   /** Namespace for generated entity ids so worlds never collide in the database. */
   idPrefix: string;
@@ -178,7 +183,7 @@ export type SimEvent =
       entityName: string;
       resourceId: string;
       energy: number;
-      kind: "tree" | "bush" | "prey";
+      kind: "tree" | "bush" | "kelp" | "prey";
     }
   | {
       type: "feedFailed";
