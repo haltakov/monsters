@@ -1,5 +1,13 @@
 import type { MonsterDna } from "../dna/dna";
 
+export const BREATH_ELEMENTS = [
+  "radioactive",
+  "fire",
+  "water",
+  "poison",
+] as const;
+export type BreathElement = (typeof BREATH_ELEMENTS)[number];
+
 export type SimIntent =
   | "wander"
   | "forage"
@@ -52,6 +60,8 @@ export type SimEntity = {
   wanderAngle: number;
   nextDecisionAt: number;
   attackCooldownUntil: number;
+  /** Optional for checkpoints from before elemental breath existed. */
+  breathCooldownUntil?: number;
   forageCooldownUntil: number;
   mateCooldownUntil: number;
   lastAttackedAt: number;
@@ -144,7 +154,8 @@ export type SimCommand =
   | {
       type: "action";
       entityId: string;
-      action: "eat" | "attack" | "pair";
+      action: "eat" | "attack" | "pair" | "breath";
+      element?: BreathElement;
       requestId?: string;
     }
   | {
@@ -159,6 +170,24 @@ export type SimCommand =
   | { type: "updateDna"; entityId: string; dna: MonsterDna; name: string };
 
 export type SimEvent =
+  | {
+      type: "breath";
+      tick: number;
+      entityId: string;
+      element: BreathElement;
+      x: number;
+      y: number;
+      z: number;
+      yaw: number;
+      range: number;
+    }
+  | {
+      type: "breathFailed";
+      tick: number;
+      entityId: string;
+      reason: "cooldown" | "energy" | "dead";
+      seconds?: number;
+    }
   | {
       type: "attack";
       tick: number;

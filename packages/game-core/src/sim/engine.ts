@@ -1,4 +1,5 @@
 import {
+  getMonsterSizeScale,
   ACCENT_COLORS,
   ADAPTATIONS,
   BODY_SHAPES,
@@ -57,6 +58,10 @@ import {
 import {
   AI_IDLE_ENERGY_PER_SECOND,
   ATTACK_ENERGY_COST,
+  BREATH_ENERGY_COST,
+  BREATH_DURATION_SECONDS,
+  BREATH_COOLDOWN_SECONDS,
+  BREATH_RANGE,
   CORPSE_LINGER_SECONDS,
   DEFAULT_CONTROL_GRACE_SECONDS,
   DEFAULT_MAX_POPULATION,
@@ -82,6 +87,7 @@ import {
   TURN_RATE_PER_SECOND,
   WALK_ENERGY_PER_SECOND,
 } from "./constants";
+import { BREATH_ELEMENTS, type BreathElement } from "./types";
 import {
   ADULT_AGE_SECONDS,
   createBabyName,
@@ -269,6 +275,7 @@ function blankEntity(spec: SpawnEntitySpec, random: () => number): SimEntity {
     wanderAngle: random() * Math.PI * 2,
     nextDecisionAt: 0,
     attackCooldownUntil: 0,
+    breathCooldownUntil: 0,
     forageCooldownUntil: 0,
     mateCooldownUntil: 0,
     lastAttackedAt: -100,
@@ -940,6 +947,103 @@ function performAttack(
   });
 }
 
+/** Server-authored origin, direction, range and hits; clients only choose an element. */
+function performBreath(
+  state: WorldSimState,
+  entity: SimEntity,
+  events: SimEvent[],
+  element: BreathElement = "radioactive",
+) {
+  if ((entity.breathCooldownUntil ?? 0) > state.time) {
+    events.push({
+      type: "breathFailed",
+      tick: state.tick,
+      entityId: entity.id,
+      reason: "cooldown",
+      seconds: Math.ceil(entity.breathCooldownUntil! - state.time),
+    });
+    return;
+  }
+  if (entity.energy <= BREATH_ENERGY_COST) {
+    events.push({
+      type: "breathFailed",
+      tick: state.tick,
+      entityId: entity.id,
+      reason: "energy",
+    });
+    return;
+  }
+  entity.breathCooldownUntil = state.time + BREATH_COOLDOWN_SECONDS;
+  entity.attackCooldownUntil = Math.max(
+    entity.attackCooldownUntil,
+    state.time + BREATH_DURATION_SECONDS,
+  );
+  entity.energy -= BREATH_ENERGY_COST;
+  const size = getMonsterSizeScale(entity.dna.size);
+  const dx = -Math.sin(entity.yaw);
+  const dz = -Math.cos(entity.yaw);
+  const origin = {
+    x: entity.x + dx * size,
+    y: entity.y + 1.25 * size,
+    z: entity.z + dz * size,
+  };
+  // Stop the stream at terrain, including mountains and the sea floor.
+  let range = BREATH_RANGE;
+  for (let distance = 0; distance <= BREATH_RANGE; distance += 0.5) {
+    if (
+      terrainHeight(origin.x + dx * distance, origin.z + dz * distance) >=
+      origin.y
+    ) {
+      range = distance;
+      break;
+    }
+  }
+  events.push({
+    type: "breath",
+    tick: state.tick,
+    entityId: entity.id,
+    element,
+    ...origin,
+    yaw: entity.yaw,
+    range,
+  });
+  for (const other of state.entities) {
+    if (!other.alive || other.id === entity.id || isPlayerControlled(other))
+      continue;
+    const ox = other.x - origin.x;
+    const oz = other.z - origin.z;
+    const forward = ox * dx + oz * dz;
+    const sideways = ox * dz - oz * dx;
+    const vertical =
+      other.y + 1.25 * getMonsterSizeScale(other.dna.size) - origin.y;
+    if (
+      forward < 0 ||
+      forward > range ||
+      Math.hypot(sideways, vertical) > 0.65 + forward * 0.16
+    )
+      continue;
+    const damage = 12 + getCreaturePower(entity.dna) * 4;
+    other.health = Math.max(0, other.health - damage);
+    other.lastAttackedAt = state.time;
+    other.lastAttackerId = entity.id;
+    other.intent = other.health < 28 ? "flee" : "defend";
+    other.targetId = entity.id;
+    const defeated = other.health <= 0;
+    if (defeated) killEntity(state, other, "health", entity.id, events);
+    events.push({
+      type: "attack",
+      tick: state.tick,
+      attackerId: entity.id,
+      attackerName: entity.name,
+      targetId: other.id,
+      targetName: other.name,
+      damage,
+      defeated,
+      energyReward: 0,
+    });
+  }
+}
+
 function isMateReady(entity: SimEntity, now: number) {
   return (
     entity.alive &&
@@ -1273,7 +1377,14 @@ function applyCommand(
   const entity = findEntity(state, command.entityId);
   if (!entity) return;
   if (!entity.alive) {
-    if (command.type === "action") {
+    if (command.type === "action" && command.action === "breath") {
+      events.push({
+        type: "breathFailed",
+        tick: state.tick,
+        entityId: entity.id,
+        reason: "dead",
+      });
+    } else if (command.type === "action") {
       events.push({
         type: "attackMissed",
         tick: state.tick,
@@ -1315,7 +1426,13 @@ function applyCommand(
   if (command.type === "action") {
     if (command.action === "eat") performEat(state, entity, events);
     else if (command.action === "attack") performAttack(state, entity, events);
-    else performPair(state, entity, events);
+    else if (command.action === "breath") {
+      if (
+        command.element === undefined ||
+        BREATH_ELEMENTS.includes(command.element)
+      )
+        performBreath(state, entity, events, command.element);
+    } else if (command.action === "pair") performPair(state, entity, events);
   }
 }
 
@@ -1613,6 +1730,24 @@ function updateAiEntity(
         combatTarget.id,
       );
       if (
+        entity.energy > 45 &&
+        distance3d(entity, combatTarget) > 3 &&
+        distance3d(entity, combatTarget) < BREATH_RANGE &&
+        now >= (entity.breathCooldownUntil ?? 0) &&
+        Math.abs(
+          normalizeAngle(
+            Math.atan2(-towardTarget.x, -towardTarget.z) - entity.yaw,
+          ),
+        ) < 0.16
+      ) {
+        const elementIndex =
+          [...entity.id].reduce((sum, char) => sum + char.charCodeAt(0), 0) %
+          BREATH_ELEMENTS.length;
+        performBreath(state, entity, events, BREATH_ELEMENTS[elementIndex]);
+        entity.breathCooldownUntil = now + 12;
+      }
+      if (
+        combatTarget.alive &&
         distance3d(entity, combatTarget) < 2.8 &&
         now >= entity.attackCooldownUntil
       ) {

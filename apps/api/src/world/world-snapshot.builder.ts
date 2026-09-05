@@ -182,10 +182,13 @@ function filterEvents(
 ) {
   return events.filter((event) => {
     if (GLOBAL_EVENT_TYPES.has(event.type)) return true;
+    // Visible effects also reach spectators and nearby observers.
+    if (event.type === 'breath') return view.entities.has(event.entityId);
     if (!entityId) return false;
     switch (event.type) {
       case 'attack':
         return event.attackerId === entityId || event.targetId === entityId;
+      case 'breathFailed':
       case 'attackMissed':
       case 'feed':
       case 'feedFailed':

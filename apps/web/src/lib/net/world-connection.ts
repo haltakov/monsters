@@ -6,6 +6,8 @@ import {
   PROTOCOL_VERSION,
   SERVER_EVENTS,
   type MonsterDna,
+  type ActionPayload,
+  type BreathElement,
   type NetEgg,
   type NetEntity,
   type SimEvent,
@@ -212,9 +214,12 @@ export class WorldConnection {
       this.socket.emit(CLIENT_EVENTS.input, input);
   }
 
-  sendAction(action: "eat" | "attack" | "pair") {
+  sendAction(action: ActionPayload["action"], element?: BreathElement) {
     if (this.socket?.connected && this.isController)
-      this.socket.emit(CLIENT_EVENTS.action, { action });
+      this.socket.emit(
+        CLIENT_EVENTS.action,
+        element ? { action, element } : { action },
+      );
   }
 
   sendLocomotion(mode: "fly" | "land" | "dive" | "surface") {

@@ -1,4 +1,4 @@
-import type { SimEvent } from "../sim/types";
+import type { BreathElement, SimEvent } from "../sim/types";
 import type { NetEgg, NetEntity, NetEntityPatch, WorldPopulation } from "./net";
 
 /** Socket.IO event names, shared so the client and server cannot drift. */
@@ -41,7 +41,8 @@ export type InputPayload = {
 };
 
 export type ActionPayload = {
-  action: "eat" | "attack" | "pair";
+  action: "eat" | "attack" | "pair" | "breath";
+  element?: BreathElement;
 };
 
 export type LocomotionPayload = {

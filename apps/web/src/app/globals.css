@@ -4938,3 +4938,55 @@ button[data-gene-option="avian"] .gene-silhouette::after {
 .vertical-controls .ability-button > span {
   font-size: 12px;
 }
+
+/* Elemental breath shares the action rail on desktop and touch screens. */
+.action-controls {
+  align-items: flex-end;
+}
+.breath-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: 6px;
+  width: 84px;
+}
+.breath-control select {
+  width: 116px;
+  min-height: 28px;
+  padding: 3px;
+  border: 1px solid #749ba5;
+  border-radius: 8px;
+  background: #edfaff;
+  color: #173f35;
+  font-size: 10px;
+  font-weight: 650;
+}
+.breath-button {
+  --fill: #98d9ff;
+  --fill-hi: #c9edff;
+}
+.breath-control[data-element="fire"] .breath-button {
+  --fill: #ffb07b;
+  --fill-hi: #ffd49b;
+}
+.breath-control[data-element="water"] .breath-button {
+  --fill: #89e2ed;
+  --fill-hi: #c2f5fa;
+}
+.breath-control[data-element="poison"] .breath-button {
+  --fill: #b5e77b;
+  --fill-hi: #ddf6b5;
+}
+@media (max-width: 900px) {
+  .action-controls {
+    align-items: center;
+  }
+  .breath-control {
+    width: 76px;
+  }
+  .breath-control select {
+    width: 100px;
+    font-size: 10px;
+    min-height: 30px;
+  }
+}

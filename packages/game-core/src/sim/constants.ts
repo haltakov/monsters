@@ -9,6 +9,10 @@ export const SWIM_ENERGY_PER_SECOND = 0.45;
 /** Flight is powerful, but sustained lift should be a deliberate choice. */
 export const FLY_ENERGY_PER_SECOND = 0.75;
 export const ATTACK_ENERGY_COST = 7;
+export const BREATH_ENERGY_COST = 12;
+export const BREATH_COOLDOWN_SECONDS = 4;
+export const BREATH_RANGE = 14;
+export const BREATH_DURATION_SECONDS = 0.85;
 export const MATE_ENERGY_COST = 18;
 export const AI_IDLE_ENERGY_PER_SECOND = 0.045;
 

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 import {
+  BREATH_ELEMENTS,
   CLIENT_EVENTS,
   PROTOCOL_VERSION,
   RATE_LIMITS,
@@ -445,15 +446,33 @@ export class WorldGateway
     const entityId = this.requireControl(socket, session);
     if (!entityId) return;
     const action = payload?.action;
-    if (action !== 'eat' && action !== 'attack' && action !== 'pair') {
+    if (
+      action !== 'eat' &&
+      action !== 'attack' &&
+      action !== 'pair' &&
+      action !== 'breath'
+    ) {
       this.fail(socket, 'invalidPayload', 'Unknown action');
+      return;
+    }
+    if (
+      action === 'breath' &&
+      payload.element !== undefined &&
+      !BREATH_ELEMENTS.includes(payload.element)
+    ) {
+      this.fail(socket, 'invalidPayload', 'Unknown breath element');
       return;
     }
     if (!allow(session.buckets.action, RATE_LIMITS.actionPerSecond)) {
       this.fail(socket, 'rateLimited', 'Action rate exceeded');
       return;
     }
-    this.runner.enqueue({ type: 'action', entityId, action });
+    this.runner.enqueue({
+      type: 'action',
+      entityId,
+      action,
+      element: payload.element,
+    });
   }
 
   @SubscribeMessage(CLIENT_EVENTS.locomotion)

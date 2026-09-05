@@ -82,11 +82,14 @@ import {
   isDeepWaterAt,
   isWaterAt,
   normalizeAngle,
+  type BreathElement,
   type LocomotionMode,
   type MonsterDna,
   type SimEvent,
   type WorldPopulation,
 } from "@monsters/game-core";
+import { BreathEffects } from "./breath-effects";
+import { BreathControl } from "./breath-control";
 import { ArchipelagoMap } from "./archipelago-map";
 import { Scenery, type SceneQuality } from "@/components/game/world-scenery";
 import { NetworkPopulation } from "@/components/game/network-monsters";
@@ -247,6 +250,7 @@ function World({
         speed={0.24}
         color="#FFF1A8"
       />
+      <BreathEffects connection={connection} />
       <NetworkPopulation
         connection={connection}
         quality={quality}
@@ -712,6 +716,28 @@ function ConnectedGame({ session }: { session: SessionApi }) {
             }
             break;
           }
+          case "breath": {
+            if (event.entityId === selfId) {
+              controls.current.action = "attack";
+              controls.current.actionStarted = performance.now();
+              setStatus({
+                key: "game.breathCast",
+                values: { element: t(`game.breath.${event.element}`) },
+              });
+            }
+            break;
+          }
+          case "breathFailed": {
+            if (event.entityId !== selfId) break;
+            if (event.reason === "energy")
+              setStatus({ key: "game.breathEnergy" });
+            if (event.reason === "cooldown")
+              setStatus({
+                key: "game.breathCooldown",
+                values: { seconds: event.seconds ?? 1 },
+              });
+            break;
+          }
           case "attackMissed": {
             if (event.entityId !== selfId) break;
             if (event.reason === "playerProtected") {
@@ -944,6 +970,18 @@ function ConnectedGame({ session }: { session: SessionApi }) {
     },
     [],
   );
+
+  const [breathElement, setBreathElement] =
+    useState<BreathElement>("radioactive");
+  const triggerBreath = useCallback(() => {
+    if (
+      controls.current.isDead ||
+      controls.current.paused ||
+      !connection.isController
+    )
+      return;
+    connection.sendAction("breath", breathElement);
+  }, [connection, breathElement]);
 
   const triggerAction = useCallback(
     (action: "eat" | "attack") => {
@@ -1192,6 +1230,12 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       animationFrame = window.requestAnimationFrame(updateLook);
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.target instanceof HTMLElement &&
+        (event.target.matches("input, textarea, select") ||
+          event.target.isContentEditable)
+      )
+        return;
       if (event.code === "Slash" && event.shiftKey && !event.repeat) {
         event.preventDefault();
         setControlsHelpOpen((open) => !open);
@@ -1212,6 +1256,7 @@ function ConnectedGame({ session }: { session: SessionApi }) {
         event.preventDefault();
       if (!event.repeat && event.code === "Space") triggerAction("attack");
       if (!event.repeat && event.code === "KeyE") triggerAction("eat");
+      if (!event.repeat && event.code === "KeyB") triggerBreath();
       if (!event.repeat && event.code === "KeyM") triggerMate();
       if (!event.repeat && event.code === "KeyF") toggleFlight();
       if (!event.repeat && event.code === "KeyC") toggleDive();
@@ -1255,7 +1300,14 @@ function ConnectedGame({ session }: { session: SessionApi }) {
       document.removeEventListener("visibilitychange", onVisibility);
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [selfEntityId, toggleDive, toggleFlight, triggerAction, triggerMate]);
+  }, [
+    selfEntityId,
+    toggleDive,
+    toggleFlight,
+    triggerAction,
+    triggerMate,
+    triggerBreath,
+  ]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -2756,6 +2808,10 @@ function ConnectedGame({ session }: { session: SessionApi }) {
               <span>{t("game.eat")}</span>
             </div>
             <div>
+              <kbd>B</kbd>
+              <span>{t("game.breathHelp")}</span>
+            </div>
+            <div>
               <kbd>SPACE</kbd>
               <span>{t("game.attack")}</span>
             </div>
@@ -2799,6 +2855,15 @@ function ConnectedGame({ session }: { session: SessionApi }) {
 
         {canPlay && (
           <div className="action-controls">
+            <BreathControl
+              key={selfEntityId}
+              connection={connection}
+              entityId={selfEntityId}
+              element={breathElement}
+              onElement={setBreathElement}
+              onCast={triggerBreath}
+              disabled={touchDisabled}
+            />
             <button
               type="button"
               className="action-button eat-button"

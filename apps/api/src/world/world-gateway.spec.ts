@@ -354,6 +354,77 @@ describe('world websocket protocol', () => {
     expect(live.energy).toBeLessThan(100);
   });
 
+  it('broadcasts confirmed breath to neighbours and spectators, validates elements and shares cooldowns', async () => {
+    const attacker = await createPlayer('Dragon');
+    const neighbour = await createPlayer('Watcher');
+    const observer = await createPlayer('Spectator');
+    const attackerClient = await connect(attacker.token);
+    const neighbourClient = await connect(neighbour.token);
+    const observerClient = await connect(observer.token);
+    await attackerClient.join(attacker.monsterId);
+    await neighbourClient.join(neighbour.monsterId);
+    await observerClient.join();
+    const caster = await joinedEntity(attacker.monsterId);
+    const protectedPlayer = await joinedEntity(neighbour.monsterId);
+    isolate([caster, protectedPlayer], 20, 20);
+    for (const monster of [caster, protectedPlayer]) {
+      monster.dna = { ...monster.dna, adaptation: 'wings' };
+      monster.locomotion = 'fly';
+      monster.y = 40;
+      monster.energy = 100;
+    }
+    caster.yaw = 0;
+    protectedPlayer.x = caster.x;
+    protectedPlayer.z = caster.z - 7;
+    protectedPlayer.health = 100;
+
+    attackerClient.socket.emit('world:action', {
+      action: 'breath',
+      element: 'invalid',
+    });
+    await waitFor(() =>
+      attackerClient.errors.some((error) => error.code === 'invalidPayload'),
+    );
+    expect(caster.breathCooldownUntil ?? 0).toBe(0);
+    attackerClient.socket.emit('world:action', {
+      action: 'breath',
+      element: 'radioactive',
+    });
+    const breath = await attackerClient.waitForEvent('breath');
+    expect(breath).toMatchObject({
+      element: 'radioactive',
+      entityId: caster.id,
+      yaw: 0,
+    });
+    await waitFor(() =>
+      neighbourClient.events.some(
+        (event) => event.type === 'breath' && event.entityId === caster.id,
+      ),
+    );
+    await waitFor(() =>
+      observerClient.events.some(
+        (event) => event.type === 'breath' && event.entityId === caster.id,
+      ),
+    );
+    expect(protectedPlayer.health).toBe(100);
+    expect(caster.energy).toBeLessThan(89);
+
+    attackerClient.socket.emit('world:action', {
+      action: 'breath',
+      element: 'fire',
+    });
+    const failure = await attackerClient.waitForEvent('breathFailed');
+    expect(failure).toMatchObject({ reason: 'cooldown' });
+    expect(
+      attackerClient.events.filter(
+        (event) => event.type === 'breath' && event.entityId === caster.id,
+      ),
+    ).toHaveLength(1);
+    expect(
+      observerClient.events.some((event) => event.type === 'breathFailed'),
+    ).toBe(false);
+  });
+
   it('requires acceptance for player to player pairing and honours a refusal', async () => {
     const first = await createPlayer('Romeo');
     const second = await createPlayer('Juliet');

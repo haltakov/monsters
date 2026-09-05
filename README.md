@@ -37,11 +37,17 @@ Open [http://localhost:3100](http://localhost:3100). The API health check lives 
 - Move the mouse after clicking the game — rotate only the camera; the monster aligns with it once movement starts
 - `E` — eat
 - `Space` — attack
+- `B` — elemental breath; choose blue radiation (default), fire, water, or poison above the Breath button
+- `M` — pair with a nearby adult monster
+- `F` / `C` — toggle flight / diving when the monster has the matching adaptation
+- Hold `R` / `V` — ascend / descend while flying or swimming
 - **Edit monster** — open the rotatable character creator and DNA editor
 - `Esc` — release the mouse
 - Touchscreen — twin virtual sticks and action buttons
 
-The player cannot enter the sea or river. Cross the river using one of the log bridges.
+Swimmers can cross the ocean and dive for fish and seaweed; winged monsters can fly between the three islands. Other monsters need land or bridges.
+
+Breath fires a 14-unit cone in the direction the monster faces and works on land, in the air, and underwater. It costs 12 energy and has a shared four-second cooldown across all elements. Terrain blocks it, and actively controlled players remain protected. Wild monsters can breathe during combat, with a longer twelve-second cooldown.
 
 Walking gradually uses energy, sprinting drains it faster, and every attack costs 7 energy. Eat a compatible nearby resource to recover energy. Health recovers over time according to current energy. Reaching zero health or energy permanently kills the monster; its owner can then select another living monster or create a new one.
 
