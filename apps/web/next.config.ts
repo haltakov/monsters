@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
   output: "export",
   trailingSlash: true,
   // Static exports cannot run withPlausibleProxy's Next server rewrites.
-  // deploy/nginx.conf.template owns the first-party analytics proxy instead.
+  // Nginx proxies the script; the browser sends events to p.monstersdna.com.
   env: { NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID: plausibleScriptId },
 };
 
