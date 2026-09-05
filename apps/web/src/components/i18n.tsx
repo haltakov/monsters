@@ -247,6 +247,12 @@ const en = {
   "option.lavender": "Lavender",
   "option.chartreuse": "Chartreuse",
   "option.copper": "Copper",
+  "archetype.king-kong.label": "King Kong",
+  "archetype.king-kong.summary":
+    "A towering, powerful ape with a broad chest and a solitary nature.",
+  "archetype.godzilla.label": "Godzilla",
+  "archetype.godzilla.summary":
+    "An enormous amphibious reptile with blue dorsal spines and a long tail.",
   "archetype.gorilla.label": "Gorilla-like",
   "archetype.gorilla.summary":
     "Large, strong omnivore that stays with one companion.",
@@ -735,6 +741,12 @@ const bg: Record<TranslationKey, string> = {
   "option.lavender": "Лавандула",
   "option.chartreuse": "Шартрьоз",
   "option.copper": "Мед",
+  "archetype.king-kong.label": "Кинг Конг",
+  "archetype.king-kong.summary":
+    "Гигантска, силна маймуна с широк гръден кош и самотен нрав.",
+  "archetype.godzilla.label": "Годзила",
+  "archetype.godzilla.summary":
+    "Огромно земноводно влечуго със сини шипове по гърба и дълга опашка.",
   "archetype.gorilla.label": "Горилоподобно",
   "archetype.gorilla.summary":
     "Голямо и силно всеядно, което живее с един другар.",
@@ -1223,6 +1235,12 @@ const de: Record<TranslationKey, string> = {
   "option.lavender": "Lavendel",
   "option.chartreuse": "Chartreuse",
   "option.copper": "Kupfer",
+  "archetype.king-kong.label": "King Kong",
+  "archetype.king-kong.summary":
+    "Ein riesiger, kräftiger Menschenaffe mit breiter Brust, der allein lebt.",
+  "archetype.godzilla.label": "Godzilla",
+  "archetype.godzilla.summary":
+    "Ein gewaltiges amphibisches Reptil mit blauen Rückenstacheln und langem Schwanz.",
   "archetype.gorilla.label": "Gorillaartig",
   "archetype.gorilla.summary":
     "Großer, starker Allesfresser mit einem einzigen Begleiter.",
