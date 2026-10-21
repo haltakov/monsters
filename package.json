@@ -6,7 +6,7 @@
   "description": "A family-built monster ecosystem game.",
   "packageManager": "pnpm@11.18.0",
   "engines": {
-    "node": ">=22.0.0",
+    "node": ">=22.23.4 <23 || >=24.22.1 <25 || >=26.12.1 <27",
     "pnpm": ">=11.0.0"
   },
   "scripts": {
