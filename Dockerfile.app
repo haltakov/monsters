@@ -1,4 +1,4 @@
-FROM node:24-alpine AS builder
+FROM node:26.12.1-alpine AS builder
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -13,7 +13,7 @@ ENV NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID="$NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID"
 # with tracking disabled and a /js/script.js endpoint that always returns 503.
 RUN node -e 'if (!/^pa-[A-Za-z0-9_-]+$/.test(process.env.NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID || "")) { console.error("Set NEXT_PUBLIC_PLAUSIBLE_SCRIPT_ID as a Coolify build variable (pa-… from the MonstersDNA Plausible installation snippet)."); process.exit(1); }'
 
-RUN corepack enable && corepack prepare pnpm@11.18.0 --activate
+RUN npm install --global corepack@0.36.0 && corepack enable && corepack prepare pnpm@11.18.0 --activate
 
 WORKDIR /workspace
 
